@@ -1,0 +1,498 @@
+<html xmlns:o='urn:schemas-microsoft-com:office:office'
+      xmlns:w='urn:schemas-microsoft-com:office:word'
+      xmlns='http://www.w3.org/TR/REC-html40'>
+<head>
+<meta charset="UTF-8"/>
+<meta name=ProgId content=Word.Document/>
+<meta name=Generator content='Microsoft Word 15'/>
+<style>
+  body { font-family: Times New Roman; font-size: 12pt; margin: 2cm; color: #000; }
+  h1 { font-size: 18pt; font-weight: bold; text-align: center; color: #1F3864; border-bottom: 3px solid #1F3864; padding-bottom: 6pt; margin-bottom: 12pt; }
+  h2 { font-size: 14pt; font-weight: bold; color: #1F3864; background-color: #BDD7EE; padding: 4pt 8pt; margin-top: 18pt; margin-bottom: 6pt; }
+  h3 { font-size: 12pt; font-weight: bold; color: #2E4053; margin-top: 10pt; margin-bottom: 4pt; }
+  table { border-collapse: collapse; width: 100%; margin-bottom: 10pt; font-size: 11pt; }
+  th { background-color: #2E75B6; color: white; font-weight: bold; padding: 5pt 8pt; text-align: left; border: 1px solid #2E75B6; }
+  td { padding: 4pt 8pt; border: 1px solid #BDD7EE; vertical-align: top; }
+  tr:nth-child(even) td { background-color: #EBF3FB; }
+  .method-get { background-color: #5B9BD5; color: white; font-weight: bold; padding: 2pt 6pt; border-radius: 3pt; font-size: 10pt; }
+  .method-post { background-color: #70AD47; color: white; font-weight: bold; padding: 2pt 6pt; border-radius: 3pt; font-size: 10pt; }
+  .method-put { background-color: #ED7D31; color: white; font-weight: bold; padding: 2pt 6pt; border-radius: 3pt; font-size: 10pt; }
+  .method-delete { background-color: #FF0000; color: white; font-weight: bold; padding: 2pt 6pt; border-radius: 3pt; font-size: 10pt; }
+  .subtitle { text-align: center; font-size: 11pt; color: #555; margin-bottom: 20pt; }
+  .toc { background-color: #F2F2F2; border: 1px solid #BFBFBF; padding: 10pt 16pt; margin-bottom: 20pt; }
+  .toc h3 { margin-top: 0; color: #1F3864; }
+  .toc ul { margin: 0; padding-left: 18pt; }
+  .toc li { line-height: 1.8; }
+  .summary-table td:first-child { font-weight: bold; color: #2E4053; width: 30%; }
+  .domain-count { font-size: 10pt; color: #888; float: right; font-weight: normal; }
+  p.note { font-size: 10pt; color: #555; font-style: italic; }
+</style>
+</head>
+<body>
+
+<h1>TaskGenie — Danh Sách API &amp; Use Case</h1>
+<p class="subtitle">Hệ thống quản lý công việc AI · Clean Architecture · MediatR + CQRS<br/>
+Phiên bản: 1.0 &nbsp;|&nbsp; Ngày: 16/05/2026</p>
+
+<div class="toc">
+  <h3>Mục Lục</h3>
+  <ul>
+    <li>1. Tổng Quan Hệ Thống</li>
+    <li>2. Authentication — Xác thực (3 API)</li>
+    <li>3. Users — Người dùng (6 API)</li>
+    <li>4. Skills — Kỹ năng (7 API)</li>
+    <li>5. Teams — Nhóm (7 API)</li>
+    <li>6. Projects — Dự án (6 API)</li>
+    <li>7. Tasks — Công việc (12 API)</li>
+    <li>8. Task Comments — Bình luận (3 API)</li>
+    <li>9. Task Progress — Tiến độ (2 API)</li>
+    <li>10. Task Required Skills — Kỹ năng yêu cầu (2 API)</li>
+    <li>11. Organizations — Tổ chức (7 API)</li>
+    <li>12. Invitations — Lời mời (6 API)</li>
+    <li>13. Notifications — Thông báo (5 API)</li>
+    <li>14. Evaluations — Đánh giá (5 API)</li>
+    <li>15. Activity Logs — Nhật ký hoạt động (4 API)</li>
+    <li>16. AI Analysis — Phân tích AI (6 API)</li>
+    <li>17. Task Assignment — Gán công việc AI (2 API)</li>
+    <li>18. Admin — Quản trị (1 API)</li>
+  </ul>
+</div>
+
+<!-- ========== TỔNG QUAN ========== -->
+<h2>1. Tổng Quan Hệ Thống</h2>
+<table class="summary-table">
+  <tr><td>Kiến trúc</td><td>Clean Architecture — Monolith (4 project: Domain / Application / Infrastructure / API)</td></tr>
+  <tr><td>Pattern</td><td>MediatR + CQRS (Command/Query/Handler), FluentValidation Pipeline, Domain Events</td></tr>
+  <tr><td>Framework</td><td>ASP.NET Core 10 / .NET 10 / EF Core 10 / SQL Server</td></tr>
+  <tr><td>Base URL</td><td>http://localhost:5258</td></tr>
+  <tr><td>Xác thực</td><td>Header X-User-Id (không dùng JWT)</td></tr>
+  <tr><td>Tài liệu Swagger</td><td>http://localhost:5258/swagger</td></tr>
+  <tr><td>Tổng số API</td><td>73 endpoints trên 18 domain</td></tr>
+  <tr><td>AI Integration</td><td>HuggingFace (embeddings, zero-shot classification, text generation)</td></tr>
+</table>
+
+<p class="note">* Tất cả request cần header <strong>X-User-Id: {userId}</strong> trừ /api/auth/*</p>
+
+<!-- ========== AUTH ========== -->
+<h2>2. Authentication — Xác thực <span class="domain-count">3 API</span></h2>
+
+<table>
+  <tr>
+    <th style="width:8%">Method</th>
+    <th style="width:25%">Route</th>
+    <th style="width:27%">Request</th>
+    <th style="width:15%">Response</th>
+    <th style="width:25%">Chức năng</th>
+  </tr>
+  <tr>
+    <td><span class="method-post">POST</span></td>
+    <td>/api/auth/register</td>
+    <td>name, email, password</td>
+    <td>string message</td>
+    <td>Đăng ký tài khoản mới bằng email và mật khẩu. Trả về thông báo thành công.</td>
+  </tr>
+  <tr>
+    <td><span class="method-post">POST</span></td>
+    <td>/api/auth/login</td>
+    <td>email, password</td>
+    <td>AuthResponse (userId, name, email, role, isFirstLogin, isOrgOwner)</td>
+    <td>Đăng nhập bằng email/mật khẩu. Kiểm tra trạng thái tài khoản. Trả về thông tin user và vai trò.</td>
+  </tr>
+  <tr>
+    <td><span class="method-post">POST</span></td>
+    <td>/api/auth/google</td>
+    <td>idToken (Google OAuth token)</td>
+    <td>AuthResponse (userId, name, email, role, isFirstLogin, isOrgOwner)</td>
+    <td>Đăng nhập bằng Google OAuth. Tự động tạo tài khoản nếu email chưa tồn tại.</td>
+  </tr>
+</table>
+
+<h3>Use Cases — Auth</h3>
+<table>
+  <tr><th>Use Case</th><th>Handler</th><th>Mô tả logic</th></tr>
+  <tr><td>RegisterCommand</td><td>RegisterCommandHandler</td><td>Kiểm tra email trùng → hash mật khẩu BCrypt → lưu user mới</td></tr>
+  <tr><td>LoginCommand</td><td>LoginCommandHandler</td><td>Tìm user by email → verify password → kiểm tra status → trả AuthResponse</td></tr>
+  <tr><td>GoogleLoginCommand</td><td>GoogleLoginCommandHandler</td><td>Verify Google IdToken → tìm/tạo user → trả AuthResponse</td></tr>
+</table>
+
+<!-- ========== USERS ========== -->
+<h2>3. Users — Người dùng <span class="domain-count">6 API</span></h2>
+
+<table>
+  <tr><th style="width:8%">Method</th><th style="width:28%">Route</th><th style="width:25%">Request</th><th style="width:14%">Response</th><th>Chức năng</th></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/users/search</td><td>email (query param)</td><td>UserSearchDto</td><td>Tìm kiếm người dùng theo email để mời vào nhóm/dự án.</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/users/{id}</td><td>id (path)</td><td>UserProfileDto</td><td>Lấy thông tin chi tiết hồ sơ người dùng.</td></tr>
+  <tr><td><span class="method-put">PUT</span></td><td>/api/users/{id}/profile</td><td>name, avatar</td><td>UserProfileDto</td><td>Cập nhật tên và thông tin hồ sơ người dùng.</td></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/users/{id}/avatar</td><td>file (multipart)</td><td>{ avatarUrl }</td><td>Tải lên ảnh đại diện lên Cloudinary và cập nhật URL.</td></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/users/upload-image</td><td>file (multipart), folder (query)</td><td>{ imageUrl }</td><td>Tải lên hình ảnh tổng quát lên Cloudinary (dùng cho comment ảnh).</td></tr>
+  <tr><td><span class="method-put">PUT</span></td><td>/api/users/{id}/change-password</td><td>currentPassword, newPassword</td><td>{ message }</td><td>Đổi mật khẩu — verify mật khẩu cũ trước khi hash và lưu mật khẩu mới.</td></tr>
+</table>
+
+<h3>Use Cases — Users</h3>
+<table>
+  <tr><th>Use Case</th><th>Handler</th><th>Mô tả logic</th></tr>
+  <tr><td>SearchUserByEmailQuery</td><td>SearchUserByEmailQueryHandler</td><td>Tìm user theo email (dùng khi mời thành viên)</td></tr>
+  <tr><td>GetUserByIdQuery</td><td>GetUserByIdQueryHandler</td><td>Lấy hồ sơ user theo ID</td></tr>
+  <tr><td>UpdateUserProfileCommand</td><td>UpdateUserProfileCommandHandler</td><td>Cập nhật name và avatar</td></tr>
+  <tr><td>UploadAvatarCommand</td><td>UploadAvatarCommandHandler</td><td>Upload ảnh lên Cloudinary → cập nhật avatar URL</td></tr>
+  <tr><td>UploadImageCommand</td><td>UploadImageCommandHandler</td><td>Upload hình ảnh vào thư mục chỉ định</td></tr>
+  <tr><td>ChangePasswordCommand</td><td>ChangePasswordCommandHandler</td><td>Verify mật khẩu hiện tại → hash mật khẩu mới → lưu</td></tr>
+</table>
+
+<!-- ========== SKILLS ========== -->
+<h2>4. Skills — Kỹ năng <span class="domain-count">7 API</span></h2>
+
+<table>
+  <tr><th style="width:8%">Method</th><th style="width:28%">Route</th><th style="width:25%">Request</th><th style="width:14%">Response</th><th>Chức năng</th></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/skills</td><td>—</td><td>List&lt;SkillDto&gt;</td><td>Lấy danh sách tất cả kỹ năng trong hệ thống.</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/skills/{id}</td><td>id (path)</td><td>SkillDto</td><td>Lấy chi tiết một kỹ năng theo ID.</td></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/skills</td><td>skillName</td><td>SkillDto</td><td>Tạo kỹ năng mới trong hệ thống.</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/skills/user/{userId}</td><td>userId (path)</td><td>List&lt;UserSkillDto&gt;</td><td>Lấy danh sách kỹ năng đã đăng ký của một người dùng.</td></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/skills/user</td><td>userId, skillId, level (1–5)</td><td>{ message }</td><td>Thêm kỹ năng vào hồ sơ người dùng với mức độ thành thạo.</td></tr>
+  <tr><td><span class="method-put">PUT</span></td><td>/api/skills/user/{userSkillId}</td><td>level (int)</td><td>204 NoContent</td><td>Cập nhật mức độ thành thạo của kỹ năng người dùng.</td></tr>
+  <tr><td><span class="method-delete">DELETE</span></td><td>/api/skills/user/{userSkillId}</td><td>userSkillId (path)</td><td>204 NoContent</td><td>Xóa kỹ năng khỏi hồ sơ người dùng.</td></tr>
+</table>
+
+<h3>Use Cases — Skills</h3>
+<table>
+  <tr><th>Use Case</th><th>Handler</th><th>Mô tả logic</th></tr>
+  <tr><td>GetAllSkillsQuery</td><td>GetAllSkillsQueryHandler</td><td>Truy vấn toàn bộ kỹ năng</td></tr>
+  <tr><td>GetSkillByIdQuery</td><td>GetSkillByIdQueryHandler</td><td>Lấy kỹ năng theo ID</td></tr>
+  <tr><td>CreateSkillCommand</td><td>CreateSkillCommandHandler</td><td>Tạo và lưu kỹ năng mới</td></tr>
+  <tr><td>GetUserSkillsQuery</td><td>GetUserSkillsQueryHandler</td><td>Lấy danh sách kỹ năng của user</td></tr>
+  <tr><td>AddUserSkillCommand</td><td>AddUserSkillCommandHandler</td><td>Kiểm tra trùng → thêm kỹ năng cho user</td></tr>
+  <tr><td>UpdateUserSkillLevelCommand</td><td>UpdateUserSkillLevelCommandHandler</td><td>Cập nhật mức thành thạo</td></tr>
+  <tr><td>RemoveUserSkillCommand</td><td>RemoveUserSkillCommandHandler</td><td>Xóa kỹ năng của user</td></tr>
+</table>
+
+<!-- ========== TEAMS ========== -->
+<h2>5. Teams — Nhóm <span class="domain-count">7 API</span></h2>
+
+<table>
+  <tr><th style="width:8%">Method</th><th style="width:28%">Route</th><th style="width:25%">Request</th><th style="width:14%">Response</th><th>Chức năng</th></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/teams/my</td><td>X-User-Id (header)</td><td>List&lt;TeamDto&gt;</td><td>Lấy các nhóm mà người dùng hiện tại là thành viên.</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/teams</td><td>—</td><td>List&lt;TeamDto&gt;</td><td>Lấy tất cả các nhóm trong hệ thống.</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/teams/{id}</td><td>id (path)</td><td>TeamDto + members</td><td>Lấy chi tiết nhóm bao gồm danh sách thành viên.</td></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/teams</td><td>name, description, createdBy</td><td>TeamDto</td><td>Tạo nhóm mới. Tự động thêm người tạo làm LEADER.</td></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/teams/{id}/members</td><td>userId, role</td><td>{ message }</td><td>Thêm thành viên vào nhóm với vai trò chỉ định (LEADER/MEMBER).</td></tr>
+  <tr><td><span class="method-delete">DELETE</span></td><td>/api/teams/members/{memberId}</td><td>memberId (path)</td><td>204 NoContent</td><td>Xóa thành viên khỏi nhóm.</td></tr>
+  <tr><td><span class="method-delete">DELETE</span></td><td>/api/teams/{id}</td><td>id (path)</td><td>204 NoContent</td><td>Xóa nhóm.</td></tr>
+</table>
+
+<h3>Use Cases — Teams</h3>
+<table>
+  <tr><th>Use Case</th><th>Handler</th><th>Mô tả logic</th></tr>
+  <tr><td>GetMyTeamsQuery</td><td>GetMyTeamsQueryHandler</td><td>Lấy nhóm theo userId hiện tại</td></tr>
+  <tr><td>GetAllTeamsQuery</td><td>GetAllTeamsQueryHandler</td><td>Lấy tất cả nhóm</td></tr>
+  <tr><td>GetTeamByIdQuery</td><td>GetTeamByIdQueryHandler</td><td>Lấy chi tiết nhóm + thành viên</td></tr>
+  <tr><td>CreateTeamCommand</td><td>CreateTeamCommandHandler</td><td>Tạo nhóm → thêm creator làm LEADER</td></tr>
+  <tr><td>AddTeamMemberCommand</td><td>AddTeamMemberCommandHandler</td><td>Thêm user vào nhóm với role</td></tr>
+  <tr><td>RemoveTeamMemberCommand</td><td>RemoveTeamMemberCommandHandler</td><td>Xóa thành viên khỏi nhóm</td></tr>
+  <tr><td>DeleteTeamCommand</td><td>DeleteTeamCommandHandler</td><td>Xóa nhóm khỏi hệ thống</td></tr>
+</table>
+
+<!-- ========== PROJECTS ========== -->
+<h2>6. Projects — Dự án <span class="domain-count">6 API</span></h2>
+
+<table>
+  <tr><th style="width:8%">Method</th><th style="width:28%">Route</th><th style="width:27%">Request</th><th style="width:12%">Response</th><th>Chức năng</th></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/projects</td><td>X-User-Id (header)</td><td>List&lt;ProjectDto&gt;</td><td>Lấy tất cả dự án của người dùng hiện tại.</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/projects/{id}</td><td>id (path)</td><td>ProjectDto</td><td>Lấy chi tiết dự án theo ID.</td></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/projects</td><td>name, description, createdBy, organizationId, deadline</td><td>ProjectDto</td><td>Tạo dự án mới. Tự động tạo Team riêng cho dự án và thêm creator làm LEADER.</td></tr>
+  <tr><td><span class="method-put">PUT</span></td><td>/api/projects/{id}</td><td>name, description, status, teamId, deadline</td><td>204 NoContent</td><td>Cập nhật thông tin dự án (tên, mô tả, trạng thái, deadline).</td></tr>
+  <tr><td><span class="method-delete">DELETE</span></td><td>/api/projects/{id}</td><td>id (path)</td><td>204 NoContent</td><td>Xóa dự án khỏi hệ thống.</td></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/projects/{id}/members</td><td>email, role</td><td>{ message }</td><td>Thêm thành viên vào dự án bằng email với vai trò chỉ định.</td></tr>
+</table>
+
+<h3>Use Cases — Projects</h3>
+<table>
+  <tr><th>Use Case</th><th>Handler</th><th>Mô tả logic</th></tr>
+  <tr><td>GetProjectsByUserQuery</td><td>GetProjectsByUserQueryHandler</td><td>Lấy dự án theo userId</td></tr>
+  <tr><td>GetProjectByIdQuery</td><td>GetProjectByIdQueryHandler</td><td>Lấy chi tiết dự án</td></tr>
+  <tr><td>CreateProjectCommand</td><td>CreateProjectCommandHandler</td><td>Tạo Team → thêm creator làm LEADER → tạo Project gắn với Team</td></tr>
+  <tr><td>UpdateProjectCommand</td><td>UpdateProjectCommandHandler</td><td>Cập nhật thông tin dự án</td></tr>
+  <tr><td>DeleteProjectCommand</td><td>DeleteProjectCommandHandler</td><td>Xóa dự án</td></tr>
+  <tr><td>AddProjectMemberCommand</td><td>AddProjectMemberCommandHandler</td><td>Tìm user by email → thêm vào team của dự án</td></tr>
+</table>
+
+<!-- ========== TASKS ========== -->
+<h2>7. Tasks — Công việc <span class="domain-count">12 API</span></h2>
+
+<table>
+  <tr><th style="width:8%">Method</th><th style="width:30%">Route</th><th style="width:25%">Request</th><th style="width:12%">Response</th><th>Chức năng</th></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/tasks/my</td><td>X-User-Id (header)</td><td>List&lt;TaskDetailDto&gt;</td><td>Lấy danh sách công việc được gán cho người dùng hiện tại.</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/tasks?projectId={id}</td><td>projectId (query)</td><td>List&lt;TaskDetailDto&gt;</td><td>Lấy tất cả công việc của một dự án.</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/tasks/template-csv</td><td>—</td><td>CSV file</td><td>Tải về mẫu file CSV để nhập công việc hàng loạt.</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/tasks/{id}</td><td>id (path)</td><td>TaskDetailDto</td><td>Lấy chi tiết công việc bao gồm assignees, dependencies, required skills.</td></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/tasks</td><td>projectId, title, description, priority, deadline, difficulty, currentUserId</td><td>TaskDetailDto</td><td>Tạo công việc mới. Phát sinh Domain Event TaskCreatedEvent → ghi ActivityLog.</td></tr>
+  <tr><td><span class="method-put">PUT</span></td><td>/api/tasks/{id}</td><td>title, description, status, priority, deadline, estimatedTime, actualTime, difficulty</td><td>204 NoContent</td><td>Cập nhật thông tin công việc. Khi status=Done phát sinh TaskCompletedEvent.</td></tr>
+  <tr><td><span class="method-delete">DELETE</span></td><td>/api/tasks/{id}</td><td>id (path)</td><td>204 NoContent</td><td>Xóa công việc khỏi hệ thống.</td></tr>
+  <tr><td><span class="method-put">PUT</span></td><td>/api/tasks/{id}/progress</td><td>status, progress, riskLevel, actualTime</td><td>204 NoContent</td><td>Cập nhật tiến độ phần trăm, trạng thái, mức rủi ro và thời gian thực tế.</td></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/tasks/{id}/estimate</td><td>id (path)</td><td>TaskDetailDto</td><td>Sử dụng AI ước tính thời gian hoàn thành dựa trên độ khó và lịch sử.</td></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/tasks/{id}/dependencies</td><td>dependsOnTaskId</td><td>{ success: bool }</td><td>Thêm quan hệ phụ thuộc: task này phải chờ task kia hoàn thành.</td></tr>
+  <tr><td><span class="method-delete">DELETE</span></td><td>/api/tasks/{id}/dependencies/{depId}</td><td>id, depId (path)</td><td>{ success: bool }</td><td>Xóa quan hệ phụ thuộc giữa hai công việc.</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/tasks/project/{projectId}/dependency-graph</td><td>projectId (path)</td><td>DependencyGraphDto (nodes + edges)</td><td>Lấy đồ thị phụ thuộc dạng nodes/edges dùng để hiển thị DAG trực quan.</td></tr>
+</table>
+
+<h3>Use Cases — Tasks</h3>
+<table>
+  <tr><th>Use Case</th><th>Handler</th><th>Mô tả logic</th></tr>
+  <tr><td>GetMyTasksQuery</td><td>GetMyTasksQueryHandler</td><td>Lấy task được gán cho userId hiện tại</td></tr>
+  <tr><td>GetTasksByProjectQuery</td><td>GetTasksByProjectQueryHandler</td><td>Lấy task theo projectId</td></tr>
+  <tr><td>GetTaskByIdQuery</td><td>GetTaskByIdQueryHandler</td><td>Lấy chi tiết task với đầy đủ navigation properties</td></tr>
+  <tr><td>CreateTaskCommand</td><td>CreateTaskCommandHandler</td><td>Tạo task → Publish TaskCreatedEvent → ActivityLog ghi TASK_CREATED</td></tr>
+  <tr><td>UpdateTaskCommand</td><td>UpdateTaskCommandHandler</td><td>Cập nhật task → Publish TaskUpdatedEvent; nếu Done → Publish TaskCompletedEvent</td></tr>
+  <tr><td>DeleteTaskCommand</td><td>DeleteTaskCommandHandler</td><td>Xóa task</td></tr>
+  <tr><td>UpdateTaskProgressCommand</td><td>UpdateTaskProgressCommandHandler</td><td>Cập nhật progress%, status, riskLevel</td></tr>
+  <tr><td>SuggestEstimatedTimeCommand</td><td>SuggestEstimatedTimeCommandHandler</td><td>Tính toán thời gian ước tính dựa trên difficulty, priority, lịch sử</td></tr>
+  <tr><td>AddTaskDependencyCommand</td><td>AddTaskDependencyCommandHandler</td><td>Kiểm tra circular dependency → thêm dependency</td></tr>
+  <tr><td>RemoveTaskDependencyCommand</td><td>RemoveTaskDependencyCommandHandler</td><td>Xóa dependency</td></tr>
+  <tr><td>GetDependencyGraphQuery</td><td>GetDependencyGraphQueryHandler</td><td>Lấy nodes + edges của đồ thị phụ thuộc</td></tr>
+</table>
+
+<!-- ========== TASK COMMENTS ========== -->
+<h2>8. Task Comments — Bình luận <span class="domain-count">3 API</span></h2>
+
+<table>
+  <tr><th style="width:8%">Method</th><th style="width:28%">Route</th><th style="width:27%">Request</th><th style="width:12%">Response</th><th>Chức năng</th></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/taskcomments/task/{taskId}</td><td>taskId (path)</td><td>List&lt;TaskCommentDto&gt;</td><td>Lấy tất cả bình luận của một công việc.</td></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/taskcomments</td><td>taskId, userId, content, imageUrl</td><td>TaskCommentDto</td><td>Tạo bình luận mới cho công việc (hỗ trợ text và đính kèm ảnh).</td></tr>
+  <tr><td><span class="method-delete">DELETE</span></td><td>/api/taskcomments/{commentId}</td><td>commentId (path)</td><td>204 NoContent</td><td>Xóa bình luận công việc.</td></tr>
+</table>
+
+<h3>Use Cases — Task Comments</h3>
+<table>
+  <tr><th>Use Case</th><th>Handler</th><th>Mô tả logic</th></tr>
+  <tr><td>GetTaskCommentsQuery</td><td>GetTaskCommentsQueryHandler</td><td>Lấy bình luận theo taskId</td></tr>
+  <tr><td>CreateTaskCommentCommand</td><td>CreateTaskCommentCommandHandler</td><td>Lưu bình luận mới</td></tr>
+  <tr><td>DeleteTaskCommentCommand</td><td>DeleteTaskCommentCommandHandler</td><td>Xóa bình luận</td></tr>
+</table>
+
+<!-- ========== TASK PROGRESS ========== -->
+<h2>9. Task Progress — Nhật ký tiến độ <span class="domain-count">2 API</span></h2>
+
+<table>
+  <tr><th style="width:8%">Method</th><th style="width:28%">Route</th><th style="width:27%">Request</th><th style="width:12%">Response</th><th>Chức năng</th></tr>
+  <tr><td><span class="method-put">PUT</span></td><td>/api/task-progress/{taskId}</td><td>progressPercentage, note, risk</td><td>{ message }</td><td>Cập nhật tiến độ và ghi nhật ký vào TaskLog (lưu lịch sử tiến độ).</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/task-progress/{taskId}/logs</td><td>taskId (path)</td><td>List&lt;TaskLogDto&gt;</td><td>Lấy lịch sử toàn bộ nhật ký tiến độ của một công việc.</td></tr>
+</table>
+
+<h3>Use Cases — Task Progress</h3>
+<table>
+  <tr><th>Use Case</th><th>Handler</th><th>Mô tả logic</th></tr>
+  <tr><td>LogTaskProgressCommand</td><td>LogTaskProgressCommandHandler</td><td>Cập nhật task.Progress → thêm TaskLog record</td></tr>
+  <tr><td>GetTaskProgressLogsQuery</td><td>GetTaskProgressLogsQueryHandler</td><td>Lấy lịch sử tiến độ theo taskId</td></tr>
+</table>
+
+<!-- ========== TASK REQUIRED SKILLS ========== -->
+<h2>10. Task Required Skills — Kỹ năng yêu cầu <span class="domain-count">2 API</span></h2>
+
+<table>
+  <tr><th style="width:8%">Method</th><th style="width:28%">Route</th><th style="width:27%">Request</th><th style="width:12%">Response</th><th>Chức năng</th></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/taskrequiredskills/{taskId}</td><td>taskId (path)</td><td>List&lt;TaskRequiredSkillDto&gt;</td><td>Lấy danh sách kỹ năng yêu cầu để hoàn thành công việc.</td></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/taskrequiredskills/{taskId}</td><td>skillIds: List&lt;int&gt;</td><td>{ message }</td><td>Cập nhật (thay thế hoàn toàn) danh sách kỹ năng yêu cầu cho công việc.</td></tr>
+</table>
+
+<h3>Use Cases — Task Required Skills</h3>
+<table>
+  <tr><th>Use Case</th><th>Handler</th><th>Mô tả logic</th></tr>
+  <tr><td>GetTaskRequiredSkillsQuery</td><td>GetTaskRequiredSkillsQueryHandler</td><td>Lấy required skills → trả DTO (tránh circular reference)</td></tr>
+  <tr><td>ReplaceTaskRequiredSkillsCommand</td><td>ReplaceTaskRequiredSkillsCommandHandler</td><td>Xóa skills cũ → thêm skills mới (replace all)</td></tr>
+</table>
+
+<!-- ========== ORGANIZATIONS ========== -->
+<h2>11. Organizations — Tổ chức <span class="domain-count">7 API</span></h2>
+
+<table>
+  <tr><th style="width:8%">Method</th><th style="width:33%">Route</th><th style="width:22%">Request</th><th style="width:12%">Response</th><th>Chức năng</th></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/organizations/admin/all</td><td>—</td><td>List&lt;OrganizationDto&gt;</td><td>Lấy tất cả tổ chức (dùng cho admin dashboard).</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/organizations/my</td><td>X-User-Id (header)</td><td>{ org, projects }</td><td>Lấy tổ chức mà user hiện tại là owner, kèm danh sách dự án.</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/organizations/{orgId}</td><td>orgId (path)</td><td>OrganizationDto</td><td>Lấy chi tiết tổ chức theo ID.</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/organizations/{orgId}/projects</td><td>orgId (path)</td><td>List&lt;OrganizationProjectDto&gt;</td><td>Lấy danh sách dự án của tổ chức.</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/organizations/{orgId}/projects/{projectId}</td><td>orgId, projectId (path)</td><td>OrganizationProjectDto</td><td>Lấy chi tiết một dự án trong tổ chức.</td></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/organizations/{orgId}/projects/{projectId}/evaluate</td><td>evaluatorId, overallScore, qualityScore, timelinessScore, communicationScore, comment</td><td>{ message }</td><td>Đánh giá tổng thể dự án của tổ chức (leader đánh giá).</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/organizations/{orgId}/projects/{projectId}/evaluation</td><td>orgId, projectId (path)</td><td>ProjectEvaluationDto</td><td>Lấy kết quả đánh giá dự án.</td></tr>
+</table>
+
+<h3>Use Cases — Organizations</h3>
+<table>
+  <tr><th>Use Case</th><th>Handler</th><th>Mô tả logic</th></tr>
+  <tr><td>GetAllOrganizationsQuery</td><td>GetAllOrganizationsQueryHandler</td><td>Lấy tất cả tổ chức</td></tr>
+  <tr><td>GetOrganizationByIdQuery</td><td>GetOrganizationByIdQueryHandler</td><td>Lấy chi tiết tổ chức</td></tr>
+  <tr><td>GetOrganizationProjectsQuery</td><td>GetOrganizationProjectsQueryHandler</td><td>Lấy dự án theo orgId</td></tr>
+  <tr><td>GetOrganizationProjectDetailQuery</td><td>GetOrganizationProjectDetailQueryHandler</td><td>Lấy chi tiết dự án trong org</td></tr>
+  <tr><td>EvaluateProjectCommand</td><td>EvaluateProjectCommandHandler</td><td>Lưu đánh giá dự án (ProjectEvaluation)</td></tr>
+  <tr><td>GetProjectEvaluationQuery</td><td>GetProjectEvaluationQueryHandler</td><td>Lấy kết quả đánh giá dự án</td></tr>
+</table>
+
+<!-- ========== INVITATIONS ========== -->
+<h2>12. Invitations — Lời mời <span class="domain-count">6 API</span></h2>
+
+<table>
+  <tr><th style="width:8%">Method</th><th style="width:28%">Route</th><th style="width:25%">Request</th><th style="width:14%">Response</th><th>Chức năng</th></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/invitations/{id}</td><td>id (path)</td><td>InvitationDto</td><td>Lấy chi tiết một lời mời theo ID.</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/invitations/team/{teamId}</td><td>teamId (path)</td><td>List&lt;InvitationDto&gt;</td><td>Lấy tất cả lời mời đã gửi từ một nhóm.</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/invitations/user/{email}</td><td>email (path)</td><td>List&lt;InvitationDto&gt;</td><td>Lấy lời mời gửi đến địa chỉ email.</td></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/invitations</td><td>teamId, email</td><td>InvitationDto</td><td>Tạo lời mời tham gia nhóm gửi đến email.</td></tr>
+  <tr><td><span class="method-put">PUT</span></td><td>/api/invitations/{id}/status</td><td>status (Accepted/Rejected)</td><td>204 NoContent</td><td>Cập nhật trạng thái lời mời. Nếu Accepted → tự động thêm user vào team (kiểm tra trùng lặp).</td></tr>
+  <tr><td><span class="method-delete">DELETE</span></td><td>/api/invitations/{id}</td><td>id (path)</td><td>204 NoContent</td><td>Xóa lời mời.</td></tr>
+</table>
+
+<h3>Use Cases — Invitations</h3>
+<table>
+  <tr><th>Use Case</th><th>Handler</th><th>Mô tả logic</th></tr>
+  <tr><td>GetInvitationByIdQuery</td><td>GetInvitationByIdQueryHandler</td><td>Lấy lời mời theo ID</td></tr>
+  <tr><td>GetTeamInvitationsQuery</td><td>GetTeamInvitationsQueryHandler</td><td>Lấy lời mời theo teamId</td></tr>
+  <tr><td>GetUserInvitationsQuery</td><td>GetUserInvitationsQueryHandler</td><td>Lấy lời mời theo email</td></tr>
+  <tr><td>CreateInvitationCommand</td><td>CreateInvitationCommandHandler</td><td>Tạo invitation record</td></tr>
+  <tr><td>UpdateInvitationStatusCommand</td><td>UpdateInvitationStatusCommandHandler</td><td>Cập nhật status → nếu Accepted: kiểm tra đã là member chưa → thêm TeamMember</td></tr>
+  <tr><td>DeleteInvitationCommand</td><td>DeleteInvitationCommandHandler</td><td>Xóa invitation</td></tr>
+</table>
+
+<!-- ========== NOTIFICATIONS ========== -->
+<h2>13. Notifications — Thông báo <span class="domain-count">5 API</span></h2>
+
+<table>
+  <tr><th style="width:8%">Method</th><th style="width:33%">Route</th><th style="width:20%">Request</th><th style="width:14%">Response</th><th>Chức năng</th></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/notifications/user/{userId}</td><td>userId (path)</td><td>List&lt;NotificationDto&gt;</td><td>Lấy tất cả thông báo của người dùng.</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/notifications/user/{userId}/unread-count</td><td>userId (path)</td><td>{ count: int }</td><td>Lấy số lượng thông báo chưa đọc (dùng cho badge).</td></tr>
+  <tr><td><span class="method-put">PUT</span></td><td>/api/notifications/{id}/read</td><td>id (path)</td><td>204 NoContent</td><td>Đánh dấu một thông báo là đã đọc.</td></tr>
+  <tr><td><span class="method-put">PUT</span></td><td>/api/notifications/user/{userId}/read-all</td><td>userId (path)</td><td>204 NoContent</td><td>Đánh dấu tất cả thông báo của user là đã đọc.</td></tr>
+  <tr><td><span class="method-delete">DELETE</span></td><td>/api/notifications/{id}</td><td>id (path)</td><td>204 NoContent</td><td>Xóa thông báo.</td></tr>
+</table>
+
+<p class="note">* Thông báo được tạo tự động qua Domain Events (TaskAssignedEvent → TaskAssignedNotificationHandler). Không có API POST tạo thông báo trực tiếp.</p>
+
+<h3>Use Cases — Notifications</h3>
+<table>
+  <tr><th>Use Case</th><th>Handler</th><th>Mô tả logic</th></tr>
+  <tr><td>GetUserNotificationsQuery</td><td>GetUserNotificationsQueryHandler</td><td>Lấy thông báo theo userId</td></tr>
+  <tr><td>GetUnreadCountQuery</td><td>GetUnreadCountQueryHandler</td><td>Đếm thông báo chưa đọc</td></tr>
+  <tr><td>MarkNotificationAsReadCommand</td><td>MarkNotificationAsReadCommandHandler</td><td>Set IsRead=true cho notification</td></tr>
+  <tr><td>MarkAllNotificationsAsReadCommand</td><td>MarkAllNotificationsAsReadCommandHandler</td><td>Set IsRead=true cho tất cả</td></tr>
+  <tr><td>DeleteNotificationCommand</td><td>DeleteNotificationCommandHandler</td><td>Xóa notification</td></tr>
+</table>
+
+<!-- ========== EVALUATIONS ========== -->
+<h2>14. Evaluations — Đánh giá thành viên <span class="domain-count">5 API</span></h2>
+
+<table>
+  <tr><th style="width:8%">Method</th><th style="width:28%">Route</th><th style="width:30%">Request</th><th style="width:12%">Response</th><th>Chức năng</th></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/evaluations/{id}</td><td>id (path)</td><td>EvaluationDto</td><td>Lấy chi tiết một đánh giá theo ID.</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/evaluations/user/{userId}</td><td>userId (path)</td><td>List&lt;EvaluationDto&gt;</td><td>Lấy tất cả đánh giá nhận được của một người dùng.</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/evaluations/leader/{leaderId}</td><td>leaderId (path)</td><td>List&lt;EvaluationDto&gt;</td><td>Lấy tất cả đánh giá do một leader tạo.</td></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/evaluations</td><td>userId, leaderId, skillScore, teamworkScore, deadlineScore, communicationScore</td><td>EvaluationDto</td><td>Leader đánh giá thành viên theo 4 tiêu chí (thang điểm 1–10).</td></tr>
+  <tr><td><span class="method-delete">DELETE</span></td><td>/api/evaluations/{id}</td><td>id (path)</td><td>204 NoContent</td><td>Xóa đánh giá.</td></tr>
+</table>
+
+<p class="note">* Điểm đánh giá được AI dùng để tính Performance Score (15% trọng số) trong thuật toán gán công việc.</p>
+
+<h3>Use Cases — Evaluations</h3>
+<table>
+  <tr><th>Use Case</th><th>Handler</th><th>Mô tả logic</th></tr>
+  <tr><td>GetEvaluationByIdQuery</td><td>GetEvaluationByIdQueryHandler</td><td>Lấy đánh giá theo ID</td></tr>
+  <tr><td>GetUserEvaluationsQuery</td><td>GetUserEvaluationsQueryHandler</td><td>Lấy đánh giá của user</td></tr>
+  <tr><td>GetLeaderEvaluationsQuery</td><td>GetLeaderEvaluationsQueryHandler</td><td>Lấy đánh giá do leader tạo</td></tr>
+  <tr><td>CreateEvaluationCommand</td><td>CreateEvaluationCommandHandler</td><td>Lưu đánh giá mới</td></tr>
+  <tr><td>DeleteEvaluationCommand</td><td>DeleteEvaluationCommandHandler</td><td>Xóa đánh giá</td></tr>
+</table>
+
+<!-- ========== ACTIVITY LOGS ========== -->
+<h2>15. Activity Logs — Nhật ký hoạt động <span class="domain-count">4 API</span></h2>
+
+<table>
+  <tr><th style="width:8%">Method</th><th style="width:36%">Route</th><th style="width:20%">Request</th><th style="width:12%">Response</th><th>Chức năng</th></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/activitylogs</td><td>limit (query, default=50)</td><td>List&lt;ActivityLogDto&gt;</td><td>Lấy nhật ký hoạt động toàn hệ thống (giới hạn số lượng).</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/activitylogs/user/{userId}</td><td>userId (path)</td><td>List&lt;ActivityLogDto&gt;</td><td>Lấy nhật ký hoạt động của một người dùng cụ thể.</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/activitylogs/entity/{entityType}/{entityId}</td><td>entityType, entityId (path)</td><td>List&lt;ActivityLogDto&gt;</td><td>Lấy nhật ký theo loại thực thể (vd: entityType=Task, entityId=103).</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/activitylogs/project/{projectId}</td><td>projectId (path), limit (query)</td><td>List&lt;ActivityLogDto&gt;</td><td>Lấy nhật ký hoạt động của tất cả công việc trong dự án.</td></tr>
+</table>
+
+<p class="note">* ActivityLog được ghi tự động qua Domain Events — không có API tạo/xóa log thủ công.<br/>
+* Các loại action được ghi: TASK_CREATED, TASK_UPDATED, TASK_COMPLETED, TASK_ASSIGNED.</p>
+
+<h3>Use Cases — Activity Logs</h3>
+<table>
+  <tr><th>Use Case</th><th>Handler</th><th>Mô tả logic</th></tr>
+  <tr><td>GetAllActivitiesQuery</td><td>GetAllActivitiesQueryHandler</td><td>Lấy toàn bộ log theo limit</td></tr>
+  <tr><td>GetUserActivitiesQuery</td><td>GetUserActivitiesQueryHandler</td><td>Lấy log theo userId</td></tr>
+  <tr><td>GetEntityActivitiesQuery</td><td>GetEntityActivitiesQueryHandler</td><td>Lấy log theo entityType + entityId</td></tr>
+  <tr><td>GetProjectActivitiesQuery</td><td>GetProjectActivitiesQueryHandler</td><td>Lấy log theo projectId</td></tr>
+  <tr><td><em>TaskCreatedActivityLogHandler</em></td><td>INotificationHandler&lt;TaskCreatedEvent&gt;</td><td>Ghi TASK_CREATED khi task được tạo</td></tr>
+  <tr><td><em>TaskCompletedActivityLogHandler</em></td><td>INotificationHandler&lt;TaskCompletedEvent&gt;</td><td>Ghi TASK_COMPLETED khi task Done</td></tr>
+  <tr><td><em>TaskAssignedActivityLogHandler</em></td><td>INotificationHandler&lt;TaskAssignedEvent&gt;</td><td>Ghi TASK_ASSIGNED khi AI gán task</td></tr>
+</table>
+
+<!-- ========== AI ANALYSIS ========== -->
+<h2>16. AI Analysis — Phân tích AI <span class="domain-count">6 API</span></h2>
+
+<table>
+  <tr><th style="width:8%">Method</th><th style="width:35%">Route</th><th style="width:18%">Request</th><th style="width:15%">Response</th><th>Chức năng</th></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/ai-analysis/{taskId}/risk</td><td>taskId (path)</td><td>{ message }</td><td>Phân tích rủi ro công việc: tính toán lateRatio từ lịch sử đánh giá, so sánh estimatedTime với working hours còn lại, gọi AI TextGeneration → lưu vào AiAnalysis table.</td></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/ai-analysis/{taskId}/summary</td><td>taskId (path)</td><td>{ message }</td><td>Tạo tóm tắt tự động cho công việc (assignees, progress, priority) → lưu vào AiAnalysis table.</td></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/ai-analysis/{taskId}/classify</td><td>taskId (path)</td><td>{ message }</td><td>Phân loại công việc bằng Zero-Shot Classification: xác định type (frontend/backend/devops) và difficulty (easy/medium/hard) → lưu kết quả.</td></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/ai-analysis/project/{projectId}/analyze-all</td><td>projectId (path)</td><td>ProjectRiskSummaryDto (totalActive, highRisk, mediumRisk, lowRisk, status, warnings)</td><td>Phân tích rủi ro hàng loạt cho tất cả công việc đang hoạt động trong dự án. Trả về tổng quan rủi ro dự án.</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/ai-analysis/project/{projectId}/workload</td><td>projectId (path)</td><td>WorkloadSuggestionDto</td><td>AI đề xuất phân bổ công việc cho các thành viên nhóm dựa trên workload hiện tại và độ ưu tiên.</td></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/ai-analysis/{taskId}</td><td>taskId (path)</td><td>List&lt;AiAnalysisDto&gt;</td><td>Lấy lịch sử toàn bộ kết quả phân tích AI (risk, summary, classification) của công việc.</td></tr>
+</table>
+
+<h3>Use Cases — AI Analysis</h3>
+<table>
+  <tr><th>Use Case</th><th>Handler</th><th>Mô tả logic</th></tr>
+  <tr><td>AnalyzeTaskRiskCommand</td><td>AnalyzeTaskRiskCommandHandler</td><td>Tính lateRatio từ evaluations → so sánh hours → gọi TextGeneration → fallback nếu AI lỗi → lưu AiAnalysis</td></tr>
+  <tr><td>GenerateTaskSummaryCommand</td><td>GenerateTaskSummaryCommandHandler</td><td>Tạo nội dung tóm tắt từ task data → lưu AiAnalysis</td></tr>
+  <tr><td>ClassifyTaskCommand</td><td>ClassifyTaskCommandHandler</td><td>Gọi Zero-Shot Classification API → fallback nếu lỗi → lưu kết quả phân loại</td></tr>
+  <tr><td>AnalyzeProjectRisksCommand</td><td>AnalyzeProjectRisksCommandHandler</td><td>Duyệt tất cả task active → phân tích từng task → tổng hợp risk summary</td></tr>
+  <tr><td>GetWorkloadSuggestionsQuery</td><td>GetWorkloadSuggestionsQueryHandler</td><td>Lấy team members (via project.TeamId) → build prompt → gọi TextGeneration → fallback nếu lỗi</td></tr>
+  <tr><td>GetTaskAnalysesQuery</td><td>GetTaskAnalysesQueryHandler</td><td>Lấy lịch sử phân tích AI của task</td></tr>
+</table>
+
+<!-- ========== TASK ASSIGNMENT ========== -->
+<h2>17. Task Assignment — Gán công việc AI <span class="domain-count">2 API</span></h2>
+
+<table>
+  <tr><th style="width:8%">Method</th><th style="width:28%">Route</th><th style="width:25%">Request</th><th style="width:15%">Response</th><th>Chức năng</th></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/task-assignment/recommend</td><td>taskId, projectId</td><td>TaskAssignmentResponseDto (suggestions với score, reason)</td><td>AI gợi ý thành viên phù hợp nhất để gán công việc. Tính điểm theo 4 tiêu chí: Skill Match 40%, Semantic Similarity 25%, Workload 20%, Performance 15%.</td></tr>
+  <tr><td><span class="method-post">POST</span></td><td>/api/task-assignment/accept</td><td>taskId, userId</td><td>{ message }</td><td>Chấp nhận đề xuất gán công việc. Xóa assignees cũ → thêm assignee mới → phát sinh TaskAssignedEvent.</td></tr>
+</table>
+
+<h3>Thuật toán AI Scoring</h3>
+<table>
+  <tr><th>Tiêu chí</th><th>Trọng số</th><th>Cách tính</th></tr>
+  <tr><td>Skill Match</td><td>40%</td><td>So khớp userSkill.Level / requiredLevel cho từng kỹ năng yêu cầu</td></tr>
+  <tr><td>Semantic Similarity</td><td>25%</td><td>HuggingFace embeddings — cosine similarity giữa task description và user skill profile</td></tr>
+  <tr><td>Workload Score</td><td>20%</td><td>Dựa trên số task đang active và giờ có sẵn (UserAvailability)</td></tr>
+  <tr><td>Performance Score</td><td>15%</td><td>Trung bình 4 tiêu chí từ Evaluations: skill, teamwork, deadline, communication</td></tr>
+</table>
+
+<h3>Use Cases — Task Assignment</h3>
+<table>
+  <tr><th>Use Case</th><th>Handler</th><th>Mô tả logic</th></tr>
+  <tr><td>GetAssignmentRecommendationsCommand</td><td>GetAssignmentRecommendationsCommandHandler</td><td>Load task + required skills → build user profiles → compute scores → rank → persist AiRecommendation → trả kết quả</td></tr>
+  <tr><td>AcceptAssignmentRecommendationCommand</td><td>AcceptAssignmentRecommendationCommandHandler</td><td>Xóa TaskAssignees cũ → thêm TaskAssignee mới → Publish TaskAssignedEvent → ActivityLog + Notification</td></tr>
+</table>
+
+<!-- ========== ADMIN ========== -->
+<h2>18. Admin — Quản trị hệ thống <span class="domain-count">1 API</span></h2>
+
+<table>
+  <tr><th style="width:8%">Method</th><th style="width:28%">Route</th><th style="width:25%">Request</th><th style="width:15%">Response</th><th>Chức năng</th></tr>
+  <tr><td><span class="method-get">GET</span></td><td>/api/admin/platform-stats</td><td>—</td><td>PlatformStatsDto (users, organizations, projects, tasks, tasksDone)</td><td>Lấy thống kê tổng quan toàn nền tảng: tổng số users, tổ chức, dự án, công việc và số task đã hoàn thành.</td></tr>
+</table>
+
+<h3>Use Cases — Admin</h3>
+<table>
+  <tr><th>Use Case</th><th>Handler</th><th>Mô tả logic</th></tr>
+  <tr><td>GetPlatformStatsQuery</td><td>GetPlatformStatsQueryHandler</td><td>COUNT users + orgs + projects → ITaskStatsRepository.GetTotalAndDoneCountAsync() → trả PlatformStatsDto</td></tr>
+</table>
+
+<br/><br/>
+<hr style="border: 1px solid #1F3864;"/>
+<p style="text-align:center; font-size:10pt; color:#888;">
+  TaskGenie API Documentation · Clean Architecture · MediatR + CQRS<br/>
+  Tổng cộng: <strong>73 API endpoints</strong> trên <strong>18 domain</strong> · <strong>73+ Use Cases</strong> (Commands/Queries + Event Handlers)<br/>
+  Ngày tạo: 16/05/2026
+</p>
+
+</body>
+</html>

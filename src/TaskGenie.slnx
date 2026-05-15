@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="TaskGenie.API/TaskGenie.API.csproj" />
+  <Project Path="TaskGenie.Application/TaskGenie.Application.csproj" />
+  <Project Path="TaskGenie.Domain/TaskGenie.Domain.csproj" />
+  <Project Path="TaskGenie.Infrastructure/TaskGenie.Infrastructure.csproj" />
+</Solution>

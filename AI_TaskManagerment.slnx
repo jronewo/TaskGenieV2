@@ -1,6 +1,0 @@
-<Solution>
-  <Project Path="AI_ManagermentAPI/AI_ManagermentAPI.csproj" />
-  <Project Path="BusinessObject/BusinessObject.csproj" />
-  <Project Path="Repository/Repository.csproj" />
-  <Project Path="Services/Services.csproj" />
-</Solution>

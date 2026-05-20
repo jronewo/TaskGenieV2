@@ -1,6 +1,0 @@
-@AI_ManagermentAPI_HostAddress = http://localhost:5283
-
-GET {{AI_ManagermentAPI_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

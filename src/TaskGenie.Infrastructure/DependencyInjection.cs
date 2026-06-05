@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using TaskGenie.Application.Common.Options;
 using TaskGenie.Application.Features.Admin;
 using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
@@ -14,6 +15,8 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        services.Configure<JwtSettings>(configuration.GetSection(JwtSettings.SectionName));
+
         services.AddDbContext<AppDbContext>(options =>
             options.UseSqlServer(configuration.GetConnectionString("DefaultConnection")));
 
@@ -47,6 +50,8 @@ public static class DependencyInjection
         services.AddSingleton<ICloudinaryService, CloudinaryService>();
         services.AddScoped<IGoogleAuthService, GoogleAuthService>();
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
+        services.AddScoped<IJwtTokenService, JwtTokenService>();
+        services.AddSingleton<ITokenRevocationService, InMemoryTokenRevocationService>();
 
         return services;
     }

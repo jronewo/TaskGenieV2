@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using TaskGenie.API.Middleware;
 using TaskGenie.Application.Features.Projects.Commands;
 using TaskGenie.Application.Features.Projects.Queries;
+using TaskGenie.Application.Features.Projects.DTOs;
 
 namespace TaskGenie.API.Controllers;
 
@@ -56,6 +57,16 @@ public class ProjectsController(IMediator mediator) : ControllerBase
         await mediator.Send(new AddProjectMemberCommand(id, request.Email, request.Role));
         return Ok(new { message = "Member added to project." });
     }
+
+    /// <summary>Xem trước tổng kết dự án (không đóng, không tính điểm).</summary>
+    [HttpGet("{id}/summary")]
+    public async Task<IActionResult> GetSummary(int id)
+        => Ok(await mediator.Send(new GetProjectSummaryQuery(id)));
+
+    /// <summary>Tổng kết và đóng dự án. Tự động tính + lưu điểm cho tất cả thành viên.</summary>
+    [HttpPost("{id}/close")]
+    public async Task<IActionResult> Close(int id)
+        => Ok(await mediator.Send(new CloseProjectCommand(id)));
 }
 
 public record CreateProjectRequest(

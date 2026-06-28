@@ -61,6 +61,7 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<Notification> Notifications { get; set; }
 
+    public virtual DbSet<UserScore> UserScores { get; set; }
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ActivityLog>(entity =>
@@ -325,6 +326,9 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.Version)
                 .HasDefaultValue(1)
                 .HasColumnName("version");
+            entity.Property(e => e.CompletedAt)
+                .HasColumnType("datetime")
+                .HasColumnName("completed_at");
 
             entity.HasOne(d => d.CreatedByNavigation).WithMany(p => p.Tasks)
                 .HasForeignKey(d => d.CreatedBy)
@@ -606,6 +610,42 @@ public partial class AppDbContext : DbContext
             entity.HasOne(d => d.User).WithMany()
                 .HasForeignKey(d => d.UserId)
                 .HasConstraintName("FK_notifications_users");
+        });
+
+        modelBuilder.Entity<UserScore>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("PK_user_scores");
+            entity.ToTable("user_scores");
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.TaskId).HasColumnName("task_id");
+            entity.Property(e => e.ProjectId).HasColumnName("project_id");
+            entity.Property(e => e.Type)
+                .HasMaxLength(50)
+                .HasColumnName("type");
+            entity.Property(e => e.Amount).HasColumnName("amount");
+            entity.Property(e => e.Reason)
+                .HasMaxLength(500)
+                .HasColumnName("reason");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("(getdate())")
+                .HasColumnType("datetime")
+                .HasColumnName("created_at");
+
+            entity.HasOne(e => e.User).WithMany()
+                .HasForeignKey(e => e.UserId)
+                .HasConstraintName("FK_user_scores_users");
+
+            entity.HasOne(e => e.Task).WithMany()
+                .HasForeignKey(e => e.TaskId)
+                .IsRequired(false)
+                .HasConstraintName("FK_user_scores_tasks");
+
+            entity.HasOne(e => e.Project).WithMany()
+                .HasForeignKey(e => e.ProjectId)
+                .IsRequired(false)
+                .HasConstraintName("FK_user_scores_projects");
         });
 
         OnModelCreatingPartial(modelBuilder);

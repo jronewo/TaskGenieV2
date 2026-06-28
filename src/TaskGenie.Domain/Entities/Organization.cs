@@ -24,4 +24,12 @@ public class Organization
     public virtual User? Owner { get; internal set; }
 
     public virtual ICollection<Project> Projects { get; internal set; } = new List<Project>();
+
+    public static Organization Create(string name, string? description, int ownerId) => new()
+    {
+        Name = name,
+        Description = description,
+        OwnerId = ownerId,
+        CreatedAt = DateTime.UtcNow
+    };
 }

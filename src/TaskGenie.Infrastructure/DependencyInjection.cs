@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using TaskGenie.Application.Features.Admin;
 using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
+using TaskGenie.Infrastructure.Export;
 using TaskGenie.Infrastructure.ExternalServices;
 using TaskGenie.Infrastructure.Persistence;
 using TaskGenie.Infrastructure.Persistence.Repositories;
@@ -48,6 +49,7 @@ public static class DependencyInjection
         services.AddSingleton<ICloudinaryService, CloudinaryService>();
         services.AddScoped<IGoogleAuthService, GoogleAuthService>();
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
+        services.AddScoped<IProjectExportService, ProjectExportService>();
 
         return services;
     }

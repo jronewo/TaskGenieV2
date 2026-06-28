@@ -62,6 +62,11 @@ public partial class AppDbContext : DbContext
     public virtual DbSet<Notification> Notifications { get; set; }
 
     public virtual DbSet<UserScore> UserScores { get; set; }
+
+    public virtual DbSet<Meeting> Meetings { get; set; }
+
+    public virtual DbSet<MeetingAttendee> MeetingAttendees { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ActivityLog>(entity =>
@@ -646,6 +651,78 @@ public partial class AppDbContext : DbContext
                 .HasForeignKey(e => e.ProjectId)
                 .IsRequired(false)
                 .HasConstraintName("FK_user_scores_projects");
+        });
+
+        modelBuilder.Entity<Meeting>(entity =>
+        {
+            entity.HasKey(e => e.MeetingId).HasName("PK_meetings");
+
+            entity.ToTable("meetings");
+
+            entity.Property(e => e.MeetingId).HasColumnName("meeting_id");
+            entity.Property(e => e.ProjectId).HasColumnName("project_id");
+            entity.Property(e => e.OrganizedBy).HasColumnName("organized_by");
+            entity.Property(e => e.Title)
+                .HasMaxLength(255)
+                .HasColumnName("title");
+            entity.Property(e => e.Description).HasColumnName("description");
+            entity.Property(e => e.ScheduledAt)
+                .HasColumnType("datetime")
+                .HasColumnName("scheduled_at");
+            entity.Property(e => e.EndAt)
+                .HasColumnType("datetime")
+                .HasColumnName("end_at");
+            entity.Property(e => e.Location)
+                .HasMaxLength(500)
+                .HasColumnName("location");
+            entity.Property(e => e.Status)
+                .HasMaxLength(20)
+                .HasDefaultValue("Scheduled")
+                .HasColumnName("status");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("(getdate())")
+                .HasColumnType("datetime")
+                .HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("datetime")
+                .HasColumnName("updated_at");
+
+            entity.HasOne(d => d.Project).WithMany()
+                .HasForeignKey(d => d.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_meetings_projects");
+
+            entity.HasOne(d => d.Organizer).WithMany()
+                .HasForeignKey(d => d.OrganizedBy)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_meetings_users");
+        });
+
+        modelBuilder.Entity<MeetingAttendee>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("PK_meeting_attendees");
+
+            entity.ToTable("meeting_attendees");
+
+            entity.HasIndex(e => new { e.MeetingId, e.UserId }, "UQ_meeting_attendees").IsUnique();
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.MeetingId).HasColumnName("meeting_id");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.Status)
+                .HasMaxLength(20)
+                .HasDefaultValue("Invited")
+                .HasColumnName("status");
+
+            entity.HasOne(d => d.Meeting).WithMany(p => p.Attendees)
+                .HasForeignKey(d => d.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_meeting_attendees_meetings");
+
+            entity.HasOne(d => d.User).WithMany()
+                .HasForeignKey(d => d.UserId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_meeting_attendees_users");
         });
 
         OnModelCreatingPartial(modelBuilder);

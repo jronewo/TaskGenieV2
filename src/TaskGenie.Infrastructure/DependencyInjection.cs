@@ -41,6 +41,7 @@ public static class DependencyInjection
         services.AddScoped<ITaskRequiredSkillRepository, TaskRequiredSkillRepository>();
         services.AddScoped<ITaskStatsRepository, TaskStatsRepository>();
         services.AddScoped<ITaskDependencyRepository, TaskDependencyRepository>();
+        services.AddScoped<IMeetingRepository, MeetingRepository>();
 
         // External Services
         services.AddHttpClient<IHuggingFaceService, HuggingFaceService>();

@@ -23,6 +23,18 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<AiRecommendation> AiRecommendations { get; set; }
 
+    public virtual DbSet<AiExecutionLog> AiExecutionLogs { get; set; }
+
+    public virtual DbSet<Attachment> Attachments { get; set; }
+
+    public virtual DbSet<TaskEvidence> TaskEvidences { get; set; }
+
+    public virtual DbSet<RiskRule> RiskRules { get; set; }
+
+    public virtual DbSet<RiskFactor> RiskFactors { get; set; }
+
+    public virtual DbSet<RiskScoreHistory> RiskScoreHistories { get; set; }
+
     public virtual DbSet<Evaluation> Evaluations { get; set; }
 
     public virtual DbSet<Invitation> Invitations { get; set; }
@@ -126,6 +138,23 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.Score).HasColumnName("score");
             entity.Property(e => e.SuggestedUserId).HasColumnName("suggested_user_id");
             entity.Property(e => e.TaskId).HasColumnName("task_id");
+            entity.Property(e => e.RunId).HasColumnName("run_id");
+            entity.Property(e => e.Rank).HasColumnName("rank");
+            entity.Property(e => e.SkillMatchScore).HasColumnName("skill_match_score");
+            entity.Property(e => e.SemanticSimilarityScore).HasColumnName("semantic_similarity_score");
+            entity.Property(e => e.WorkloadScore).HasColumnName("workload_score");
+            entity.Property(e => e.PerformanceScore).HasColumnName("performance_score");
+            entity.Property(e => e.Status).HasMaxLength(20).HasDefaultValue("GENERATED").HasColumnName("status");
+            entity.Property(e => e.DecidedBy).HasColumnName("decided_by");
+            entity.Property(e => e.DecidedAt).HasColumnType("datetime").HasColumnName("decided_at");
+            entity.Property(e => e.Outcome).HasColumnName("outcome");
+            entity.Property(e => e.ModelVersion).HasMaxLength(50).HasColumnName("model_version");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("(getdate())")
+                .HasColumnType("datetime")
+                .HasColumnName("created_at");
+
+            entity.HasIndex(e => new { e.TaskId, e.RunId, e.Rank });
 
             entity.HasOne(d => d.SuggestedUser).WithMany(p => p.AiRecommendations)
                 .HasForeignKey(d => d.SuggestedUserId)
@@ -134,6 +163,157 @@ public partial class AppDbContext : DbContext
             entity.HasOne(d => d.Task).WithMany(p => p.AiRecommendations)
                 .HasForeignKey(d => d.TaskId)
                 .HasConstraintName("FK__ai_recomm__task___70DDC3D8");
+        });
+
+        modelBuilder.Entity<AiExecutionLog>(entity =>
+        {
+            entity.HasKey(e => e.AiExecutionLogId).HasName("PK_ai_execution_logs");
+            entity.ToTable("ai_execution_logs");
+            entity.HasIndex(e => e.RunId).IsUnique();
+            entity.Property(e => e.AiExecutionLogId).HasColumnName("ai_execution_log_id");
+            entity.Property(e => e.RunId).HasColumnName("run_id");
+            entity.Property(e => e.TaskId).HasColumnName("task_id");
+            entity.Property(e => e.Feature).HasMaxLength(50).HasColumnName("feature");
+            entity.Property(e => e.Provider).HasMaxLength(100).HasColumnName("provider");
+            entity.Property(e => e.ModelVersion).HasMaxLength(100).HasColumnName("model_version");
+            entity.Property(e => e.InputSnapshot).HasColumnName("input_snapshot");
+            entity.Property(e => e.OutputSnapshot).HasColumnName("output_snapshot");
+            entity.Property(e => e.Status).HasMaxLength(30).HasColumnName("status");
+            entity.Property(e => e.LatencyMs).HasColumnName("latency_ms");
+            entity.Property(e => e.ErrorMessage).HasColumnName("error_message");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("created_at");
+            entity.HasOne(e => e.Task).WithMany()
+                .HasForeignKey(e => e.TaskId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("FK_ai_execution_logs_tasks");
+        });
+
+        modelBuilder.Entity<Attachment>(entity =>
+        {
+            entity.HasKey(e => e.AttachmentId).HasName("PK_attachments");
+            entity.ToTable("attachments");
+            entity.Property(e => e.AttachmentId).HasColumnName("attachment_id");
+            entity.Property(e => e.TaskId).HasColumnName("task_id");
+            entity.Property(e => e.FileName).HasMaxLength(255).HasColumnName("file_name");
+            entity.Property(e => e.MimeType).HasMaxLength(100).HasColumnName("mime_type");
+            entity.Property(e => e.SizeBytes).HasColumnName("size_bytes");
+            entity.Property(e => e.StorageUrl).HasMaxLength(2048).HasColumnName("storage_url");
+            entity.Property(e => e.StoragePublicId).HasMaxLength(500).HasColumnName("storage_public_id");
+            entity.Property(e => e.UploadedBy).HasColumnName("uploaded_by");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("created_at");
+            entity.HasOne(e => e.Task).WithMany()
+                .HasForeignKey(e => e.TaskId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_attachments_tasks");
+            entity.HasOne(e => e.Uploader).WithMany()
+                .HasForeignKey(e => e.UploadedBy)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_attachments_users");
+        });
+
+        modelBuilder.Entity<TaskEvidence>(entity =>
+        {
+            entity.HasKey(e => e.EvidenceId).HasName("PK_task_evidences");
+            entity.ToTable("task_evidences");
+            entity.Property(e => e.EvidenceId).HasColumnName("evidence_id");
+            entity.Property(e => e.TaskId).HasColumnName("task_id");
+            entity.Property(e => e.TaskLogId).HasColumnName("task_log_id");
+            entity.Property(e => e.AttachmentId).HasColumnName("attachment_id");
+            entity.Property(e => e.ExternalUrl).HasMaxLength(2048).HasColumnName("external_url");
+            entity.Property(e => e.EvidenceType).HasMaxLength(50).HasColumnName("evidence_type");
+            entity.Property(e => e.Description).HasMaxLength(1000).HasColumnName("description");
+            entity.Property(e => e.SubmittedBy).HasColumnName("submitted_by");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("created_at");
+            entity.HasOne(e => e.Task).WithMany()
+                .HasForeignKey(e => e.TaskId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_task_evidences_tasks");
+            entity.HasOne(e => e.TaskLog).WithMany()
+                .HasForeignKey(e => e.TaskLogId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_task_evidences_task_logs");
+            entity.HasOne(e => e.Attachment).WithMany()
+                .HasForeignKey(e => e.AttachmentId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_task_evidences_attachments");
+            entity.HasOne(e => e.Submitter).WithMany()
+                .HasForeignKey(e => e.SubmittedBy)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_task_evidences_users");
+        });
+
+        modelBuilder.Entity<RiskRule>(entity =>
+        {
+            entity.HasKey(e => e.RiskRuleId).HasName("PK_risk_rules");
+            entity.ToTable("risk_rules");
+            entity.HasIndex(e => new { e.Code, e.Version }).IsUnique();
+            entity.Property(e => e.RiskRuleId).HasColumnName("risk_rule_id");
+            entity.Property(e => e.Code).HasMaxLength(50).HasColumnName("code");
+            entity.Property(e => e.Name).HasMaxLength(150).HasColumnName("name");
+            entity.Property(e => e.FactorType).HasMaxLength(50).HasColumnName("factor_type");
+            entity.Property(e => e.Weight).HasColumnName("weight");
+            entity.Property(e => e.Description).HasMaxLength(1000).HasColumnName("description");
+            entity.Property(e => e.Version).HasMaxLength(50).HasColumnName("version");
+            entity.Property(e => e.IsActive).HasColumnName("is_active");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("created_at");
+
+            var seededAt = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc);
+            entity.HasData(
+                new { RiskRuleId = 1, Code = "DEADLINE", Name = "Deadline pressure", FactorType = "DEADLINE", Weight = 0.30, Description = "Deadline proximity and remaining effort.", Version = "risk-v1", IsActive = true, CreatedAt = seededAt },
+                new { RiskRuleId = 2, Code = "PROGRESS", Name = "Progress variance", FactorType = "PROGRESS", Weight = 0.25, Description = "Expected versus actual progress.", Version = "risk-v1", IsActive = true, CreatedAt = seededAt },
+                new { RiskRuleId = 3, Code = "DEPENDENCY", Name = "Dependencies and blockers", FactorType = "DEPENDENCY", Weight = 0.20, Description = "Incomplete dependencies and reported blockers.", Version = "risk-v1", IsActive = true, CreatedAt = seededAt },
+                new { RiskRuleId = 4, Code = "WORKLOAD", Name = "Assignee workload", FactorType = "WORKLOAD", Weight = 0.15, Description = "Active workload and declared capacity.", Version = "risk-v1", IsActive = true, CreatedAt = seededAt },
+                new { RiskRuleId = 5, Code = "HISTORICAL", Name = "Historical delivery", FactorType = "HISTORICAL", Weight = 0.10, Description = "Historical deadline performance.", Version = "risk-v1", IsActive = true, CreatedAt = seededAt });
+        });
+
+        modelBuilder.Entity<RiskScoreHistory>(entity =>
+        {
+            entity.HasKey(e => e.RiskScoreHistoryId).HasName("PK_risk_score_history");
+            entity.ToTable("risk_score_history");
+            entity.HasIndex(e => e.RunId).IsUnique();
+            entity.Property(e => e.RiskScoreHistoryId).HasColumnName("risk_score_history_id");
+            entity.Property(e => e.RunId).HasColumnName("run_id");
+            entity.Property(e => e.TaskId).HasColumnName("task_id");
+            entity.Property(e => e.ProjectId).HasColumnName("project_id");
+            entity.Property(e => e.TotalScore).HasColumnName("total_score");
+            entity.Property(e => e.RiskLevel).HasMaxLength(20).HasColumnName("risk_level");
+            entity.Property(e => e.RuleVersion).HasMaxLength(50).HasColumnName("rule_version");
+            entity.Property(e => e.CalculationMode).HasMaxLength(50).HasColumnName("calculation_mode");
+            entity.Property(e => e.Explanation).HasColumnName("explanation");
+            entity.Property(e => e.MitigationActions).HasColumnName("mitigation_actions");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("created_at");
+            entity.HasOne(e => e.Task).WithMany()
+                .HasForeignKey(e => e.TaskId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_risk_score_history_tasks");
+            entity.HasOne(e => e.Project).WithMany()
+                .HasForeignKey(e => e.ProjectId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_risk_score_history_projects");
+        });
+
+        modelBuilder.Entity<RiskFactor>(entity =>
+        {
+            entity.HasKey(e => e.RiskFactorId).HasName("PK_risk_factors");
+            entity.ToTable("risk_factors");
+            entity.Property(e => e.RiskFactorId).HasColumnName("risk_factor_id");
+            entity.Property(e => e.RiskScoreHistoryId).HasColumnName("risk_score_history_id");
+            entity.Property(e => e.RiskRuleId).HasColumnName("risk_rule_id");
+            entity.Property(e => e.FactorCode).HasMaxLength(50).HasColumnName("factor_code");
+            entity.Property(e => e.RawValue).HasMaxLength(1000).HasColumnName("raw_value");
+            entity.Property(e => e.NormalizedScore).HasColumnName("normalized_score");
+            entity.Property(e => e.Weight).HasColumnName("weight");
+            entity.Property(e => e.Contribution).HasColumnName("contribution");
+            entity.Property(e => e.Evidence).HasMaxLength(2000).HasColumnName("evidence");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("created_at");
+            entity.HasOne(e => e.RiskScoreHistory).WithMany(history => history.Factors)
+                .HasForeignKey(e => e.RiskScoreHistoryId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_risk_factors_risk_score_history");
+            entity.HasOne(e => e.RiskRule).WithMany()
+                .HasForeignKey(e => e.RiskRuleId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_risk_factors_risk_rules");
         });
 
         modelBuilder.Entity<Evaluation>(entity =>

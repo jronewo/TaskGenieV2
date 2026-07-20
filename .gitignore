@@ -1,2 +1,10 @@
-node_moduldes/
+**/node_modules/
+**/bin/
+**/obj/
+**/dist/
+.env
+.env.*
+!.env.example
 env/
+*.inspect.ndjson
+.~*

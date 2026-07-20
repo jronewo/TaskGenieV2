@@ -36,6 +36,51 @@ public class AiRecommendationRepository : IAiRecommendationRepository
             .ToListAsync(ct);
     }
 
+    public async Task<List<AiRecommendation>> GetLatestRunByTaskIdAsync(int taskId, CancellationToken ct = default)
+    {
+        var latestRunId = await _context.AiRecommendations
+            .Where(recommendation => recommendation.TaskId == taskId)
+            .OrderByDescending(recommendation => recommendation.CreatedAt)
+            .Select(recommendation => (Guid?)recommendation.RunId)
+            .FirstOrDefaultAsync(ct);
+
+        if (!latestRunId.HasValue) return new List<AiRecommendation>();
+
+        return await _context.AiRecommendations
+            .Where(recommendation => recommendation.TaskId == taskId && recommendation.RunId == latestRunId.Value)
+            .Include(recommendation => recommendation.SuggestedUser)
+            .OrderBy(recommendation => recommendation.Rank)
+            .ToListAsync(ct);
+    }
+
+    public async Task RecordDecisionAsync(
+        int taskId,
+        int userId,
+        bool accepted,
+        int? decidedBy,
+        string? outcome,
+        CancellationToken ct = default)
+    {
+        var latest = await GetLatestRunByTaskIdAsync(taskId, ct);
+        if (latest.Count == 0)
+            throw new InvalidOperationException("No generated recommendation exists for this task.");
+
+        var selected = latest.FirstOrDefault(recommendation => recommendation.SuggestedUserId == userId)
+            ?? throw new InvalidOperationException("The selected user is not part of the latest recommendation run.");
+
+        if (accepted)
+        {
+            foreach (var recommendation in latest)
+                recommendation.RecordDecision(recommendation.Id == selected.Id, decidedBy, recommendation.Id == selected.Id ? outcome : null);
+        }
+        else
+        {
+            selected.RecordDecision(false, decidedBy, outcome);
+        }
+
+        await _context.SaveChangesAsync(ct);
+    }
+
     public async Task DeleteByTaskIdAsync(int taskId, CancellationToken ct = default)
     {
         var existing = await _context.AiRecommendations

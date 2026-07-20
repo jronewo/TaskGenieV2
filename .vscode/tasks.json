@@ -1,0 +1,62 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "TaskGenie: restore .NET tools",
+      "type": "process",
+      "command": "/usr/local/share/dotnet/x64/dotnet",
+      "args": ["tool", "restore"],
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "TaskGenie: restore",
+      "type": "process",
+      "command": "/usr/local/share/dotnet/x64/dotnet",
+      "args": ["restore", "src/TaskGenie.API/TaskGenie.API.csproj"],
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "TaskGenie: build API",
+      "type": "process",
+      "command": "/usr/local/share/dotnet/x64/dotnet",
+      "args": ["build", "src/TaskGenie.API/TaskGenie.API.csproj"],
+      "dependsOn": "TaskGenie: restore",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "TaskGenie: run demo API",
+      "type": "process",
+      "command": "/usr/local/share/dotnet/x64/dotnet",
+      "args": ["run", "--project", "src/TaskGenie.API"],
+      "options": {
+        "env": {
+          "Database__UseInMemory": "true",
+          "ASPNETCORE_ENVIRONMENT": "Development"
+        }
+      },
+      "isBackground": true,
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "TaskGenie: test AI core",
+      "type": "process",
+      "command": "/usr/local/share/dotnet/x64/dotnet",
+      "args": ["test", "tests/TaskGenie.Tests/TaskGenie.Tests.csproj", "-c", "Release"],
+      "group": "test",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "TaskGenie: apply SQL migration",
+      "type": "process",
+      "command": "/usr/local/share/dotnet/x64/dotnet",
+      "args": [
+        "tool", "run", "dotnet-ef", "database", "update",
+        "--project", "src/TaskGenie.Infrastructure",
+        "--startup-project", "src/TaskGenie.API"
+      ],
+      "dependsOn": "TaskGenie: restore .NET tools",
+      "problemMatcher": "$msCompile"
+    }
+  ]
+}

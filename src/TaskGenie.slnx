@@ -3,4 +3,5 @@
   <Project Path="TaskGenie.Application/TaskGenie.Application.csproj" />
   <Project Path="TaskGenie.Domain/TaskGenie.Domain.csproj" />
   <Project Path="TaskGenie.Infrastructure/TaskGenie.Infrastructure.csproj" />
+  <Project Path="../tests/TaskGenie.Tests/TaskGenie.Tests.csproj" />
 </Solution>

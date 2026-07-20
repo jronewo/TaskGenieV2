@@ -1,6 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
-using TaskGenie.API.Middleware;
+using TaskGenie.API.Extensions;
 using TaskGenie.Application.Features.Teams.Commands;
 using TaskGenie.Application.Features.Teams.Queries;
 

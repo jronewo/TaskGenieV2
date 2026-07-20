@@ -7,4 +7,6 @@ public record AuthResponse(
     string Role,
     bool IsFirstLogin,
     bool IsOrgOwner,
+    string AccessToken,
+    DateTime ExpiresAtUtc,
     string Message = "");

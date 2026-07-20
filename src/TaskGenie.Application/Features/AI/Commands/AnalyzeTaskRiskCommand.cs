@@ -1,95 +1,140 @@
+using System.Diagnostics;
+using System.Text.Json;
 using MediatR;
+using TaskGenie.Application.Features.AI.DTOs;
+using TaskGenie.Application.Features.AI.Services;
 using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Entities;
 using TaskGenie.Domain.Interfaces.Repositories;
 
 namespace TaskGenie.Application.Features.AI.Commands;
 
-public sealed record AnalyzeTaskRiskCommand(int TaskId) : IRequest<bool>;
+public sealed record AnalyzeTaskRiskCommand(int TaskId) : IRequest<RiskAssessmentDto?>;
 
 public sealed class AnalyzeTaskRiskCommandHandler(
     ITaskRepository taskRepo,
     ITaskLogRepository taskLogRepo,
-    IAiAnalysisRepository aiAnalysisRepo,
+    ITaskDependencyRepository dependencyRepo,
     IUserRepository userRepo,
+    IRiskRepository riskRepo,
+    RiskScoringEngine scoringEngine,
     ITextGenerationService textGenService
-) : IRequestHandler<AnalyzeTaskRiskCommand, bool>
+) : IRequestHandler<AnalyzeTaskRiskCommand, RiskAssessmentDto?>
 {
-    public async Task<bool> Handle(AnalyzeTaskRiskCommand cmd, CancellationToken ct)
+    public async Task<RiskAssessmentDto?> Handle(AnalyzeTaskRiskCommand cmd, CancellationToken ct)
     {
         var task = await taskRepo.GetByIdAsync(cmd.TaskId, ct);
-        if (task is null) return false;
+        if (task is null) return null;
 
+        var stopwatch = Stopwatch.StartNew();
+        var runId = Guid.NewGuid();
         var logs = await taskLogRepo.GetByTaskIdAsync(cmd.TaskId, ct);
-        var latestLog = logs.OrderByDescending(l => l.CreatedAt).FirstOrDefault();
-
-        // 1. Calculate Late Ratio from assignees' historical evaluations
+        var latestLog = logs.OrderByDescending(log => log.CreatedAt).FirstOrDefault();
+        var dependencies = await dependencyRepo.GetByTaskIdWithDetailsAsync(cmd.TaskId, ct);
+        var incompleteDependencies = dependencies.Count(dependency =>
+            !string.Equals(dependency.DependsOnTask?.Status, "Done", StringComparison.OrdinalIgnoreCase));
         var assignees = await taskRepo.GetTaskAssigneesAsync(cmd.TaskId, ct);
-        double totalLateRatio = 0;
-        int validMembers = 0;
 
-        foreach (var assignee in assignees)
+        var activeTaskCounts = new List<int>();
+        var availableHours = new List<int>();
+        var deadlineScores = new List<int>();
+        foreach (var assignee in assignees.Where(assignee => assignee.UserId.HasValue))
         {
-            if (!assignee.UserId.HasValue) continue;
-            var evals = await userRepo.GetUserEvaluationsAsync(assignee.UserId.Value, ct);
-            if (evals.Count > 0)
-            {
-                var avgScore = evals.Average(e => e.DeadlineScore ?? 5.0);
-                // lateRatio = (10 - AvgScore) / 10 * 100%
-                totalLateRatio += (10.0 - avgScore) / 10.0 * 100.0;
-                validMembers++;
-            }
+            var userId = assignee.UserId!.Value;
+            activeTaskCounts.Add(await userRepo.CountActiveTasksByUserAsync(userId, ct));
+            var availability = await userRepo.GetUserAvailabilityAsync(userId, ct);
+            availableHours.Add(availability.Sum(item => item.AvailableHours ?? 0));
+            var evaluations = await userRepo.GetUserEvaluationsAsync(userId, ct);
+            deadlineScores.AddRange(evaluations.Where(item => item.DeadlineScore.HasValue).Select(item => item.DeadlineScore!.Value));
         }
 
-        double lateRatio = validMembers > 0 ? totalLateRatio / validMembers : 0;
+        var input = new RiskScoringInput(
+            Today: DateOnly.FromDateTime(DateTime.UtcNow),
+            Status: task.Status,
+            Progress: task.Progress ?? 0,
+            Deadline: task.Deadline,
+            CreatedAt: task.CreatedAt,
+            EstimatedHours: task.EstimatedTime ?? task.AiEstimatedTime ?? 0,
+            ActualHours: task.ActualTime ?? 0,
+            TotalDependencies: dependencies.Count,
+            IncompleteDependencies: incompleteDependencies,
+            ReportedRisk: latestLog?.Risk,
+            LatestProgressAt: latestLog?.CreatedAt,
+            AverageActiveTaskCount: activeTaskCounts.Count == 0 ? -1 : activeTaskCounts.Average(),
+            AverageAvailableHours: availableHours.Count == 0 ? 0 : availableHours.Average(),
+            AverageDeadlineScore: deadlineScores.Count == 0 ? null : deadlineScores.Average());
 
-        // 2. Base risk from late ratio
-        string baseRiskLevel = lateRatio > 20 ? "HIGH" : lateRatio > 10 ? "MEDIUM" : "LOW";
+        var configuredRules = (await riskRepo.GetActiveRulesAsync(ct))
+            .Select(rule => new RiskRuleDefinition(rule.RiskRuleId, rule.Code, rule.Weight, rule.Version))
+            .ToList();
+        var result = scoringEngine.Calculate(input, configuredRules);
 
-        // 3. Time risk: EstimatedTime vs available working hours until deadline
-        int estimatedHours = task.EstimatedTime ?? 0;
-        int availableWorkingHours = 0;
-
-        if (task.Deadline.HasValue)
-        {
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
-            int remainingDays = task.Deadline.Value.DayNumber - today.DayNumber;
-            availableWorkingHours = remainingDays > 0 ? remainingDays * 8 : 0;
-        }
-
-        bool isTimeRisk = estimatedHours > availableWorkingHours && estimatedHours > 0;
-        string? reportedRisk = latestLog?.Risk;
-
-        // 4. Build AI prompt
-        var prompt = $"You are a Project Risk Analyst. Analyze the risk for task '{task.Title}' with current progress {task.Progress}%. " +
-                     $"The team member's historical late-task ratio is {lateRatio:F1}%. " +
-                     $"Estimated hours: {estimatedHours}. Available working hours until deadline: {availableWorkingHours}. ";
-
-        if (isTimeRisk)
-            prompt += "WARNING: Estimated hours exceed the available working hours! ";
-
-        if (!string.IsNullOrWhiteSpace(reportedRisk))
-            prompt += $"CRITICAL WARNING: The user just reported a specific risk: '{reportedRisk}'. ";
-
-        prompt += "Based on this, what is the final Risk Level (LOW, MEDIUM, or HIGH) and why? ";
-
-        string aiContent;
+        var calculationMode = "RULES_ONLY";
+        var explanation = result.Explanation;
+        string? providerError = null;
         try
         {
-            aiContent = await textGenService.GenerateTextAsync(prompt, maxTokens: 100);
-            if (string.IsNullOrWhiteSpace(aiContent) || aiContent.Contains("could not generate"))
-                throw new Exception("AI returned empty or error message.");
+            var prompt = "Explain this task risk assessment in no more than 80 words and do not change the score or level. " +
+                         $"Task: {task.Title}. Score: {result.TotalScore}. Level: {result.RiskLevel}. " +
+                         $"Factors: {string.Join(", ", result.Factors.Select(factor => $"{factor.Code}={factor.Score}"))}.";
+            var generated = await textGenService.GenerateTextAsync(prompt, maxTokens: 120);
+            if (string.IsNullOrWhiteSpace(generated) || generated.Contains("giả lập", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("AI provider returned an empty or simulated response.");
+            explanation = $"{result.Explanation} AI explanation: {generated.Trim()}";
+            calculationMode = "RULES_WITH_AI_EXPLANATION";
         }
-        catch
+        catch (Exception exception)
         {
-            aiContent = $"Base risk is {baseRiskLevel} (Late ratio: {lateRatio:F1}%). ";
-            if (isTimeRisk) aiContent += "Time is limited compared to estimated hours. ";
-            if (!string.IsNullOrWhiteSpace(reportedRisk)) aiContent += $"User reported risk: {reportedRisk}. Risk escalated.";
+            calculationMode = "RULES_ONLY_FALLBACK";
+            providerError = exception.Message;
         }
 
-        var analysis = AiAnalysis.Create(cmd.TaskId, "risk", $"AI Risk Evaluation: {aiContent}");
-        await aiAnalysisRepo.AddAsync(analysis, ct);
+        var history = RiskScoreHistory.Create(
+            runId,
+            task.TaskId,
+            task.ProjectId,
+            result.TotalScore,
+            result.RiskLevel,
+            result.RuleVersion,
+            calculationMode,
+            explanation,
+            string.Join('\n', result.MitigationActions));
 
-        return true;
+        foreach (var factor in result.Factors)
+            history.AddFactor(RiskFactor.Create(
+                factor.RuleId,
+                factor.Code,
+                factor.RawValue,
+                factor.Score,
+                factor.Weight,
+                factor.Contribution,
+                factor.Evidence));
+
+        task.SetRiskAssessment(result.RiskLevel);
+        await taskRepo.UpdateAsync(task, ct);
+
+        stopwatch.Stop();
+        var inputSnapshot = JsonSerializer.Serialize(input);
+        var outputSnapshot = JsonSerializer.Serialize(new
+        {
+            result.TotalScore,
+            result.RiskLevel,
+            result.RuleVersion,
+            Factors = result.Factors.Select(factor => new { factor.Code, factor.Score, factor.Contribution })
+        });
+        var executionLog = AiExecutionLog.Create(
+            runId,
+            task.TaskId,
+            "TASK_RISK",
+            calculationMode == "RULES_WITH_AI_EXPLANATION" ? "RULE_ENGINE+HUGGINGFACE" : "RULE_ENGINE",
+            result.RuleVersion,
+            inputSnapshot,
+            outputSnapshot,
+            calculationMode == "RULES_WITH_AI_EXPLANATION" ? "SUCCEEDED" : "FALLBACK",
+            (int)stopwatch.ElapsedMilliseconds,
+            providerError);
+
+        await riskRepo.AddAssessmentAsync(history, executionLog, ct);
+        return RiskAssessmentDto.FromEntity(history);
     }
 }

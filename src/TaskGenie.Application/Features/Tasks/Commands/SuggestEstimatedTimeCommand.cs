@@ -24,11 +24,18 @@ public sealed class SuggestEstimatedTimeCommandHandler(
                      $"Description: {task.Description}\n" +
                      $"Difficulty (1-10): {task.Difficulty}";
 
-        var aiResponse = await textGenService.GenerateTextAsync(prompt, maxTokens: 10);
-
-        int hours = 4; // default
-        var match = System.Text.RegularExpressions.Regex.Match(aiResponse, @"\d+");
-        if (match.Success) int.TryParse(match.Value, out hours);
+        int hours;
+        try
+        {
+            var aiResponse = await textGenService.GenerateTextAsync(prompt, maxTokens: 10);
+            var match = System.Text.RegularExpressions.Regex.Match(aiResponse, @"\d+");
+            hours = match.Success && int.TryParse(match.Value, out var parsed) ? parsed : 4;
+        }
+        catch
+        {
+            // Deterministic fallback is explicit and based on task difficulty.
+            hours = Math.Clamp((task.Difficulty ?? 2) * 2, 2, 40);
+        }
 
         task.SetAiEstimatedTime(hours);
         await taskRepo.UpdateAsync(task, ct);

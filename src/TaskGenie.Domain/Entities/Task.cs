@@ -124,4 +124,12 @@ public class Task
     {
         AiEstimatedTime = hours;
     }
+
+    public void SetRiskAssessment(string riskLevel)
+    {
+        if (string.IsNullOrWhiteSpace(riskLevel))
+            throw new ArgumentException("Risk level is required.", nameof(riskLevel));
+
+        RiskLevel = riskLevel.Trim().ToUpperInvariant();
+    }
 }

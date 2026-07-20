@@ -12,6 +12,7 @@ import { AdministrationCenter } from "./components/AdministrationCenter";
 import { ProjectManagement } from "./components/ProjectManagement";
 import { KanbanBoard } from "./components/KanbanBoard";
 import { TaskDetailModal } from "./components/TaskDetailModal";
+import { CoreAiDemoPanel } from "./components/CoreAiDemoPanel";
 import { CreateTaskModal } from "./components/CreateTaskModal";
 import { Project, projects, tasks, Task, TaskStatus } from "./data/tmaiData";
 import {
@@ -605,6 +606,19 @@ export default function App() {
                       transition={{ duration: 0.15 }}
                     >
                       <ReportsDashboard />
+                    </motion.div>
+                  )}
+
+                  {activePage === "ai-core" && (
+                    <motion.div
+                      key="ai-core"
+                      className="flex-1 overflow-hidden"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                    >
+                      <CoreAiDemoPanel />
                     </motion.div>
                   )}
 

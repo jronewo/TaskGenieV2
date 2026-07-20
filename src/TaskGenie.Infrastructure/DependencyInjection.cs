@@ -19,7 +19,12 @@ public static class DependencyInjection
         services.Configure<JwtSettings>(configuration.GetSection(JwtSettings.SectionName));
 
         services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(configuration.GetConnectionString("DefaultConnection")));
+        {
+            if (configuration.GetValue<bool>("Database:UseInMemory"))
+                options.UseInMemoryDatabase("TaskGenieDemo");
+            else
+                options.UseSqlServer(configuration.GetConnectionString("DefaultConnection"));
+        });
 
         // Repositories
         services.AddScoped<IUserRepository, UserRepository>();
@@ -45,6 +50,8 @@ public static class DependencyInjection
         services.AddScoped<ITaskStatsRepository, TaskStatsRepository>();
         services.AddScoped<ITaskDependencyRepository, TaskDependencyRepository>();
         services.AddScoped<IMeetingRepository, MeetingRepository>();
+        services.AddScoped<IRiskRepository, RiskRepository>();
+        services.AddScoped<IEvidenceRepository, EvidenceRepository>();
 
         // External Services
         services.AddHttpClient<IHuggingFaceService, HuggingFaceService>();
@@ -56,6 +63,8 @@ public static class DependencyInjection
         services.AddScoped<IProjectExportService, ProjectExportService>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddSingleton<ITokenRevocationService, InMemoryTokenRevocationService>();
+        services.AddSingleton<TaskGenie.Application.Features.AI.Services.RiskScoringEngine>();
+        services.AddSingleton<TaskGenie.Application.Features.AI.Services.AssignmentScoringEngine>();
 
         return services;
     }

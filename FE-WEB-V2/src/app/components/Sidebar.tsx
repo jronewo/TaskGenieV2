@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   LayoutDashboard, ChevronRight, Zap, BarChart2, Kanban,
-  Bell, Settings, Users, Plus, LogOut, HelpCircle, Sparkles, Briefcase, ClipboardCheck, Shield
+  Bell, Settings, Users, Plus, LogOut, HelpCircle, Sparkles, Briefcase, ClipboardCheck, Shield, BrainCircuit
 } from "lucide-react";
 import { projects, Project } from "../data/tmaiData";
 
@@ -102,6 +102,7 @@ const navItems = [
   { id: "board", label: "Task Board", icon: Kanban },
   { id: "projects", label: "Projects", icon: Briefcase },
   { id: "reports", label: "Reports", icon: BarChart2 },
+  { id: "ai-core", label: "AI Core Demo", icon: BrainCircuit },
   { id: "team", label: "Team", icon: Users },
   { id: "evaluations", label: "Evaluations", icon: ClipboardCheck },
   { id: "administration", label: "Administration", icon: Shield },

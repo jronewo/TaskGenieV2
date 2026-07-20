@@ -12,8 +12,8 @@ public class AiAnalysisController(IMediator mediator) : ControllerBase
     [HttpPost("{taskId}/risk")]
     public async Task<IActionResult> RunRiskAnalysis(int taskId)
     {
-        await mediator.Send(new AnalyzeTaskRiskCommand(taskId));
-        return Ok(new { message = "Risk analysis generated successfully." });
+        var result = await mediator.Send(new AnalyzeTaskRiskCommand(taskId));
+        return result is null ? NotFound(new { message = "Task not found." }) : Ok(result);
     }
 
     [HttpPost("project/{projectId}/analyze-all")]
@@ -41,4 +41,12 @@ public class AiAnalysisController(IMediator mediator) : ControllerBase
     [HttpGet("{taskId}")]
     public async Task<IActionResult> GetAnalysis(int taskId)
         => Ok(await mediator.Send(new GetTaskAnalysesQuery(taskId)));
+
+    [HttpGet("{taskId}/risk-history")]
+    public async Task<IActionResult> GetRiskHistory(int taskId)
+        => Ok(await mediator.Send(new GetRiskHistoryQuery(taskId)));
+
+    [HttpGet("{taskId}/executions")]
+    public async Task<IActionResult> GetExecutionLogs(int taskId)
+        => Ok(await mediator.Send(new GetAiExecutionLogsQuery(taskId)));
 }

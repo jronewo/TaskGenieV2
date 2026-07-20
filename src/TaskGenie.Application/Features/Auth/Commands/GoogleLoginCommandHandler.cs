@@ -9,8 +9,8 @@ namespace TaskGenie.Application.Features.Auth.Commands;
 public class GoogleLoginCommandHandler(
     IGoogleAuthService googleAuthService,
     IUserRepository userRepository,
-    IOrganizationRepository orgRepository,
-    IPasswordHasher passwordHasher)
+    IPasswordHasher passwordHasher,
+    IAuthTokenIssuer authTokenIssuer)
     : IRequestHandler<GoogleLoginCommand, AuthResponse>
 {
     public async Task<AuthResponse> Handle(GoogleLoginCommand request, CancellationToken ct)
@@ -42,19 +42,6 @@ public class GoogleLoginCommandHandler(
             throw new UnauthorizedAccessException("Tài khoản của bạn đã bị khóa.");
         }
 
-        var skills = await userRepository.GetUserSkillsAsync(user.UserId, ct);
-        var isFirstLogin = skills == null || skills.Count == 0;
-
-        var org = await orgRepository.GetByOwnerIdAsync(user.UserId, ct);
-        var isOrgOwner = org != null;
-
-        return new AuthResponse(
-            user.UserId,
-            user.Name,
-            user.Email,
-            user.Role ?? "NORMAL_USER",
-            isFirstLogin,
-            isOrgOwner,
-            "Đăng nhập Google thành công");
+        return await authTokenIssuer.IssueAsync(user, "Đăng nhập Google thành công", ct);
     }
 }

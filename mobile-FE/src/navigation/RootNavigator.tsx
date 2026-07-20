@@ -7,18 +7,26 @@ import {
   Home, Kanban, BarChart3, Bell, Users, User,
 } from 'lucide-react-native';
 
-import DashboardScreen     from '../screens/DashboardScreen';
-import KanbanBoardScreen   from '../screens/KanbanBoardScreen';
-import AnalyticsScreen     from '../screens/AnalyticsScreen';
-import NotificationsScreen from '../screens/NotificationsScreen';
-import TeamScreen          from '../screens/TeamScreen';
-import ProfileScreen       from '../screens/ProfileScreen';
-import TaskDetailScreen    from '../screens/TaskDetailScreen';
-import AIAssistantFAB      from '../components/AIAssistantFAB';
-import { colors }          from '../theme';
+import DashboardScreen        from '../screens/DashboardScreen';
+import KanbanBoardScreen      from '../screens/KanbanBoardScreen';
+import AnalyticsScreen        from '../screens/AnalyticsScreen';
+import NotificationsScreen    from '../screens/NotificationsScreen';
+import TeamScreen             from '../screens/TeamScreen';
+import ProfileScreen          from '../screens/ProfileScreen';
+import TaskDetailScreen       from '../screens/TaskDetailScreen';
+import CreateTaskScreen       from '../screens/CreateTaskScreen';
+import TaskCommentsScreen     from '../screens/TaskCommentsScreen';
+import EditProfileScreen      from '../screens/EditProfileScreen';
+import ChangePasswordScreen   from '../screens/ChangePasswordScreen';
+import LoginScreen            from '../screens/LoginScreen';
+import RegisterScreen         from '../screens/RegisterScreen';
+import AIAssistantFAB         from '../components/AIAssistantFAB';
+import { colors }             from '../theme';
+import { useAuth }            from '../context/AuthContext';
 
 const Tab   = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
+const AuthStack = createNativeStackNavigator();
 
 const NAV_ITEMS = [
   { name: 'Home',          component: DashboardScreen,     icon: Home },
@@ -65,16 +73,31 @@ function TabsWithFAB() {
 function MainStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
-      <Stack.Screen name="Tabs"       component={TabsWithFAB} />
-      <Stack.Screen name="TaskDetail" component={TaskDetailScreen} options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="Tabs"           component={TabsWithFAB} />
+      <Stack.Screen name="TaskDetail"      component={TaskDetailScreen}     options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="TaskComments"    component={TaskCommentsScreen}   options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="CreateTask"      component={CreateTaskScreen}     options={{ animation: 'slide_from_bottom', presentation: 'modal' }} />
+      <Stack.Screen name="EditProfile"     component={EditProfileScreen}    options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="ChangePassword"  component={ChangePasswordScreen} options={{ animation: 'slide_from_right' }} />
     </Stack.Navigator>
   );
 }
 
+function AuthNavigator() {
+  return (
+    <AuthStack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
+      <AuthStack.Screen name="Login"    component={LoginScreen} />
+      <AuthStack.Screen name="Register" component={RegisterScreen} />
+    </AuthStack.Navigator>
+  );
+}
+
 export default function RootNavigator() {
+  const { isAuthenticated } = useAuth();
+
   return (
     <NavigationContainer>
-      <MainStack />
+      {isAuthenticated ? <MainStack /> : <AuthNavigator />}
     </NavigationContainer>
   );
 }

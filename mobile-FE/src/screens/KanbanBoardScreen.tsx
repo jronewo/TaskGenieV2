@@ -7,6 +7,7 @@ import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Plus, MoreVertical, Clock, AlertTriangle } from 'lucide-react-native';
 import { colors, AVATAR_GRADIENTS } from '../theme';
+import { useTasks, ColumnId } from '../context/TasksContext';
 
 const PRIORITY_CONFIG = {
   High:   { stripe: colors.red,    badgeBg: 'rgba(239,68,68,0.12)',   badgeColor: colors.red },
@@ -14,29 +15,12 @@ const PRIORITY_CONFIG = {
   Low:    { stripe: colors.green,  badgeBg: 'rgba(16,185,129,0.12)',  badgeColor: colors.green },
 } as const;
 
-const columns = [
-  { id: 'todo',       title: 'To Do',       count: 2 },
-  { id: 'inprogress', title: 'In Progress',  count: 2 },
-  { id: 'review',     title: 'Review',       count: 1 },
-  { id: 'done',       title: 'Done',         count: 1 },
+const COLUMN_DEFS: { id: ColumnId; title: string }[] = [
+  { id: 'todo',       title: 'To Do' },
+  { id: 'inprogress', title: 'In Progress' },
+  { id: 'review',     title: 'Review' },
+  { id: 'done',       title: 'Done' },
 ];
-
-const tasks = {
-  todo: [
-    { id: '3', title: 'Database Query Optimization', priority: 'High' as const, assignee: { name: 'Alex Rivera', avatar: 'AR' }, risk: 60, tags: ['Backend', 'Performance'], dueDate: '2026-05-30' },
-    { id: '4', title: 'Mobile App Testing Suite',    priority: 'Medium' as const, assignee: { name: 'Emma Davis', avatar: 'ED' }, risk: 25, tags: ['QA', 'Mobile'], dueDate: '2026-06-02' },
-  ],
-  inprogress: [
-    { id: '1', title: 'API Migration to GraphQL',    priority: 'High' as const, assignee: { name: 'Sarah Chen', avatar: 'SC' }, risk: 85, tags: ['Backend', 'Critical'], dueDate: '2026-05-27' },
-    { id: '5', title: 'Stripe Payment Integration',  priority: 'High' as const, assignee: { name: 'John Smith', avatar: 'JS' }, risk: 70, tags: ['Backend', 'Finance'], dueDate: '2026-05-28' },
-  ],
-  review: [
-    { id: '2', title: 'User Dashboard Redesign',     priority: 'Medium' as const, assignee: { name: 'Mike Johnson', avatar: 'MJ' }, risk: 20, tags: ['Frontend', 'Design'], dueDate: '2026-05-28' },
-  ],
-  done: [
-    { id: '6', title: 'Auth Flow & Session Management', priority: 'High' as const, assignee: { name: 'Lisa Wang', avatar: 'LW' }, risk: 10, tags: ['Security'], dueDate: '2026-05-22' },
-  ],
-};
 
 function FadeSlide({ children, delay }: { children: React.ReactNode; delay: number }) {
   const opacity = useRef(new Animated.Value(0)).current;
@@ -52,18 +36,19 @@ function FadeSlide({ children, delay }: { children: React.ReactNode; delay: numb
 
 export default function KanbanBoardScreen() {
   const navigation = useNavigation<any>();
+  const { tasksByColumn } = useTasks();
   const [activeColumn, setActiveColumn] = useState(0);
-  const swipeX = useRef(new Animated.Value(0)).current;
 
   const panResponder = PanResponder.create({
     onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > Math.abs(g.dy) && Math.abs(g.dx) > 10,
     onPanResponderRelease: (_, g) => {
-      if (g.dx < -50 && activeColumn < columns.length - 1) setActiveColumn(c => c + 1);
-      if (g.dx > 50  && activeColumn > 0)                  setActiveColumn(c => c - 1);
+      if (g.dx < -50 && activeColumn < COLUMN_DEFS.length - 1) setActiveColumn(c => c + 1);
+      if (g.dx > 50  && activeColumn > 0)                      setActiveColumn(c => c - 1);
     },
   });
 
-  const currentTasks = tasks[columns[activeColumn].id as keyof typeof tasks];
+  const columns = COLUMN_DEFS.map(col => ({ ...col, tasks: tasksByColumn(col.id) }));
+  const currentTasks = columns[activeColumn].tasks;
 
   return (
     <View style={s.container}>
@@ -85,7 +70,7 @@ export default function KanbanBoardScreen() {
             >
               <Text style={[s.pillText, { color: isActive ? '#fff' : colors.muted }]}>{col.title}</Text>
               <View style={[s.pillCount, { backgroundColor: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.06)' }]}>
-                <Text style={[s.pillCountText, { color: isActive ? '#fff' : colors.muted }]}>{col.count}</Text>
+                <Text style={[s.pillCountText, { color: isActive ? '#fff' : colors.muted }]}>{col.tasks.length}</Text>
               </View>
             </TouchableOpacity>
           );
@@ -96,7 +81,7 @@ export default function KanbanBoardScreen() {
       <ScrollView style={s.taskScroll} showsVerticalScrollIndicator={false} {...panResponder.panHandlers}>
         <View style={s.taskList}>
           {/* Add task button */}
-          <TouchableOpacity style={s.addBtn}>
+          <TouchableOpacity style={s.addBtn} onPress={() => navigation.navigate('CreateTask')}>
             <Plus size={16} color={colors.muted} />
             <Text style={[s.mutedSm, { marginLeft: 8 }]}>Add Task</Text>
           </TouchableOpacity>
@@ -141,8 +126,8 @@ export default function KanbanBoardScreen() {
                     {/* Footer */}
                     <View style={[s.row, { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)', paddingTop: 12, marginBottom: 0 }]}>
                       <View style={s.row}>
-                        <LinearGradient colors={AVATAR_GRADIENTS[task.assignee.avatar]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatarXs}>
-                          <Text style={s.avatarXsText}>{task.assignee.avatar}</Text>
+                        <LinearGradient colors={AVATAR_GRADIENTS[task.assignee.initials] ?? [colors.blue, colors.purple]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatarXs}>
+                          <Text style={s.avatarXsText}>{task.assignee.initials}</Text>
                         </LinearGradient>
                         <Text style={[s.mutedXs, { marginLeft: 6 }]}>{task.assignee.name}</Text>
                       </View>

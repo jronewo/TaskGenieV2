@@ -3,6 +3,7 @@ using MediatR;
 using TaskGenie.Application.Common.Behaviors;
 using TaskGenie.Application.Features.Tasks.Commands;
 using TaskGenie.Infrastructure;
+using TaskGenie.Infrastructure.Persistence;
 using TaskGenie.API.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -36,4 +37,12 @@ app.UseStaticFiles();
 app.UseCors("AllowAll");
 app.UseAuthorization();
 app.MapControllers();
+
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await DataSeeder.SeedAsync(db);
+}
+
 app.Run();

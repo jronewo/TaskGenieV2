@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using TaskGenie.Application.Features.Admin;
 using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
+using TaskGenie.Infrastructure.Export;
 using TaskGenie.Infrastructure.ExternalServices;
 using TaskGenie.Infrastructure.Persistence;
 using TaskGenie.Infrastructure.Persistence.Repositories;
@@ -36,9 +37,11 @@ public static class DependencyInjection
         services.AddScoped<IActivityLogRepository, ActivityLogRepository>();
         services.AddScoped<ITaskCommentRepository, TaskCommentRepository>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
+        services.AddScoped<IUserScoreRepository, UserScoreRepository>();
         services.AddScoped<ITaskRequiredSkillRepository, TaskRequiredSkillRepository>();
         services.AddScoped<ITaskStatsRepository, TaskStatsRepository>();
         services.AddScoped<ITaskDependencyRepository, TaskDependencyRepository>();
+        services.AddScoped<IMeetingRepository, MeetingRepository>();
 
         // External Services
         services.AddHttpClient<IHuggingFaceService, HuggingFaceService>();
@@ -47,6 +50,7 @@ public static class DependencyInjection
         services.AddSingleton<ICloudinaryService, CloudinaryService>();
         services.AddScoped<IGoogleAuthService, GoogleAuthService>();
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
+        services.AddScoped<IProjectExportService, ProjectExportService>();
 
         return services;
     }

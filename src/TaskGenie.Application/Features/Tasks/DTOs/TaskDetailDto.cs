@@ -18,7 +18,13 @@ public sealed class TaskDetailDto
     public string? RiskLevel { get; init; }
     public string? AiSummary { get; init; }
     public DateTime? CreatedAt { get; init; }
+    public DateTime? CompletedAt { get; init; }
     public int? CreatedBy { get; init; }
+    public bool IsLate => Deadline.HasValue && CompletedAt.HasValue
+        && DateOnly.FromDateTime(CompletedAt.Value) > Deadline.Value;
+    public int? DaysLateOrEarly => Deadline.HasValue && CompletedAt.HasValue
+        ? Deadline.Value.DayNumber - DateOnly.FromDateTime(CompletedAt.Value).DayNumber
+        : null;
 
     public List<TaskAssigneeDto> Assignees { get; init; } = new();
     public List<TaskDependencyDto> Dependencies { get; init; } = new();
@@ -40,6 +46,7 @@ public sealed class TaskDetailDto
         RiskLevel = t.RiskLevel,
         AiSummary = t.AiSummary,
         CreatedAt = t.CreatedAt,
+        CompletedAt = t.CompletedAt,
         CreatedBy = t.CreatedBy,
         Assignees = t.TaskAssignees
             .Select(ta => new TaskAssigneeDto

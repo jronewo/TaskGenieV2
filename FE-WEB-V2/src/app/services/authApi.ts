@@ -13,16 +13,10 @@ export interface AuthResponse {
 }
 
 export const authApi = {
-  login: (email: string, password: string) =>
-    apiRequest<AuthResponse>("/auth/login", {
+  google: (idToken: string) =>
+    apiRequest<AuthResponse>("/auth/google", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
-    }),
-
-  register: (name: string, email: string, password: string) =>
-    apiRequest<AuthResponse>("/auth/register", {
-      method: "POST",
-      body: JSON.stringify({ name, email, password }),
+      body: JSON.stringify({ idToken }),
     }),
 
   logout: () =>

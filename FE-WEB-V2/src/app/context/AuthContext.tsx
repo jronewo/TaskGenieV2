@@ -12,8 +12,7 @@ export interface CurrentUser {
 interface AuthContextValue {
   user: CurrentUser | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  loginWithGoogle: (idToken: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -29,14 +28,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return stored ? toUser(stored) : null;
   });
 
-  const login: AuthContextValue["login"] = async (email, password) => {
-    const response = await authApi.login(email, password);
-    setStoredAuth(response);
-    setUser(toUser(response));
-  };
-
-  const register: AuthContextValue["register"] = async (name, email, password) => {
-    const response = await authApi.register(name, email, password);
+  const loginWithGoogle: AuthContextValue["loginWithGoogle"] = async (idToken) => {
+    const response = await authApi.google(idToken);
     setStoredAuth(response);
     setUser(toUser(response));
   };
@@ -52,7 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, login, register, logout }}>
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, loginWithGoogle, logout }}>
       {children}
     </AuthContext.Provider>
   );

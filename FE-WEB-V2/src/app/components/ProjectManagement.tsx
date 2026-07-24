@@ -10,14 +10,17 @@ import {
   Pencil,
   Trash2,
   X,
+  Loader2,
 } from "lucide-react";
-import { projects as initialProjects, tasks as initialTasks } from "../data/tmaiData";
+import { useAuth } from "../context/AuthContext";
+import { projectsApi, ProjectDto } from "../services/projectsApi";
+import { tasksApi, TaskDto } from "../services/tasksApi";
+import { ApiError } from "../services/apiClient";
 
 interface ProjectFormState {
   name: string;
   description: string;
-  startDate: string;
-  endDate: string;
+  deadline: string;
 }
 
 interface ProjectManagementProps {
@@ -25,116 +28,170 @@ interface ProjectManagementProps {
   onProjectSelect?: (projectId: string) => void;
 }
 
-interface ProjectItem {
-  id: string;
-  name: string;
-  description: string;
-  startDate: string;
-  endDate: string;
-  taskCount: number;
-  riskScore: number;
-  color: string;
-  icon: string;
-}
+const PALETTE = ["#6366f1", "#0891b2", "#d97706", "#dc2626", "#059669", "#7c3aed"];
+const ICONS = ["📦", "🚀", "📊", "🛡️", "📱", "⚙️"];
+const colorFor = (id: number) => PALETTE[id % PALETTE.length];
+const iconFor = (id: number) => ICONS[id % ICONS.length];
+
+const RISK_BADGE: Record<string, string> = {
+  LOW: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  MEDIUM: "bg-amber-50 text-amber-700 border-amber-200",
+  HIGH: "bg-rose-50 text-rose-700 border-rose-200",
+  CRITICAL: "bg-rose-100 text-rose-800 border-rose-300",
+};
 
 export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, onProjectSelect }: ProjectManagementProps) => {
-  const [projects, setProjects] = useState<ProjectItem[]>(() =>
-    initialProjects.map((project) => ({
-      id: project.id,
-      name: project.name,
-      description: `${project.name} delivery initiative for the current roadmap.`,
-      startDate: "2026-04-01",
-      endDate: "2026-08-31",
-      taskCount: project.taskCount,
-      riskScore: project.riskScore,
-      color: project.color,
-      icon: project.icon,
-    }))
-  );
-  const [selectedProjectId, setSelectedProjectId] = useState(initialProjects[0]?.id ?? "");
+  const { user } = useAuth();
+  const [projects, setProjects] = useState<ProjectDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  const [selectedTasks, setSelectedTasks] = useState<TaskDto[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [search, setSearch] = useState("");
-  const [form, setForm] = useState<ProjectFormState>({ name: "", description: "", startDate: "", endDate: "" });
+  const [form, setForm] = useState<ProjectFormState>({ name: "", description: "", deadline: "" });
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const loadProjects = async () => {
+    setLoading(true);
+    try {
+      const list = await projectsApi.list();
+      setProjects(list);
+      if (list.length && selectedProjectId === null) {
+        setSelectedProjectId(list[0].projectId);
+      }
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof ApiError ? error.message : "Failed to load projects." });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (selectedProjectIdProp) {
-      setSelectedProjectId(selectedProjectIdProp);
+      const asNumber = Number(selectedProjectIdProp);
+      if (!Number.isNaN(asNumber)) setSelectedProjectId(asNumber);
     }
   }, [selectedProjectIdProp]);
 
-  const selectedProject = useMemo(() => projects.find((project) => project.id === selectedProjectId) ?? projects[0], [projects, selectedProjectId]);
+  useEffect(() => {
+    if (selectedProjectId === null) return;
+    setTasksLoading(true);
+    tasksApi.listByProject(selectedProjectId)
+      .then(setSelectedTasks)
+      .catch(() => setSelectedTasks([]))
+      .finally(() => setTasksLoading(false));
+  }, [selectedProjectId]);
+
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.projectId === selectedProjectId) ?? null,
+    [projects, selectedProjectId]
+  );
+
   const filteredProjects = useMemo(() => {
     const query = search.toLowerCase();
-    return projects.filter((project) => project.name.toLowerCase().includes(query) || project.description.toLowerCase().includes(query));
+    return projects.filter(
+      (project) =>
+        project.name.toLowerCase().includes(query) ||
+        (project.description ?? "").toLowerCase().includes(query)
+    );
   }, [projects, search]);
 
-  const selectedTasks = useMemo(() => initialTasks.filter((task) => task.assignee.name.includes("An") || task.tags.some((tag) => selectedProject?.name.toLowerCase().includes(tag.toLowerCase()))), [selectedProject]);
+  const selectProject = (id: number) => {
+    setSelectedProjectId(id);
+    onProjectSelect?.(String(id));
+  };
 
-  const handleCreateProject = (e: React.FormEvent) => {
+  const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
     const name = form.name.trim();
     if (!name) {
       setFeedback({ type: "error", message: "Project name is required." });
       return;
     }
+    if (!user) return;
 
-    const exists = projects.some((project) => project.name.toLowerCase() === name.toLowerCase());
-    if (exists) {
-      setFeedback({ type: "error", message: "Project name already exists." });
-      return;
+    setSaving(true);
+    try {
+      const created = await projectsApi.create({
+        name,
+        description: form.description.trim() || undefined,
+        createdBy: user.userId,
+        deadline: form.deadline || undefined,
+      });
+      setProjects((prev) => [created, ...prev]);
+      selectProject(created.projectId);
+      setForm({ name: "", description: "", deadline: "" });
+      setShowCreateForm(false);
+      setFeedback({ type: "success", message: "Project created successfully." });
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof ApiError ? error.message : "Failed to create project." });
+    } finally {
+      setSaving(false);
     }
-
-    if (!form.startDate || !form.endDate || new Date(form.endDate) <= new Date(form.startDate)) {
-      setFeedback({ type: "error", message: "End date must be after start date." });
-      return;
-    }
-
-    const newProject: ProjectItem = {
-      id: `project-${Date.now()}`,
-      name,
-      description: form.description.trim() || "New project created from the management console.",
-      startDate: form.startDate,
-      endDate: form.endDate,
-      taskCount: 0,
-      riskScore: 20,
-      color: "#6366f1",
-      icon: "📦",
-    };
-
-    setProjects((prev) => [newProject, ...prev]);
-    setSelectedProjectId(newProject.id);
-    setForm({ name: "", description: "", startDate: "", endDate: "" });
-    setShowCreateForm(false);
-    setFeedback({ type: "success", message: "Project created successfully." });
   };
 
-  const handleUpdateProject = (e: React.FormEvent) => {
+  const handleUpdateProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedProject) return;
     if (!form.name.trim()) {
       setFeedback({ type: "error", message: "Project name is required." });
       return;
     }
-    if (!form.startDate || !form.endDate || new Date(form.endDate) <= new Date(form.startDate)) {
-      setFeedback({ type: "error", message: "End date must be after start date." });
-      return;
-    }
 
-    setProjects((prev) => prev.map((project) => project.id === selectedProject.id ? { ...project, name: form.name.trim(), description: form.description.trim(), startDate: form.startDate, endDate: form.endDate } : project));
-    setShowEditForm(false);
-    setFeedback({ type: "success", message: "Project updated successfully." });
+    setSaving(true);
+    try {
+      await projectsApi.update(selectedProject.projectId, {
+        name: form.name.trim(),
+        description: form.description.trim(),
+        deadline: form.deadline || undefined,
+      });
+      setProjects((prev) =>
+        prev.map((project) =>
+          project.projectId === selectedProject.projectId
+            ? { ...project, name: form.name.trim(), description: form.description.trim(), deadline: form.deadline || project.deadline }
+            : project
+        )
+      );
+      setShowEditForm(false);
+      setFeedback({ type: "success", message: "Project updated successfully." });
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof ApiError ? error.message : "Failed to update project." });
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDeleteProject = (projectId: string) => {
-    setProjects((prev) => prev.filter((project) => project.id !== projectId));
-    if (selectedProjectId === projectId) {
-      const fallback = projects.find((project) => project.id !== projectId);
-      setSelectedProjectId(fallback?.id ?? "");
+  const handleDeleteProject = async (projectId: number) => {
+    try {
+      await projectsApi.remove(projectId);
+      setProjects((prev) => {
+        const remaining = prev.filter((project) => project.projectId !== projectId);
+        if (selectedProjectId === projectId) {
+          setSelectedProjectId(remaining[0]?.projectId ?? null);
+        }
+        return remaining;
+      });
+      setFeedback({ type: "success", message: "Project removed successfully." });
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof ApiError ? error.message : "Failed to delete project." });
     }
-    setFeedback({ type: "success", message: "Project removed successfully." });
   };
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center bg-slate-50">
+        <Loader2 size={22} className="animate-spin text-slate-400" />
+      </div>
+    );
+  }
 
   return (
     <div className="h-full overflow-y-auto bg-slate-50 p-4 lg:p-6">
@@ -175,16 +232,14 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
               <textarea value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} rows={3} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500" placeholder="Summarize the goal of the project" />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Start Date</label>
-              <input type="date" value={form.startDate} onChange={(e) => setForm((prev) => ({ ...prev, startDate: e.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">End Date</label>
-              <input type="date" value={form.endDate} onChange={(e) => setForm((prev) => ({ ...prev, endDate: e.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-violet-500" />
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Deadline</label>
+              <input type="date" value={form.deadline} onChange={(e) => setForm((prev) => ({ ...prev, deadline: e.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500" />
             </div>
             <div className="md:col-span-2 flex justify-end gap-2">
               <button type="button" onClick={() => setShowCreateForm(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600">Cancel</button>
-              <button type="submit" className="rounded-lg bg-slate-800 px-3 py-2 text-sm font-semibold text-white">Create Project</button>
+              <button type="submit" disabled={saving} className="rounded-lg bg-slate-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                {saving ? "Creating…" : "Create Project"}
+              </button>
             </div>
           </form>
         </motion.div>
@@ -204,15 +259,20 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
           </div>
 
           <div className="space-y-2">
+            {filteredProjects.length === 0 && (
+              <div className="rounded-xl border border-dashed border-slate-300 p-4 text-center text-xs text-slate-400">
+                No projects yet — create your first one.
+              </div>
+            )}
             {filteredProjects.map((project) => (
-              <button key={project.id} onClick={() => { setSelectedProjectId(project.id); onProjectSelect?.(project.id); }} className={`w-full rounded-xl border p-3 text-left transition ${selectedProject?.id === project.id ? "border-slate-500 bg-slate-50" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"}`}>
+              <button key={project.projectId} onClick={() => selectProject(project.projectId)} className={`w-full rounded-xl border p-3 text-left transition ${selectedProject?.projectId === project.projectId ? "border-slate-500 bg-slate-50" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"}`}>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-semibold text-slate-900">{project.name}</span>
-                  <span className="text-lg">{project.icon}</span>
+                  <span className="text-lg">{iconFor(project.projectId)}</span>
                 </div>
-                <p className="mt-1 line-clamp-2 text-xs text-slate-500">{project.description}</p>
+                <p className="mt-1 line-clamp-2 text-xs text-slate-500">{project.description || "No description."}</p>
                 <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
-                  <CalendarDays size={12} /> {project.startDate} → {project.endDate}
+                  <CalendarDays size={12} /> {project.deadline ? `Due ${project.deadline}` : "No deadline"}
                 </div>
               </button>
             ))}
@@ -228,13 +288,13 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
                     <Sparkles size={11} /> Project Detail
                   </div>
                   <h3 className="text-lg font-semibold text-slate-900">{selectedProject.name}</h3>
-                  <p className="mt-1 text-sm text-slate-500">{selectedProject.description}</p>
+                  <p className="mt-1 text-sm text-slate-500">{selectedProject.description || "No description."}</p>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => { setForm({ name: selectedProject.name, description: selectedProject.description, startDate: selectedProject.startDate, endDate: selectedProject.endDate }); setShowEditForm(true); }} className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                  <button onClick={() => { setForm({ name: selectedProject.name, description: selectedProject.description ?? "", deadline: selectedProject.deadline ?? "" }); setShowEditForm(true); }} className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                     <Pencil size={14} /> Edit
                   </button>
-                  <button onClick={() => handleDeleteProject(selectedProject.id)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100">
+                  <button onClick={() => handleDeleteProject(selectedProject.projectId)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100">
                     <Trash2 size={14} /> Remove
                   </button>
                 </div>
@@ -258,16 +318,14 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
                       <textarea value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} rows={3} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500" />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Start Date</label>
-                      <input type="date" value={form.startDate} onChange={(e) => setForm((prev) => ({ ...prev, startDate: e.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500" />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">End Date</label>
-                      <input type="date" value={form.endDate} onChange={(e) => setForm((prev) => ({ ...prev, endDate: e.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500" />
+                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Deadline</label>
+                      <input type="date" value={form.deadline} onChange={(e) => setForm((prev) => ({ ...prev, deadline: e.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500" />
                     </div>
                     <div className="md:col-span-2 flex justify-end gap-2">
                       <button type="button" onClick={() => setShowEditForm(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600">Cancel</button>
-                      <button type="submit" className="rounded-lg bg-slate-800 px-3 py-2 text-sm font-semibold text-white">Save Changes</button>
+                      <button type="submit" disabled={saving} className="rounded-lg bg-slate-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                        {saving ? "Saving…" : "Save Changes"}
+                      </button>
                     </div>
                   </form>
                 </motion.div>
@@ -281,16 +339,26 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
                   </div>
                   <div className="space-y-2 text-sm text-slate-600">
                     <div className="flex items-center justify-between">
-                      <span>Timeline</span>
-                      <span className="font-semibold text-slate-900">{selectedProject.startDate} → {selectedProject.endDate}</span>
+                      <span>Status</span>
+                      <span className="font-semibold text-slate-900">{selectedProject.status}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span>Tasks</span>
-                      <span className="font-semibold text-slate-900">{selectedProject.taskCount}</span>
+                      <span>Deadline</span>
+                      <span className="font-semibold text-slate-900">{selectedProject.deadline ?? "—"}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Progress</span>
+                      <span className="font-semibold text-slate-900">{selectedProject.progress}%</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span>Risk</span>
-                      <span className="font-semibold text-slate-900">{selectedProject.riskScore}%</span>
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${RISK_BADGE[selectedProject.riskLevel] ?? "bg-slate-50 text-slate-600 border-slate-200"}`}>
+                        {selectedProject.riskLevel}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Team</span>
+                      <span className="font-semibold text-slate-900">{selectedProject.teamName ?? "—"}</span>
                     </div>
                   </div>
                 </div>
@@ -300,14 +368,20 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
                     <CheckCircle2 size={15} className="text-emerald-600" />
                     <h4 className="text-sm font-semibold text-slate-900">Related Tasks</h4>
                   </div>
-                  <div className="space-y-2">
-                    {selectedTasks.slice(0, 4).map((task) => (
-                      <div key={task.id} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600">
-                        <div className="font-medium text-slate-800">{task.title}</div>
-                        <div className="mt-1 text-xs text-slate-500">{task.status} · {task.priority}</div>
-                      </div>
-                    ))}
-                  </div>
+                  {tasksLoading ? (
+                    <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-slate-400" /></div>
+                  ) : selectedTasks.length === 0 ? (
+                    <p className="text-xs text-slate-400">No tasks in this project yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {selectedTasks.slice(0, 6).map((task) => (
+                        <div key={task.taskId} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600">
+                          <div className="font-medium text-slate-800">{task.title}</div>
+                          <div className="mt-1 text-xs text-slate-500">{task.status} · {task.priority}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </>

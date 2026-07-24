@@ -14,8 +14,11 @@ import { KanbanBoard } from "./components/KanbanBoard";
 import { TaskDetailModal } from "./components/TaskDetailModal";
 import { CoreAiDemoPanel } from "./components/CoreAiDemoPanel";
 import { CreateTaskModal } from "./components/CreateTaskModal";
-import { Project, projects, tasks, Task, TaskStatus } from "./data/tmaiData";
+import { Project, projects, tasks } from "./data/tmaiData";
 import { useAuth } from "./context/AuthContext";
+import { projectsApi } from "./services/projectsApi";
+import { tasksApi, TaskDto } from "./services/tasksApi";
+import { ApiError } from "./services/apiClient";
 import {
   AlertTriangle, CheckCircle, TrendingUp, Layers, ChevronRight, LogOut
 } from "lucide-react";
@@ -477,31 +480,63 @@ export default function App() {
   const { isAuthenticated, user, logout } = useAuth();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const [activeProject, setActiveProject] = useState("p1");
+  const [activeProject, setActiveProject] = useState("");
   const [activePage, setActivePage] = useState("dashboard");
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [view, setView] = useState<"kanban" | "list">("kanban");
 
   const [showAIChat, setShowAIChat] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
-  const [createTaskStatus, setCreateTaskStatus] = useState<TaskStatus | undefined>(undefined);
 
-  const [taskList, setTaskList] = useState<Task[]>(tasks);
-  const selectedTask = taskList.find((t) => t.id === selectedTaskId) ?? null;
+  const [taskList, setTaskList] = useState<TaskDto[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const selectedTask = taskList.find((t) => t.taskId === selectedTaskId) ?? null;
 
-  const handleCreateTask = (task: Task) => {
+  // Pick a default project on first load so the Board tab has something to show
+  // before the user ever visits the Projects page.
+  useEffect(() => {
+    if (activeProject) return;
+    projectsApi.list()
+      .then((list) => { if (list.length) setActiveProject(String(list[0].projectId)); })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const projectId = Number(activeProject);
+    if (!activeProject || Number.isNaN(projectId)) { setTaskList([]); return; }
+    setTasksLoading(true);
+    tasksApi.listByProject(projectId)
+      .then(setTaskList)
+      .catch(() => setTaskList([]))
+      .finally(() => setTasksLoading(false));
+  }, [activeProject]);
+
+  const handleCreateTask = (task: TaskDto) => {
     setTaskList((prev) => [task, ...prev]);
     toast.success(`Task "${task.title}" created.`);
   };
 
-  const handleUpdateTask = (taskId: string, changes: Partial<Task>) => {
-    setTaskList((prev) => prev.map((t) => (t.id === taskId ? { ...t, ...changes } : t)));
+  const handleTaskChanged = (updated: TaskDto) => {
+    setTaskList((prev) => prev.map((t) => (t.taskId === updated.taskId ? updated : t)));
   };
 
-  const openCreateTask = (status?: TaskStatus) => {
-    setCreateTaskStatus(status);
+  const handleKanbanStatusChange = async (taskId: number, status: string) => {
+    setTaskList((prev) => prev.map((t) => (t.taskId === taskId ? { ...t, status } : t)));
+    try {
+      await tasksApi.updateProgress(taskId, { status });
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Failed to move task.");
+      const projectId = Number(activeProject);
+      if (!Number.isNaN(projectId)) {
+        tasksApi.listByProject(projectId).then(setTaskList).catch(() => {});
+      }
+    }
+  };
+
+  const openCreateTask = () => {
     setShowNewTaskModal(true);
   };
 
@@ -588,12 +623,20 @@ export default function App() {
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.15 }}
                     >
-                      <KanbanBoard
-                        tasks={taskList}
-                        onTaskClick={(task) => setSelectedTaskId(task.id)}
-                        onTaskStatusChange={(taskId, status) => handleUpdateTask(taskId, { status })}
-                        onAddTask={openCreateTask}
-                      />
+                      {tasksLoading ? (
+                        <div className="h-full flex items-center justify-center text-gray-400 text-sm">Loading tasks…</div>
+                      ) : !activeProject ? (
+                        <div className="h-full flex items-center justify-center text-gray-400 text-sm">
+                          No project selected — create one in Projects first.
+                        </div>
+                      ) : (
+                        <KanbanBoard
+                          tasks={taskList}
+                          onTaskClick={(task) => setSelectedTaskId(task.taskId)}
+                          onTaskStatusChange={handleKanbanStatusChange}
+                          onAddTask={() => openCreateTask()}
+                        />
+                      )}
                     </motion.div>
                   )}
 
@@ -826,7 +869,7 @@ export default function App() {
         open={showNewTaskModal}
         onClose={() => setShowNewTaskModal(false)}
         onCreate={handleCreateTask}
-        defaultStatus={createTaskStatus}
+        projectId={activeProject ? Number(activeProject) : null}
       />
 
       <ProjectDetailSheet
@@ -837,7 +880,7 @@ export default function App() {
       <TaskDetailModal
         task={selectedTask}
         onClose={() => setSelectedTaskId(null)}
-        onUpdate={handleUpdateTask}
+        onTaskChanged={handleTaskChanged}
       />
 
       {/* Logout Confirmation Modal (Screen 9) */}

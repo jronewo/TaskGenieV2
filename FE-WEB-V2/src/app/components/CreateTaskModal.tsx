@@ -1,45 +1,36 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Plus, X, Sparkles } from "lucide-react";
-import { Task, TaskStatus, Priority, teamMembers, projects } from "../data/tmaiData";
+import { Plus, X } from "lucide-react";
+import { tasksApi, TaskDto } from "../services/tasksApi";
+import { ApiError } from "../services/apiClient";
 
 interface CreateTaskModalProps {
   open: boolean;
   onClose: () => void;
-  onCreate: (task: Task) => void;
-  defaultStatus?: TaskStatus;
+  onCreate: (task: TaskDto) => void;
+  projectId: number | null;
 }
 
 interface FormState {
   title: string;
   description: string;
-  priority: Priority;
+  priority: "Low" | "Medium" | "High";
   deadline: string;
-  assigneeId: string;
-  projectId: string;
+  difficulty: number;
 }
 
 const emptyForm: FormState = {
   title: "",
   description: "",
-  priority: "medium",
+  priority: "Medium",
   deadline: "",
-  assigneeId: teamMembers[0]?.id ?? "",
-  projectId: projects[0]?.id ?? "",
+  difficulty: 3,
 };
 
-// Rough AI-style effort estimate — deterministic stand-in for a real prediction model.
-const durationEstimate: Record<Priority, { days: number; confidence: number }> = {
-  low: { days: 3, confidence: 88 },
-  medium: { days: 6, confidence: 81 },
-  high: { days: 9, confidence: 74 },
-  urgent: { days: 2, confidence: 68 },
-};
-
-export const CreateTaskModal = ({ open, onClose, onCreate, defaultStatus }: CreateTaskModalProps) => {
+export const CreateTaskModal = ({ open, onClose, onCreate, projectId }: CreateTaskModalProps) => {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [error, setError] = useState("");
-  const estimate = durationEstimate[form.priority];
+  const [saving, setSaving] = useState(false);
 
   const handleClose = () => {
     setForm(emptyForm);
@@ -47,40 +38,35 @@ export const CreateTaskModal = ({ open, onClose, onCreate, defaultStatus }: Crea
     onClose();
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.title.trim()) {
       setError("Task title is required.");
       return;
     }
-    if (!form.deadline) {
-      setError("Deadline is required.");
+    if (!projectId) {
+      setError("Select a project first.");
       return;
     }
 
-    const assignee = teamMembers.find((m) => m.id === form.assigneeId) ?? teamMembers[0];
-    const status = defaultStatus ?? "backlog";
-    const newTask: Task = {
-      id: `task-${Date.now()}`,
-      title: form.title.trim(),
-      description: form.description.trim() || "No description provided.",
-      status,
-      priority: form.priority,
-      risk: "safe",
-      riskScore: 10,
-      assignee,
-      deadline: form.deadline,
-      projectId: form.projectId,
-      tags: [],
-      progress: status === "done" ? 100 : 0,
-      aiInsight: "No AI insights yet — this task was just created.",
-      comments: 0,
-      attachments: 0,
-      storyPoints: 3,
-    };
-
-    onCreate(newTask);
-    handleClose();
+    setSaving(true);
+    setError("");
+    try {
+      const created = await tasksApi.create({
+        projectId,
+        title: form.title.trim(),
+        description: form.description.trim() || undefined,
+        priority: form.priority,
+        deadline: form.deadline || undefined,
+        difficulty: form.difficulty,
+      });
+      onCreate(created);
+      handleClose();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to create task.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -140,79 +126,53 @@ export const CreateTaskModal = ({ open, onClose, onCreate, defaultStatus }: Crea
 
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <label className="font-bold text-gray-700 uppercase text-[10px]">Project</label>
-                  <select
-                    value={form.projectId}
-                    onChange={(e) => setForm((prev) => ({ ...prev, projectId: e.target.value }))}
-                    className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 outline-none focus:border-[#1A237E]"
-                  >
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.icon} {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-1">
                   <label className="font-bold text-gray-700 uppercase text-[10px]">Priority</label>
                   <select
                     value={form.priority}
-                    onChange={(e) => setForm((prev) => ({ ...prev, priority: e.target.value as Priority }))}
+                    onChange={(e) => setForm((prev) => ({ ...prev, priority: e.target.value as FormState["priority"] }))}
                     className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 outline-none focus:border-[#1A237E]"
                   >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
                   </select>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <label className="font-bold text-gray-700 uppercase text-[10px]">Deadline</label>
-                  <input
-                    type="date"
-                    value={form.deadline}
-                    onChange={(e) => setForm((prev) => ({ ...prev, deadline: e.target.value }))}
-                    className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 outline-none focus:border-[#1A237E]"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="font-bold text-gray-700 uppercase text-[10px]">Assignee</label>
+                  <label className="font-bold text-gray-700 uppercase text-[10px]">Difficulty</label>
                   <select
-                    value={form.assigneeId}
-                    onChange={(e) => setForm((prev) => ({ ...prev, assigneeId: e.target.value }))}
+                    value={form.difficulty}
+                    onChange={(e) => setForm((prev) => ({ ...prev, difficulty: Number(e.target.value) }))}
                     className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 outline-none focus:border-[#1A237E]"
                   >
-                    {teamMembers.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name} ({m.role})
-                      </option>
-                    ))}
+                    <option value={1}>1 · Trivial</option>
+                    <option value={2}>2 · Easy</option>
+                    <option value={3}>3 · Medium</option>
+                    <option value={4}>4 · Hard</option>
+                    <option value={5}>5 · Very Hard</option>
                   </select>
                 </div>
               </div>
 
-              <div className="flex items-center gap-1.5 rounded-lg bg-indigo-50 px-2.5 py-2 text-indigo-700">
-                <Sparkles size={12} className="shrink-0" />
-                <span>
-                  AI estimate: <strong>~{estimate.days} days</strong> of effort · {estimate.confidence}% confidence
-                </span>
+              <div className="space-y-1">
+                <label className="font-bold text-gray-700 uppercase text-[10px]">Deadline</label>
+                <input
+                  type="date"
+                  value={form.deadline}
+                  onChange={(e) => setForm((prev) => ({ ...prev, deadline: e.target.value }))}
+                  className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 outline-none focus:border-[#1A237E]"
+                />
               </div>
+
+              <p className="text-[10px] text-gray-400">
+                Tasks are created unassigned — use AI Recommendations on the task detail page to assign someone.
+              </p>
 
               <div className="pt-3 flex gap-2 justify-end">
-                <button
-                  type="button"
-                  onClick={handleClose}
-                  className="px-3 py-1.5 border border-gray-200 rounded text-gray-600 hover:bg-gray-50"
-                >
+                <button type="button" onClick={handleClose} className="px-3 py-1.5 border border-gray-200 rounded text-gray-600 hover:bg-gray-50">
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 bg-[#1A237E] text-white font-bold rounded hover:bg-[#0D1757]"
-                >
-                  Create Task
+                <button type="submit" disabled={saving} className="px-4 py-1.5 bg-[#1A237E] text-white font-bold rounded hover:bg-[#0D1757] disabled:opacity-60">
+                  {saving ? "Creating…" : "Create Task"}
                 </button>
               </div>
             </form>

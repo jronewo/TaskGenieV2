@@ -30,6 +30,30 @@ export interface TaskDto {
   requiredSkillIds: number[];
 }
 
+export interface CreateTaskInput {
+  projectId: number;
+  title: string;
+  description?: string;
+  priority?: string;
+  deadline?: string;
+  difficulty?: number;
+}
+
+export interface UpdateTaskProgressInput {
+  status?: string;
+  progress?: number;
+  riskLevel?: string;
+  actualTime?: number;
+}
+
 export const tasksApi = {
   listByProject: (projectId: number) => apiRequest<TaskDto[]>(`/Tasks?projectId=${projectId}`),
+
+  getById: (taskId: number) => apiRequest<TaskDto>(`/Tasks/${taskId}`),
+
+  create: (input: CreateTaskInput) =>
+    apiRequest<TaskDto>("/Tasks", { method: "POST", body: JSON.stringify(input) }),
+
+  updateProgress: (taskId: number, input: UpdateTaskProgressInput) =>
+    apiRequest<void>(`/Tasks/${taskId}/progress`, { method: "PUT", body: JSON.stringify(input) }),
 };

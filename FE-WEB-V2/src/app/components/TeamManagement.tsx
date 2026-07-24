@@ -1,148 +1,144 @@
-import React, { useMemo, useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import React, { useEffect, useMemo, useState } from "react";
+import { motion } from "motion/react";
 import {
-  Users,
-  Plus,
-  Search,
-  Mail,
-  UserPlus,
-  ShieldCheck,
-  Trash2,
-  Sparkles,
-  Briefcase,
-  CheckCircle2,
-  X,
+  Users, Plus, Search, Mail, UserPlus, ShieldCheck, Trash2,
+  Sparkles, Briefcase, CheckCircle2, X, Loader2,
 } from "lucide-react";
-import { initialTeams, teamMembers, projects } from "../data/tmaiData";
+import { useAuth } from "../context/AuthContext";
+import { teamsApi, TeamDto, TeamMemberDto } from "../services/teamsApi";
+import { usersApi } from "../services/usersApi";
+import { projectsApi, ProjectDto } from "../services/projectsApi";
+import { ApiError } from "../services/apiClient";
 
 interface TeamManagementProps {
   onClose?: () => void;
 }
 
-interface TeamFormState {
-  name: string;
-  description: string;
-}
-
-interface InviteFormState {
-  email: string;
-}
+const PALETTE = ["#6366f1", "#0891b2", "#d97706", "#dc2626", "#059669", "#7c3aed"];
+const avatarColor = (userId: number) => PALETTE[userId % PALETTE.length];
+const initials = (name: string) => name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
 
 export const TeamManagement = ({ onClose }: TeamManagementProps) => {
-  const [teams, setTeams] = useState(initialTeams);
-  const [selectedTeamId, setSelectedTeamId] = useState(initialTeams[0]?.id ?? "");
+  const { user } = useAuth();
+  const [teams, setTeams] = useState<TeamDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
+  const [associatedProjects, setAssociatedProjects] = useState<ProjectDto[]>([]);
   const [search, setSearch] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showInviteForm, setShowInviteForm] = useState(false);
-  const [form, setForm] = useState<TeamFormState>({ name: "", description: "" });
-  const [inviteForm, setInviteForm] = useState<InviteFormState>({ email: "" });
+  const [form, setForm] = useState({ name: "", description: "" });
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviting, setInviting] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  const selectedTeam = useMemo(
-    () => teams.find((team) => team.id === selectedTeamId) ?? teams[0],
-    [teams, selectedTeamId]
-  );
+  const loadTeams = async () => {
+    setLoading(true);
+    try {
+      const list = await teamsApi.listMine();
+      setTeams(list);
+      if (list.length) setSelectedTeamId((prev) => prev ?? list[0].teamId);
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof ApiError ? error.message : "Failed to load teams." });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTeams();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const selectedTeam = useMemo(() => teams.find((t) => t.teamId === selectedTeamId) ?? null, [teams, selectedTeamId]);
+
+  useEffect(() => {
+    if (selectedTeamId === null) { setAssociatedProjects([]); return; }
+    projectsApi.list()
+      .then((list) => setAssociatedProjects(list.filter((p) => p.teamId === selectedTeamId)))
+      .catch(() => setAssociatedProjects([]));
+  }, [selectedTeamId]);
 
   const filteredTeams = useMemo(() => {
     const query = search.toLowerCase();
-    return teams.filter((team) => team.name.toLowerCase().includes(query) || team.description.toLowerCase().includes(query));
+    return teams.filter((t) => t.name.toLowerCase().includes(query) || (t.description ?? "").toLowerCase().includes(query));
   }, [teams, search]);
 
-  const teamMembersById = useMemo(
-    () => Object.fromEntries(teamMembers.map((member) => [member.id, member])),
-    []
-  );
-
-  const selectedMembers = useMemo(() => {
-    if (!selectedTeam) return [];
-    return selectedTeam.memberIds.map((id) => teamMembersById[id]).filter(Boolean);
-  }, [selectedTeam, teamMembersById]);
-
-  const handleCreateTeam = (e: React.FormEvent) => {
+  const handleCreateTeam = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmedName = form.name.trim();
-    const trimmedDescription = form.description.trim();
+    const name = form.name.trim();
+    if (!name) { setFeedback({ type: "error", message: "Team name is required." }); return; }
+    if (!user) return;
 
-    if (!trimmedName) {
-      setFeedback({ type: "error", message: "Team name is required." });
-      return;
+    setSaving(true);
+    try {
+      const created = await teamsApi.create({ name, description: form.description.trim() || undefined, createdBy: user.userId });
+      setTeams((prev) => [created, ...prev]);
+      setSelectedTeamId(created.teamId);
+      setForm({ name: "", description: "" });
+      setShowCreateForm(false);
+      setFeedback({ type: "success", message: "Team created successfully." });
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof ApiError ? error.message : "Failed to create team." });
+    } finally {
+      setSaving(false);
     }
-
-    const exists = teams.some((team) => team.name.toLowerCase() === trimmedName.toLowerCase());
-    if (exists) {
-      setFeedback({ type: "error", message: "Team name already exists." });
-      return;
-    }
-
-    const newTeam: typeof initialTeams[number] = {
-      id: `team-${Date.now()}`,
-      name: trimmedName,
-      description: trimmedDescription || "New team created from the management console.",
-      leaderId: "t1",
-      memberIds: ["t1"],
-      projectIds: [],
-      status: "active",
-      createdAt: new Date().toISOString().slice(0, 10),
-    };
-
-    setTeams((prev) => [newTeam, ...prev]);
-    setSelectedTeamId(newTeam.id);
-    setForm({ name: "", description: "" });
-    setShowCreateForm(false);
-    setFeedback({ type: "success", message: "Team created successfully." });
   };
 
-  const handleInviteMember = (e: React.FormEvent) => {
+  const handleInviteMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    const email = inviteForm.email.trim().toLowerCase();
-    if (!email) {
-      setFeedback({ type: "error", message: "Email is required." });
-      return;
+    const email = inviteEmail.trim();
+    if (!email) { setFeedback({ type: "error", message: "Email is required." }); return; }
+    if (!selectedTeam) { setFeedback({ type: "error", message: "Please select a team first." }); return; }
+
+    setInviting(true);
+    try {
+      const found = await usersApi.searchByEmail(email);
+      if (!found) {
+        setFeedback({ type: "error", message: `No TaskGenie account found for ${email} — they need to register first.` });
+        return;
+      }
+      if (selectedTeam.members.some((m) => m.userId === found.userId)) {
+        setFeedback({ type: "error", message: "User is already a member of this team." });
+        return;
+      }
+      await teamsApi.addMember(selectedTeam.teamId, { userId: found.userId, role: "MEMBER" });
+      const refreshed = await teamsApi.getById(selectedTeam.teamId);
+      setTeams((prev) => prev.map((t) => (t.teamId === refreshed.teamId ? refreshed : t)));
+      setInviteEmail("");
+      setShowInviteForm(false);
+      setFeedback({ type: "success", message: `${found.name} added to the team.` });
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof ApiError ? error.message : "Failed to add member." });
+    } finally {
+      setInviting(false);
     }
-
-    const member = teamMembers.find((item) => item.email.toLowerCase() === email);
-    if (!member) {
-      setFeedback({ type: "error", message: "User does not exist." });
-      return;
-    }
-
-    if (!selectedTeam) {
-      setFeedback({ type: "error", message: "Please select a team first." });
-      return;
-    }
-
-    if (selectedTeam.memberIds.includes(member.id)) {
-      setFeedback({ type: "error", message: "User is already a member of this team." });
-      return;
-    }
-
-    setTeams((prev) =>
-      prev.map((team) =>
-        team.id === selectedTeam.id ? { ...team, memberIds: [...team.memberIds, member.id] } : team
-      )
-    );
-
-    setInviteForm({ email: "" });
-    setShowInviteForm(false);
-    setFeedback({ type: "success", message: "Invitation sent successfully." });
   };
 
-  const handleRemoveMember = (memberId: string) => {
-    if (!selectedTeam) return;
-    if (selectedTeam.leaderId === memberId) {
-      setFeedback({ type: "error", message: "Cannot remove the Team Leader." });
+  const handleRemoveMember = async (member: TeamMemberDto) => {
+    if (member.role === "LEADER") {
+      setFeedback({ type: "error", message: "Cannot remove the team leader." });
       return;
     }
-
-    setTeams((prev) =>
-      prev.map((team) =>
-        team.id === selectedTeam.id
-          ? { ...team, memberIds: team.memberIds.filter((id) => id !== memberId) }
-          : team
-      )
-    );
-    setFeedback({ type: "success", message: "Member removed from team." });
+    try {
+      await teamsApi.removeMember(member.id);
+      setTeams((prev) =>
+        prev.map((t) => (t.teamId === selectedTeam?.teamId ? { ...t, members: t.members.filter((m) => m.id !== member.id) } : t))
+      );
+      setFeedback({ type: "success", message: "Member removed from team." });
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof ApiError ? error.message : "Failed to remove member." });
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center bg-slate-50">
+        <Loader2 size={22} className="animate-spin text-slate-400" />
+      </div>
+    );
+  }
 
   return (
     <div className="h-full overflow-y-auto bg-slate-50 p-4 lg:p-6">
@@ -154,10 +150,7 @@ export const TeamManagement = ({ onClose }: TeamManagementProps) => {
           <h2 className="text-lg font-semibold text-slate-900">Create, organize, and manage project teams</h2>
           <p className="mt-1 text-sm text-slate-500">Keep team structure aligned with projects and invite new members in one place.</p>
         </div>
-        <button
-          onClick={() => setShowCreateForm((prev) => !prev)}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
-        >
+        <button onClick={() => setShowCreateForm((prev) => !prev)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-slate-700">
           <Plus size={15} /> Create Team
         </button>
       </div>
@@ -187,7 +180,9 @@ export const TeamManagement = ({ onClose }: TeamManagementProps) => {
             </div>
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setShowCreateForm(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600">Cancel</button>
-              <button type="submit" className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white">Create Team</button>
+              <button type="submit" disabled={saving} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                {saving ? "Creating…" : "Create Team"}
+              </button>
             </div>
           </form>
         </motion.div>
@@ -198,7 +193,7 @@ export const TeamManagement = ({ onClose }: TeamManagementProps) => {
           <div className="mb-3 flex items-center justify-between">
             <div>
               <h3 className="text-sm font-semibold text-slate-900">Teams</h3>
-              <p className="text-xs text-slate-500">{teams.length} active teams</p>
+              <p className="text-xs text-slate-500">{teams.length} teams</p>
             </div>
             <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-2 py-1.5">
               <Search size={13} className="text-slate-400" />
@@ -207,17 +202,19 @@ export const TeamManagement = ({ onClose }: TeamManagementProps) => {
           </div>
 
           <div className="space-y-2">
+            {filteredTeams.length === 0 && (
+              <div className="rounded-xl border border-dashed border-slate-300 p-4 text-center text-xs text-slate-400">
+                No teams yet — create your first one.
+              </div>
+            )}
             {filteredTeams.map((team) => (
-              <button key={team.id} onClick={() => setSelectedTeamId(team.id)} className={`w-full rounded-xl border p-3 text-left transition ${selectedTeam?.id === team.id ? "border-slate-500 bg-slate-50" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"}`}>
+              <button key={team.teamId} onClick={() => setSelectedTeamId(team.teamId)} className={`w-full rounded-xl border p-3 text-left transition ${selectedTeam?.teamId === team.teamId ? "border-slate-500 bg-slate-50" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"}`}>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-semibold text-slate-900">{team.name}</span>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">{team.status}</span>
                 </div>
-                <p className="mt-1 line-clamp-2 text-xs text-slate-500">{team.description}</p>
+                <p className="mt-1 line-clamp-2 text-xs text-slate-500">{team.description || "No description."}</p>
                 <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
-                  <Users size={12} /> {team.memberIds.length} members
-                  <span className="mx-1">•</span>
-                  <Briefcase size={12} /> {team.projectIds.length} projects
+                  <Users size={12} /> {team.members.length} members
                 </div>
               </button>
             ))}
@@ -233,7 +230,7 @@ export const TeamManagement = ({ onClose }: TeamManagementProps) => {
                     <Sparkles size={11} /> Team Detail
                   </div>
                   <h3 className="text-lg font-semibold text-slate-900">{selectedTeam.name}</h3>
-                  <p className="mt-1 text-sm text-slate-500">{selectedTeam.description}</p>
+                  <p className="mt-1 text-sm text-slate-500">{selectedTeam.description || "No description."}</p>
                 </div>
                 <button onClick={() => setShowInviteForm((prev) => !prev)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200">
                   <UserPlus size={14} /> Invite Member
@@ -253,11 +250,14 @@ export const TeamManagement = ({ onClose }: TeamManagementProps) => {
                       <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Member Email</label>
                       <div className="flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2">
                         <Mail size={14} className="mr-2 text-slate-400" />
-                        <input value={inviteForm.email} onChange={(e) => setInviteForm({ email: e.target.value })} placeholder="name@company.com" className="w-full bg-transparent text-sm outline-none" />
+                        <input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="name@company.com" className="w-full bg-transparent text-sm outline-none" />
                       </div>
                     </div>
-                    <button type="submit" className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white">Send Invite</button>
+                    <button type="submit" disabled={inviting} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                      {inviting ? "Adding…" : "Send Invite"}
+                    </button>
                   </form>
+                  <p className="mt-2 text-[10px] text-slate-400">Adds the user immediately if they already have a TaskGenie account.</p>
                 </motion.div>
               )}
 
@@ -265,24 +265,28 @@ export const TeamManagement = ({ onClose }: TeamManagementProps) => {
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="mb-3 flex items-center justify-between">
                     <h4 className="text-sm font-semibold text-slate-900">Members</h4>
-                    <span className="text-xs text-slate-500">{selectedMembers.length} active</span>
+                    <span className="text-xs text-slate-500">{selectedTeam.members.length} active</span>
                   </div>
                   <div className="space-y-2">
-                    {selectedMembers.map((member) => (
+                    {selectedTeam.members.map((member) => (
                       <div key={member.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5">
                         <div className="flex items-center gap-3">
-                          <img src={member.avatar} alt={member.name} className="h-10 w-10 rounded-full object-cover" />
+                          <div
+                            className="h-10 w-10 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                            style={{ backgroundColor: avatarColor(member.userId) }}
+                          >
+                            {initials(member.userName ?? "?")}
+                          </div>
                           <div>
-                            <div className="text-sm font-semibold text-slate-900">{member.name}</div>
-                            <div className="text-xs text-slate-500">{member.role}</div>
+                            <div className="text-sm font-semibold text-slate-900">{member.userName ?? "Unknown"}</div>
+                            <div className="text-xs text-slate-500">{member.userEmail}</div>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          {selectedTeam.leaderId === member.id && (
+                          {member.role === "LEADER" ? (
                             <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">Leader</span>
-                          )}
-                          {selectedTeam.leaderId !== member.id && (
-                            <button onClick={() => handleRemoveMember(member.id)} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600">
+                          ) : (
+                            <button onClick={() => handleRemoveMember(member)} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600">
                               <Trash2 size={14} />
                             </button>
                           )}
@@ -300,35 +304,35 @@ export const TeamManagement = ({ onClose }: TeamManagementProps) => {
                     </div>
                     <div className="space-y-2 text-sm text-slate-600">
                       <div className="flex items-center justify-between">
-                        <span>Leader</span>
-                        <span className="font-semibold text-slate-900">{teamMembersById[selectedTeam.leaderId]?.name ?? "Unknown"}</span>
+                        <span>Created by</span>
+                        <span className="font-semibold text-slate-900">{selectedTeam.creatorName ?? "Unknown"}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Members</span>
+                        <span className="font-semibold text-slate-900">{selectedTeam.members.length}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span>Projects</span>
-                        <span className="font-semibold text-slate-900">{selectedTeam.projectIds.length}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Status</span>
-                        <span className="font-semibold text-slate-900 capitalize">{selectedTeam.status}</span>
+                        <span className="font-semibold text-slate-900">{associatedProjects.length}</span>
                       </div>
                     </div>
                   </div>
 
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <h4 className="mb-2 text-sm font-semibold text-slate-900">Associated Projects</h4>
+                    <div className="mb-2 flex items-center gap-2">
+                      <Briefcase size={14} className="text-slate-500" />
+                      <h4 className="text-sm font-semibold text-slate-900">Associated Projects</h4>
+                    </div>
                     <div className="space-y-2">
-                      {selectedTeam.projectIds.length > 0 ? (
-                        selectedTeam.projectIds.map((projectId) => {
-                          const project = projects.find((item) => item.id === projectId);
-                          return project ? (
-                            <div key={project.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
-                              <span className="font-medium text-slate-700">{project.name}</span>
-                              <span className="text-xs text-slate-500">{project.taskCount} tasks</span>
-                            </div>
-                          ) : null;
-                        })
+                      {associatedProjects.length > 0 ? (
+                        associatedProjects.map((project) => (
+                          <div key={project.projectId} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                            <span className="font-medium text-slate-700">{project.name}</span>
+                            <span className="text-xs text-slate-500">{project.status}</span>
+                          </div>
+                        ))
                       ) : (
-                        <p className="text-sm text-slate-500">No projects linked yet.</p>
+                        <p className="text-sm text-slate-500">No projects linked to this team yet.</p>
                       )}
                     </div>
                   </div>

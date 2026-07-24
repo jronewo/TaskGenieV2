@@ -6,6 +6,8 @@ import {
   BarChart2, RefreshCw
 } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "../context/AuthContext";
+import { ApiError } from "../services/apiClient";
 
 type AuthScreen =
   | "login"
@@ -16,10 +18,6 @@ type AuthScreen =
   | "set-password";
 
 type SuccessType = "register" | "reset" | null;
-
-interface AuthModuleProps {
-  onLogin: () => void;
-}
 
 // ── Shared primitives ─────────────────────────────────────────────────────────
 
@@ -313,14 +311,13 @@ const validate = {
 
 // Login
 const LoginScreen = ({
-  onLogin,
   onForgot,
   onRegister,
 }: {
-  onLogin: () => void;
   onForgot: () => void;
   onRegister: () => void;
 }) => {
+  const { login } = useAuth();
   const [form, setForm] = useState({ email: "", password: "", remember: false });
   const [showPw, setShowPw] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -336,10 +333,14 @@ const LoginScreen = ({
     const pe = validate.password(form.password); if (pe) errs.password = pe;
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setLoading(true); setApiError("");
-    await new Promise((r) => setTimeout(r, 1300));
-    setLoading(false);
-    toast.success("Welcome back, Huy Pham!");
-    onLogin();
+    try {
+      await login(form.email, form.password);
+      toast.success("Welcome back!");
+    } catch (error) {
+      setApiError(error instanceof ApiError ? error.message : "Unable to sign in. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -402,17 +403,17 @@ const LoginScreen = ({
 
 // Register
 const RegisterScreen = ({
-  onNext,
   onBack,
 }: {
-  onNext: () => void;
   onBack: () => void;
 }) => {
+  const { register } = useAuth();
   const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" });
   const [showPw, setShowPw] = useState(false);
   const [showCp, setShowCp] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState("");
 
   const f = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }));
 
@@ -425,11 +426,15 @@ const RegisterScreen = ({
     const ce = validate.match(form.password, form.confirm); if (ce) errs.confirm = ce;
     if (!form.confirm) errs.confirm = "Please confirm your password";
     if (Object.keys(errs).length) { setErrors(errs); return; }
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 1200));
-    setLoading(false);
-    toast.info("Verification code sent to " + form.email);
-    onNext();
+    setLoading(true); setApiError("");
+    try {
+      await register(form.name, form.email, form.password);
+      toast.success("Account created — welcome to TMAI!");
+    } catch (error) {
+      setApiError(error instanceof ApiError ? error.message : "Unable to create account. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -481,6 +486,11 @@ const RegisterScreen = ({
             }
           />
         </FormField>
+        {apiError && (
+          <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+            <AlertCircle size={14} /> {apiError}
+          </div>
+        )}
         <div className="pt-1">
           <AuthButton type="submit" loading={loading}>Create Account</AuthButton>
         </div>
@@ -722,7 +732,7 @@ const SuccessModal = ({
 
 // ── Main AuthModule ───────────────────────────────────────────────────────────
 
-export const AuthModule = ({ onLogin }: AuthModuleProps) => {
+export const AuthModule = () => {
   const [screen, setScreen] = useState<AuthScreen>("login");
   const [success, setSuccess] = useState<SuccessType>(null);
 
@@ -742,7 +752,6 @@ export const AuthModule = ({ onLogin }: AuthModuleProps) => {
             {screen === "login" && (
               <LoginScreen
                 key="login"
-                onLogin={onLogin}
                 onForgot={() => go("forgot-password")}
                 onRegister={() => go("register")}
               />
@@ -750,17 +759,7 @@ export const AuthModule = ({ onLogin }: AuthModuleProps) => {
             {screen === "register" && (
               <RegisterScreen
                 key="register"
-                onNext={() => go("verify-register")}
                 onBack={() => go("login")}
-              />
-            )}
-            {screen === "verify-register" && (
-              <VerifyOTPScreen
-                key="verify-register"
-                title="Verify Your Email"
-                description="Enter the 6-digit code sent to your email address to activate your account."
-                onVerify={() => setSuccess("register")}
-                onBack={() => go("register")}
               />
             )}
             {screen === "forgot-password" && (

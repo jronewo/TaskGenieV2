@@ -15,6 +15,7 @@ import { TaskDetailModal } from "./components/TaskDetailModal";
 import { CoreAiDemoPanel } from "./components/CoreAiDemoPanel";
 import { CreateTaskModal } from "./components/CreateTaskModal";
 import { Project, projects, tasks, Task, TaskStatus } from "./data/tmaiData";
+import { useAuth } from "./context/AuthContext";
 import {
   AlertTriangle, CheckCircle, TrendingUp, Layers, ChevronRight, LogOut
 } from "lucide-react";
@@ -473,7 +474,7 @@ const LogoutModal = ({
 
 export default function App() {
   const isMobile = useIsMobile();
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const { isAuthenticated, user, logout } = useAuth();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [activeProject, setActiveProject] = useState("p1");
@@ -504,9 +505,9 @@ export default function App() {
     setShowNewTaskModal(true);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setShowLogoutModal(false);
-    setIsAuthenticated(false);
+    await logout();
     toast.success("You have been signed out.");
   };
 
@@ -514,7 +515,7 @@ export default function App() {
     return (
       <>
         <Toaster position="top-right" richColors />
-        <AuthModule onLogin={() => setIsAuthenticated(true)} />
+        <AuthModule />
       </>
     );
   }

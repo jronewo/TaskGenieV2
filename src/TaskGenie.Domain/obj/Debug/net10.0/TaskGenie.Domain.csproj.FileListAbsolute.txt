@@ -10,3 +10,15 @@ C:\Capstone\TaskGenieV2\src\TaskGenie.Domain\obj\Debug\net10.0\TaskGenie.Domain.
 C:\Capstone\TaskGenieV2\src\TaskGenie.Domain\obj\Debug\net10.0\refint\TaskGenie.Domain.dll
 C:\Capstone\TaskGenieV2\src\TaskGenie.Domain\obj\Debug\net10.0\TaskGenie.Domain.pdb
 C:\Capstone\TaskGenieV2\src\TaskGenie.Domain\obj\Debug\net10.0\ref\TaskGenie.Domain.dll
+C:\TaskGenieV2\src\TaskGenie.Domain\bin\Debug\net10.0\TaskGenie.Domain.deps.json
+C:\TaskGenieV2\src\TaskGenie.Domain\bin\Debug\net10.0\TaskGenie.Domain.dll
+C:\TaskGenieV2\src\TaskGenie.Domain\bin\Debug\net10.0\TaskGenie.Domain.pdb
+C:\TaskGenieV2\src\TaskGenie.Domain\obj\Debug\net10.0\TaskGenie.Domain.GeneratedMSBuildEditorConfig.editorconfig
+C:\TaskGenieV2\src\TaskGenie.Domain\obj\Debug\net10.0\TaskGenie.Domain.AssemblyInfoInputs.cache
+C:\TaskGenieV2\src\TaskGenie.Domain\obj\Debug\net10.0\TaskGenie.Domain.AssemblyInfo.cs
+C:\TaskGenieV2\src\TaskGenie.Domain\obj\Debug\net10.0\TaskGenie.Domain.csproj.CoreCompileInputs.cache
+C:\TaskGenieV2\src\TaskGenie.Domain\obj\Debug\net10.0\TaskGenie.Domain.sourcelink.json
+C:\TaskGenieV2\src\TaskGenie.Domain\obj\Debug\net10.0\TaskGenie.Domain.dll
+C:\TaskGenieV2\src\TaskGenie.Domain\obj\Debug\net10.0\refint\TaskGenie.Domain.dll
+C:\TaskGenieV2\src\TaskGenie.Domain\obj\Debug\net10.0\TaskGenie.Domain.pdb
+C:\TaskGenieV2\src\TaskGenie.Domain\obj\Debug\net10.0\ref\TaskGenie.Domain.dll

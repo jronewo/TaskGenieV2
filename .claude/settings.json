@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(adb devices 2>$null)",
+      "PowerShell(Get-Command node -ErrorAction SilentlyContinue)",
+      "PowerShell(node --version)",
+      "PowerShell(winget list --name dotnet 2>$null)"
+    ]
+  }
+}

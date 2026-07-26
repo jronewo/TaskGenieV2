@@ -1,32 +1,25 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Infrastructure\\TaskGenie.Infrastructure.csproj": {}
+    "C:\\TaskGenieV2\\src\\TaskGenie.Infrastructure\\TaskGenie.Infrastructure.csproj": {}
   },
   "projects": {
-    "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Application\\TaskGenie.Application.csproj": {
+    "C:\\TaskGenieV2\\src\\TaskGenie.Application\\TaskGenie.Application.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Application\\TaskGenie.Application.csproj",
+        "projectUniqueName": "C:\\TaskGenieV2\\src\\TaskGenie.Application\\TaskGenie.Application.csproj",
         "projectName": "TaskGenie.Application",
-        "projectPath": "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Application\\TaskGenie.Application.csproj",
-        "packagesPath": "C:\\Users\\anleq\\.nuget\\packages\\",
-        "outputPath": "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Application\\obj\\",
+        "projectPath": "C:\\TaskGenieV2\\src\\TaskGenie.Application\\TaskGenie.Application.csproj",
+        "packagesPath": "C:\\Users\\Admin\\.nuget\\packages\\",
+        "outputPath": "C:\\TaskGenieV2\\src\\TaskGenie.Application\\obj\\",
         "projectStyle": "PackageReference",
-        "fallbackFolders": [
-          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
-        ],
         "configFilePaths": [
-          "C:\\Users\\anleq\\AppData\\Roaming\\NuGet\\NuGet.Config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+          "C:\\Users\\Admin\\AppData\\Roaming\\NuGet\\NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net10.0"
         ],
         "sources": {
-          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
-          "C:\\Program Files\\dotnet\\library-packs": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
@@ -34,8 +27,8 @@
             "framework": "net10.0",
             "targetAlias": "net10.0",
             "projectReferences": {
-              "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Domain\\TaskGenie.Domain.csproj": {
-                "projectPath": "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Domain\\TaskGenie.Domain.csproj"
+              "C:\\TaskGenieV2\\src\\TaskGenie.Domain\\TaskGenie.Domain.csproj": {
+                "projectPath": "C:\\TaskGenieV2\\src\\TaskGenie.Domain\\TaskGenie.Domain.csproj"
               }
             }
           }
@@ -69,6 +62,10 @@
               "target": "Package",
               "version": "[12.4.1, )"
             },
+            "Microsoft.Extensions.DependencyInjection.Abstractions": {
+              "target": "Package",
+              "version": "[10.0.8, )"
+            },
             "Microsoft.Extensions.Logging.Abstractions": {
               "target": "Package",
               "version": "[10.0.8, )"
@@ -90,7 +87,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.301/PortableRuntimeIdentifierGraph.json",
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.302/PortableRuntimeIdentifierGraph.json",
           "packagesToPrune": {
             "Microsoft.CSharp": "(,4.7.32767]",
             "Microsoft.VisualBasic": "(,10.4.32767]",
@@ -368,29 +365,22 @@
         }
       }
     },
-    "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Domain\\TaskGenie.Domain.csproj": {
+    "C:\\TaskGenieV2\\src\\TaskGenie.Domain\\TaskGenie.Domain.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Domain\\TaskGenie.Domain.csproj",
+        "projectUniqueName": "C:\\TaskGenieV2\\src\\TaskGenie.Domain\\TaskGenie.Domain.csproj",
         "projectName": "TaskGenie.Domain",
-        "projectPath": "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Domain\\TaskGenie.Domain.csproj",
-        "packagesPath": "C:\\Users\\anleq\\.nuget\\packages\\",
-        "outputPath": "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Domain\\obj\\",
+        "projectPath": "C:\\TaskGenieV2\\src\\TaskGenie.Domain\\TaskGenie.Domain.csproj",
+        "packagesPath": "C:\\Users\\Admin\\.nuget\\packages\\",
+        "outputPath": "C:\\TaskGenieV2\\src\\TaskGenie.Domain\\obj\\",
         "projectStyle": "PackageReference",
-        "fallbackFolders": [
-          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
-        ],
         "configFilePaths": [
-          "C:\\Users\\anleq\\AppData\\Roaming\\NuGet\\NuGet.Config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+          "C:\\Users\\Admin\\AppData\\Roaming\\NuGet\\NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net10.0"
         ],
         "sources": {
-          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
-          "C:\\Program Files\\dotnet\\library-packs": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
@@ -432,7 +422,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.301/PortableRuntimeIdentifierGraph.json",
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.302/PortableRuntimeIdentifierGraph.json",
           "packagesToPrune": {
             "Microsoft.CSharp": "(,4.7.32767]",
             "Microsoft.VisualBasic": "(,10.4.32767]",
@@ -710,29 +700,22 @@
         }
       }
     },
-    "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Infrastructure\\TaskGenie.Infrastructure.csproj": {
+    "C:\\TaskGenieV2\\src\\TaskGenie.Infrastructure\\TaskGenie.Infrastructure.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Infrastructure\\TaskGenie.Infrastructure.csproj",
+        "projectUniqueName": "C:\\TaskGenieV2\\src\\TaskGenie.Infrastructure\\TaskGenie.Infrastructure.csproj",
         "projectName": "TaskGenie.Infrastructure",
-        "projectPath": "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Infrastructure\\TaskGenie.Infrastructure.csproj",
-        "packagesPath": "C:\\Users\\anleq\\.nuget\\packages\\",
-        "outputPath": "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Infrastructure\\obj\\",
+        "projectPath": "C:\\TaskGenieV2\\src\\TaskGenie.Infrastructure\\TaskGenie.Infrastructure.csproj",
+        "packagesPath": "C:\\Users\\Admin\\.nuget\\packages\\",
+        "outputPath": "C:\\TaskGenieV2\\src\\TaskGenie.Infrastructure\\obj\\",
         "projectStyle": "PackageReference",
-        "fallbackFolders": [
-          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
-        ],
         "configFilePaths": [
-          "C:\\Users\\anleq\\AppData\\Roaming\\NuGet\\NuGet.Config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+          "C:\\Users\\Admin\\AppData\\Roaming\\NuGet\\NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net10.0"
         ],
         "sources": {
-          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
-          "C:\\Program Files\\dotnet\\library-packs": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
@@ -740,11 +723,11 @@
             "framework": "net10.0",
             "targetAlias": "net10.0",
             "projectReferences": {
-              "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Application\\TaskGenie.Application.csproj": {
-                "projectPath": "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Application\\TaskGenie.Application.csproj"
+              "C:\\TaskGenieV2\\src\\TaskGenie.Application\\TaskGenie.Application.csproj": {
+                "projectPath": "C:\\TaskGenieV2\\src\\TaskGenie.Application\\TaskGenie.Application.csproj"
               },
-              "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Domain\\TaskGenie.Domain.csproj": {
-                "projectPath": "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Domain\\TaskGenie.Domain.csproj"
+              "C:\\TaskGenieV2\\src\\TaskGenie.Domain\\TaskGenie.Domain.csproj": {
+                "projectPath": "C:\\TaskGenieV2\\src\\TaskGenie.Domain\\TaskGenie.Domain.csproj"
               }
             }
           }
@@ -770,6 +753,10 @@
               "target": "Package",
               "version": "[4.2.0, )"
             },
+            "ClosedXML": {
+              "target": "Package",
+              "version": "[0.105.0, )"
+            },
             "CloudinaryDotNet": {
               "target": "Package",
               "version": "[1.29.1, )"
@@ -788,6 +775,10 @@
               "target": "Package",
               "version": "[10.0.5, )"
             },
+            "Microsoft.EntityFrameworkCore.InMemory": {
+              "target": "Package",
+              "version": "[10.0.5, )"
+            },
             "Microsoft.EntityFrameworkCore.SqlServer": {
               "target": "Package",
               "version": "[10.0.5, )"
@@ -801,6 +792,14 @@
             "Microsoft.Extensions.Http": {
               "target": "Package",
               "version": "[10.0.0, )"
+            },
+            "QuestPDF": {
+              "target": "Package",
+              "version": "[2026.6.1, )"
+            },
+            "System.IdentityModel.Tokens.Jwt": {
+              "target": "Package",
+              "version": "[8.9.0, )"
             }
           },
           "imports": [
@@ -819,7 +818,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.301/PortableRuntimeIdentifierGraph.json",
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.302/PortableRuntimeIdentifierGraph.json",
           "packagesToPrune": {
             "Microsoft.CSharp": "(,4.7.32767]",
             "Microsoft.VisualBasic": "(,10.4.32767]",

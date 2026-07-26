@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -14,7 +14,10 @@ import NotificationsScreen from '../screens/NotificationsScreen';
 import TeamScreen          from '../screens/TeamScreen';
 import ProfileScreen       from '../screens/ProfileScreen';
 import TaskDetailScreen    from '../screens/TaskDetailScreen';
+import LoginScreen         from '../screens/LoginScreen';
 import AIAssistantFAB      from '../components/AIAssistantFAB';
+import { AuthProvider, useAuth } from '../contexts/AuthContext';
+import { ProjectProvider }       from '../contexts/ProjectContext';
 import { colors }          from '../theme';
 
 const Tab   = createBottomTabNavigator();
@@ -64,18 +67,49 @@ function TabsWithFAB() {
 
 function MainStack() {
   return (
+    <ProjectProvider>
+      <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
+        <Stack.Screen name="Tabs"       component={TabsWithFAB} />
+        <Stack.Screen name="TaskDetail" component={TaskDetailScreen} options={{ animation: 'slide_from_right' }} />
+      </Stack.Navigator>
+    </ProjectProvider>
+  );
+}
+
+function AuthStack() {
+  return (
     <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
-      <Stack.Screen name="Tabs"       component={TabsWithFAB} />
-      <Stack.Screen name="TaskDetail" component={TaskDetailScreen} options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="Login" component={LoginScreen} />
     </Stack.Navigator>
   );
 }
 
+/**
+ * Every API route except login/register requires a JWT, so the whole app sits
+ * behind this gate. Swapping the stack — rather than navigating — means the
+ * authenticated tree unmounts on sign-out and drops its cached data with it.
+ */
+function RootStack() {
+  const { isAuthenticated, isRestoring } = useAuth();
+
+  if (isRestoring) {
+    return (
+      <View style={styles.splash}>
+        <ActivityIndicator color={colors.blue} size="large" />
+      </View>
+    );
+  }
+
+  return isAuthenticated ? <MainStack /> : <AuthStack />;
+}
+
 export default function RootNavigator() {
   return (
-    <NavigationContainer>
-      <MainStack />
-    </NavigationContainer>
+    <AuthProvider>
+      <NavigationContainer>
+        <RootStack />
+      </NavigationContainer>
+    </AuthProvider>
   );
 }
 
@@ -113,4 +147,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.blue,
   },
   tabLabel: { fontSize: 10, fontWeight: '500', marginTop: 2 },
+  splash: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
 });

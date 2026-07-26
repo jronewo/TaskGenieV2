@@ -31,7 +31,7 @@ pointing at the real endpoint it should call. To wire a module for real:
 | `features/skills` | `/api/skills` | ✅ yes |
 | `features/meetings` | `/api/meetings` | ❌ mock |
 | `features/evaluations` | `/api/evaluations` | ✅ yes |
-| `features/rewards` | `/api/user-scores` | ❌ mock |
+| `features/rewards` | `/api/user-scores` | ✅ yes |
 | `features/activitylogs` | `/api/activitylogs` | ❌ mock |
 | `features/projects/api/exportApi.ts` | `/api/projects/{id}/export/{xlsx,pdf}` | ❌ mock (binary file — see note below) |
 | `features/admin` | `/api/admin/platform-stats` | ✅ yes |
@@ -60,9 +60,12 @@ pointing at the real endpoint it should call. To wire a module for real:
   email input for a user search (same pattern as `usersApi.searchByEmail` in `TeamsPage`).
 - **Evaluations "Given by me"**: evaluatee picker reuses the real `useMyTeams()` team-member
   list (already real data) rather than adding a second mock user directory.
-- **Rewards manual adjust**: currently takes a raw numeric User ID typed by hand. Once
-  `/api/user-scores/manual` is wired, consider swapping for the same email-search pattern
-  used elsewhere.
+- **Rewards (now real)**: manual adjust still takes a raw numeric User ID typed by hand —
+  consider swapping for the same email-search pattern used elsewhere. The backend also awards
+  score automatically on task completion (`TaskCompletedScoreHandler`), so history/leaderboard
+  won't be empty even without ever using manual adjust. `amount` is sent as a positive number
+  regardless of REWARD/PENALTY — the backend negates it internally for penalties, so the FE
+  no longer needs to flip the sign itself like the mock did.
 - **AI Insights**: `aiApi.ts` was already present before this pass (types + function
   signatures for risk/assignment/evidence) but had zero pages using it — it's been converted
   to mock and extended with the missing endpoints (`analyze-all`, `summary`, `classify`,

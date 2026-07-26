@@ -54,7 +54,7 @@ export default function RewardsPage() {
           <Award size={12} /> Rewards &amp; Leaderboard
         </div>
         <h2 className="text-lg font-semibold text-slate-900">Reward / penalty points and project leaderboard</h2>
-        <p className="mt-1 text-sm text-slate-500">Dữ liệu demo (mock) — sẽ nối API thật /api/user-scores sau khi merge source.</p>
+        <p className="mt-1 text-sm text-slate-500">Points earned from completed tasks, plus manual leader/admin adjustments.</p>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">

@@ -32,7 +32,7 @@ pointing at the real endpoint it should call. To wire a module for real:
 | `features/meetings` | `/api/meetings` | ❌ mock |
 | `features/evaluations` | `/api/evaluations` | ✅ yes |
 | `features/rewards` | `/api/user-scores` | ✅ yes |
-| `features/activitylogs` | `/api/activitylogs` | ❌ mock |
+| `features/activitylogs` | `/api/activitylogs` | ✅ yes |
 | `features/projects/api/exportApi.ts` | `/api/projects/{id}/export/{xlsx,pdf}` | ❌ mock (binary file — see note below) |
 | `features/admin` | `/api/admin/platform-stats` | ✅ yes |
 | `features/ai/api/aiApi.ts` | `/api/ai-analysis`, `/api/task-assignment`, `/api/tasks/{id}/evidence` | ✅ yes |

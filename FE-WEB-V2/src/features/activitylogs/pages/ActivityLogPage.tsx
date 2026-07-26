@@ -15,7 +15,7 @@ export default function ActivityLogPage() {
             <History size={12} /> Activity Log
           </div>
           <h2 className="text-lg font-semibold text-slate-900">Audit trail across your workspace</h2>
-          <p className="mt-1 text-sm text-slate-500">Dữ liệu demo (mock) — sẽ nối API thật /api/activitylogs sau khi merge source.</p>
+          <p className="mt-1 text-sm text-slate-500">Automatically recorded from task and project events.</p>
         </div>
         <select
           value={projectId}

@@ -23,7 +23,7 @@ export default function AdminDashboardPage() {
           <ShieldAlert size={12} /> Admin
         </div>
         <h2 className="text-lg font-semibold text-slate-900">Platform statistics</h2>
-        <p className="mt-1 text-sm text-slate-500">Dữ liệu demo (mock) — sẽ nối API thật /api/admin/platform-stats sau khi merge source.</p>
+        <p className="mt-1 text-sm text-slate-500">Platform-wide totals across all users, organizations, and projects.</p>
       </div>
 
       {isLoading && (

@@ -34,7 +34,7 @@ pointing at the real endpoint it should call. To wire a module for real:
 | `features/rewards` | `/api/user-scores` | ❌ mock |
 | `features/activitylogs` | `/api/activitylogs` | ❌ mock |
 | `features/projects/api/exportApi.ts` | `/api/projects/{id}/export/{xlsx,pdf}` | ❌ mock (binary file — see note below) |
-| `features/admin` | `/api/admin/platform-stats` | ❌ mock |
+| `features/admin` | `/api/admin/platform-stats` | ✅ yes |
 | `features/ai/api/aiApi.ts` | `/api/ai-analysis`, `/api/task-assignment`, `/api/tasks/{id}/evidence` | ✅ yes |
 | `features/tasks/api/taskCommentsApi.ts` | `/api/taskcomments` | ❌ mock |
 | `features/tasks/api/taskRequiredSkillsApi.ts` | `/api/taskrequiredskills` | ❌ mock |
@@ -67,6 +67,11 @@ pointing at the real endpoint it should call. To wire a module for real:
   signatures for risk/assignment/evidence) but had zero pages using it — it's been converted
   to mock and extended with the missing endpoints (`analyze-all`, `summary`, `classify`,
   workload, executions, assignment history) so `AiInsightsPage` has full coverage.
+- **Admin**: `GET /api/admin/platform-stats` has no role-based authorization on the backend —
+  any authenticated user can call it if they hit the URL directly, not just admins
+  (pre-existing backend gap, not something this pass touched or fixed). The FE sidebar does
+  gate the nav item client-side (`user.role === "Admin" || user.isOrgOwner`), so a normal user
+  won't see the link, but that's not a real security boundary on its own.
 - **AI risk + assignment recommender (now real)**: `analyzeRisk`, `getRiskHistory`,
   `analyzeAllProject`, `getTaskExecutions`, `recommend`, `acceptRecommendation`,
   `rejectRecommendation`, `getAssignmentHistory` call the real backend. Two real-DTO quirks

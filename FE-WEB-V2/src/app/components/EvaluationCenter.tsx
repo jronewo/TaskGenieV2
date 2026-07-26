@@ -1,19 +1,25 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { Users, Briefcase, Sparkles, Star } from "lucide-react";
-import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer } from "recharts";
-import {
-  teamMembers,
-  projects,
-  MemberEvaluation,
-  ProjectEvaluation,
-  memberEvaluations as seedMemberEvaluations,
-  projectEvaluations as seedProjectEvaluations,
-} from "../data/tmaiData";
+import { Users, Briefcase, Sparkles, Star, Loader2, Trash2, Info } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+import { teamsApi } from "../services/teamsApi";
+import { evaluationsApi, EvaluationDto } from "../services/evaluationsApi";
+import { ApiError } from "../services/apiClient";
 
 type EvalTab = "team" | "project";
 
+interface EvaluableMember {
+  userId: number;
+  userName: string;
+  userEmail: string | null;
+}
+
+const PALETTE = ["#6366f1", "#0891b2", "#d97706", "#dc2626", "#059669", "#7c3aed"];
+const avatarColor = (userId: number) => PALETTE[userId % PALETTE.length];
+const initials = (name: string) => name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
+
 const avg = (nums: number[]) => (nums.length > 0 ? nums.reduce((a, b) => a + b, 0) / nums.length : 0);
+const evalAvg = (ev: EvaluationDto) => avg([ev.skillScore, ev.teamworkScore, ev.communicationScore, ev.deadlineScore].filter((n): n is number => n != null));
 
 const scoreColor = (score: number) => (score >= 8 ? "text-emerald-600" : score >= 6 ? "text-amber-600" : "text-red-600");
 const scoreBg = (score: number) => (score >= 8 ? "bg-emerald-50 border-emerald-200" : score >= 6 ? "bg-amber-50 border-amber-200" : "bg-red-50 border-red-200");
@@ -36,72 +42,113 @@ const ScoreSlider = ({ label, value, onChange }: { label: string; value: number;
   </div>
 );
 
+// Module-scoped so the active tab/selection survive a remount of EvaluationCenter within the same SPA session.
+let lastSelectedMemberId: number | null = null;
+let lastTab: EvalTab = "team";
+
 export const EvaluationCenter = () => {
-  const [tab, setTab] = useState<EvalTab>("team");
+  const { user } = useAuth();
+  const [tab, setTabState] = useState<EvalTab>(lastTab);
+  const setTab = (t: EvalTab) => { lastTab = t; setTabState(t); };
 
-  const [memberEvals, setMemberEvals] = useState<MemberEvaluation[]>(seedMemberEvaluations);
-  const [projectEvals, setProjectEvals] = useState<ProjectEvaluation[]>(seedProjectEvaluations);
+  const [members, setMembers] = useState<EvaluableMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(true);
+  const [memberAverages, setMemberAverages] = useState<Record<number, number | null>>({});
+  const [selectedMemberId, setSelectedMemberId] = useState<number | null>(lastSelectedMemberId);
 
-  const [selectedMemberId, setSelectedMemberId] = useState(teamMembers[0]?.id ?? "");
-  const [selectedProjectId, setSelectedProjectId] = useState(projects[0]?.id ?? "");
+  const [history, setHistory] = useState<EvaluationDto[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [form, setForm] = useState({ skill: 5, teamwork: 5, communication: 5, deadline: 5 });
+  const [submitting, setSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  const [memberForm, setMemberForm] = useState({ skill: 5, teamwork: 5, communication: 5, deadline: 5, comment: "" });
-  const [projectForm, setProjectForm] = useState({ quality: 5, timeline: 5, teamEfficiency: 5, comment: "" });
-
-  const selectedMember = teamMembers.find((m) => m.id === selectedMemberId);
-  const selectedProject = projects.find((p) => p.id === selectedProjectId);
-
-  const memberHistory = memberEvals
-    .filter((e) => e.memberId === selectedMemberId)
-    .sort((a, b) => b.date.localeCompare(a.date));
-  const projectHistory = projectEvals
-    .filter((e) => e.projectId === selectedProjectId)
-    .sort((a, b) => b.date.localeCompare(a.date));
-
-  const memberOverallAvg = avg(memberHistory.flatMap((e) => [e.skill, e.teamwork, e.communication, e.deadline]));
-  const projectAspectAverages = {
-    quality: avg(projectHistory.map((e) => e.quality)),
-    timeline: avg(projectHistory.map((e) => e.timeline)),
-    teamEfficiency: avg(projectHistory.map((e) => e.teamEfficiency)),
-  };
-  const projectOverallAvg = avg([projectAspectAverages.quality, projectAspectAverages.timeline, projectAspectAverages.teamEfficiency]);
-
-  const radarData = [
-    { aspect: "Quality", score: Number(projectAspectAverages.quality.toFixed(1)) },
-    { aspect: "Timeline", score: Number(projectAspectAverages.timeline.toFixed(1)) },
-    { aspect: "Team Efficiency", score: Number(projectAspectAverages.teamEfficiency.toFixed(1)) },
-  ];
-  const weakestAspect = radarData.reduce((min, a) => (a.score < min.score ? a : min), radarData[0]);
-
-  const aiInsight =
-    projectHistory.length === 0
-      ? "No evaluations yet for this project — submit one below to see AI insights."
-      : weakestAspect.score < 6.5
-      ? `${weakestAspect.aspect} is the weakest area (avg ${weakestAspect.score.toFixed(1)}/10). Recommend focusing improvement efforts here before the next milestone.`
-      : `All aspects are performing well — lowest is ${weakestAspect.aspect} at ${weakestAspect.score.toFixed(1)}/10. Keep up the current momentum.`;
-
-  const handleSubmitMemberEval = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newEval: MemberEvaluation = {
-      id: `eval-m-${Date.now()}`,
-      memberId: selectedMemberId,
-      date: new Date().toISOString().slice(0, 10),
-      ...memberForm,
-    };
-    setMemberEvals((prev) => [newEval, ...prev]);
-    setMemberForm({ skill: 5, teamwork: 5, communication: 5, deadline: 5, comment: "" });
+  const selectMember = (id: number) => {
+    lastSelectedMemberId = id;
+    setSelectedMemberId(id);
   };
 
-  const handleSubmitProjectEval = (e: React.FormEvent) => {
+  // Load all unique members across the current user's teams as the evaluable pool.
+  useEffect(() => {
+    teamsApi.listMine()
+      .then((teams) => {
+        const map = new Map<number, EvaluableMember>();
+        teams.forEach((team) =>
+          team.members.forEach((m) => {
+            if (!map.has(m.userId)) map.set(m.userId, { userId: m.userId, userName: m.userName ?? `User #${m.userId}`, userEmail: m.userEmail });
+          })
+        );
+        const list = Array.from(map.values());
+        setMembers(list);
+        if (list.length) setSelectedMemberId((prev) => prev ?? lastSelectedMemberId ?? list[0].userId);
+      })
+      .catch(() => setMembers([]))
+      .finally(() => setMembersLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (members.length === 0) return;
+    Promise.all(members.map((m) => evaluationsApi.listForUser(m.userId).then((evals) => [m.userId, evals] as const)))
+      .then((results) => {
+        const next: Record<number, number | null> = {};
+        results.forEach(([id, evals]) => { next[id] = evals.length ? avg(evals.map(evalAvg)) : null; });
+        setMemberAverages(next);
+      })
+      .catch(() => {});
+  }, [members]);
+
+  useEffect(() => {
+    if (selectedMemberId === null) return;
+    setHistoryLoading(true);
+    evaluationsApi.listForUser(selectedMemberId)
+      .then((list) => setHistory(list.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt))))
+      .catch(() => setHistory([]))
+      .finally(() => setHistoryLoading(false));
+  }, [selectedMemberId]);
+
+  const selectedMember = members.find((m) => m.userId === selectedMemberId) ?? null;
+  const historyAvg = avg(history.map(evalAvg));
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newEval: ProjectEvaluation = {
-      id: `eval-p-${Date.now()}`,
-      projectId: selectedProjectId,
-      date: new Date().toISOString().slice(0, 10),
-      ...projectForm,
-    };
-    setProjectEvals((prev) => [newEval, ...prev]);
-    setProjectForm({ quality: 5, timeline: 5, teamEfficiency: 5, comment: "" });
+    if (!user || selectedMemberId === null) return;
+
+    setSubmitting(true);
+    setFeedback(null);
+    try {
+      await evaluationsApi.create({
+        userId: selectedMemberId,
+        leaderId: user.userId,
+        skillScore: form.skill,
+        teamworkScore: form.teamwork,
+        communicationScore: form.communication,
+        deadlineScore: form.deadline,
+      });
+      const refreshed = await evaluationsApi.listForUser(selectedMemberId);
+      const sorted = refreshed.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      setHistory(sorted);
+      setMemberAverages((prev) => ({ ...prev, [selectedMemberId]: avg(sorted.map(evalAvg)) }));
+      setForm({ skill: 5, teamwork: 5, communication: 5, deadline: 5 });
+      setFeedback({ type: "success", message: "Evaluation submitted." });
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof ApiError ? error.message : "Failed to submit evaluation." });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (evaluationId: number) => {
+    try {
+      await evaluationsApi.remove(evaluationId);
+      setHistory((prev) => {
+        const next = prev.filter((e) => e.evaluationId !== evaluationId);
+        if (selectedMemberId !== null) {
+          setMemberAverages((avgs) => ({ ...avgs, [selectedMemberId]: next.length ? avg(next.map(evalAvg)) : null }));
+        }
+        return next;
+      });
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof ApiError ? error.message : "Failed to delete evaluation." });
+    }
   };
 
   return (
@@ -112,7 +159,7 @@ export const EvaluationCenter = () => {
             <Star size={12} /> Evaluation Management
           </div>
           <h2 className="text-lg font-semibold text-slate-900">Evaluate team members and projects</h2>
-          <p className="mt-1 text-sm text-slate-500">Score against key criteria, track history, and review AI-summarized insights.</p>
+          <p className="mt-1 text-sm text-slate-500">Score against key criteria and track history over time.</p>
         </div>
         <div className="flex items-center gap-0.5 bg-white border border-slate-200 rounded-lg p-0.5 shrink-0">
           {[
@@ -122,9 +169,7 @@ export const EvaluationCenter = () => {
             <button
               key={id}
               onClick={() => setTab(id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                tab === id ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50"
-              }`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === id ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50"}`}
             >
               <Icon size={13} /> {label}
             </button>
@@ -132,233 +177,130 @@ export const EvaluationCenter = () => {
         </div>
       </div>
 
-      {tab === "team" && (
-        <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
-          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-            <h3 className="mb-3 text-sm font-semibold text-slate-900">Team Members</h3>
-            <div className="space-y-2">
-              {teamMembers.map((member) => {
-                const rounds = memberEvals.filter((e) => e.memberId === member.id);
-                const memberAvg = avg(rounds.flatMap((e) => [e.skill, e.teamwork, e.communication, e.deadline]));
-                return (
-                  <button
-                    key={member.id}
-                    onClick={() => setSelectedMemberId(member.id)}
-                    className={`w-full rounded-xl border p-3 text-left transition ${
-                      selectedMemberId === member.id ? "border-slate-500 bg-slate-50" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <img src={member.avatar} alt={member.name} className="h-8 w-8 rounded-full object-cover" />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold text-slate-900 truncate">{member.name}</div>
-                        <div className="text-xs text-slate-500 truncate">{member.role}</div>
-                      </div>
-                      {rounds.length > 0 && (
-                        <span className={`text-xs font-bold shrink-0 ${scoreColor(memberAvg)}`}>{memberAvg.toFixed(1)}</span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {selectedMember && (
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="mb-3 flex items-center gap-2">
-                  <Sparkles size={13} className="text-purple-500" />
-                  <h3 className="text-sm font-semibold text-slate-900">New Evaluation — {selectedMember.name}</h3>
-                </div>
-                <form onSubmit={handleSubmitMemberEval} className="space-y-3">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <ScoreSlider label="Skill" value={memberForm.skill} onChange={(v) => setMemberForm((p) => ({ ...p, skill: v }))} />
-                    <ScoreSlider label="Teamwork" value={memberForm.teamwork} onChange={(v) => setMemberForm((p) => ({ ...p, teamwork: v }))} />
-                    <ScoreSlider label="Communication" value={memberForm.communication} onChange={(v) => setMemberForm((p) => ({ ...p, communication: v }))} />
-                    <ScoreSlider label="Deadline Adherence" value={memberForm.deadline} onChange={(v) => setMemberForm((p) => ({ ...p, deadline: v }))} />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-600">Comment</label>
-                    <textarea
-                      value={memberForm.comment}
-                      onChange={(e) => setMemberForm((p) => ({ ...p, comment: e.target.value }))}
-                      rows={2}
-                      placeholder="Notes for this evaluation round..."
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500"
-                    />
-                  </div>
-                  <div className="flex justify-end">
-                    <button type="submit" className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700">
-                      Submit Evaluation
-                    </button>
-                  </div>
-                </form>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-slate-900">Evaluation History</h3>
-                  {memberHistory.length > 0 && (
-                    <div className={`rounded-full border px-2.5 py-1 text-xs font-bold ${scoreBg(memberOverallAvg)} ${scoreColor(memberOverallAvg)}`}>
-                      Average: {memberOverallAvg.toFixed(1)}/10
-                    </div>
-                  )}
-                </div>
-                {memberHistory.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">No evaluations yet.</div>
-                ) : (
-                  <div className="space-y-2">
-                    {memberHistory.map((ev) => {
-                      const roundAvg = avg([ev.skill, ev.teamwork, ev.communication, ev.deadline]);
-                      return (
-                        <motion.div
-                          key={ev.id}
-                          initial={{ opacity: 0, y: 6 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="rounded-xl border border-slate-200 p-3"
-                        >
-                          <div className="flex items-center justify-between gap-2 mb-1.5">
-                            <span className="text-xs font-semibold text-slate-700">{ev.date}</span>
-                            <span className={`text-xs font-bold ${scoreColor(roundAvg)}`}>{roundAvg.toFixed(1)}/10</span>
-                          </div>
-                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500 mb-1.5">
-                            <span>Skill {ev.skill}</span>
-                            <span>Teamwork {ev.teamwork}</span>
-                            <span>Communication {ev.communication}</span>
-                            <span>Deadline {ev.deadline}</span>
-                          </div>
-                          {ev.comment && <p className="text-xs text-slate-600 leading-relaxed">{ev.comment}</p>}
-                        </motion.div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+      {feedback && (
+        <div className={`mb-4 rounded-lg border px-3 py-2 text-sm ${feedback.type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700"}`}>
+          {feedback.message}
         </div>
       )}
 
-      {tab === "project" && (
-        <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
-          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-            <h3 className="mb-3 text-sm font-semibold text-slate-900">Projects</h3>
-            <div className="space-y-2">
-              {projects.map((project) => {
-                const rounds = projectEvals.filter((e) => e.projectId === project.id);
-                const projAvg = avg(rounds.flatMap((e) => [e.quality, e.timeline, e.teamEfficiency]));
-                return (
-                  <button
-                    key={project.id}
-                    onClick={() => setSelectedProjectId(project.id)}
-                    className={`w-full rounded-xl border p-3 text-left transition ${
-                      selectedProjectId === project.id ? "border-slate-500 bg-slate-50" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-lg shrink-0">{project.icon}</span>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold text-slate-900 truncate">{project.name}</div>
-                        <div className="text-xs text-slate-500">{rounds.length} evaluation{rounds.length !== 1 ? "s" : ""}</div>
-                      </div>
-                      {rounds.length > 0 && (
-                        <span className={`text-xs font-bold shrink-0 ${scoreColor(projAvg)}`}>{projAvg.toFixed(1)}</span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+      {tab === "team" && (
+        membersLoading ? (
+          <div className="flex items-center justify-center py-16"><Loader2 size={22} className="animate-spin text-slate-400" /></div>
+        ) : members.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+            No team members to evaluate yet — join or create a team first.
           </div>
-
-          {selectedProject && (
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="mb-3 flex items-center gap-2">
-                  <Sparkles size={13} className="text-purple-500" />
-                  <h3 className="text-sm font-semibold text-slate-900">New Evaluation — {selectedProject.name}</h3>
-                </div>
-                <form onSubmit={handleSubmitProjectEval} className="space-y-3">
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <ScoreSlider label="Quality" value={projectForm.quality} onChange={(v) => setProjectForm((p) => ({ ...p, quality: v }))} />
-                    <ScoreSlider label="Timeline" value={projectForm.timeline} onChange={(v) => setProjectForm((p) => ({ ...p, timeline: v }))} />
-                    <ScoreSlider label="Team Efficiency" value={projectForm.teamEfficiency} onChange={(v) => setProjectForm((p) => ({ ...p, teamEfficiency: v }))} />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-600">Comment</label>
-                    <textarea
-                      value={projectForm.comment}
-                      onChange={(e) => setProjectForm((p) => ({ ...p, comment: e.target.value }))}
-                      rows={2}
-                      placeholder="Notes for this evaluation round..."
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500"
-                    />
-                  </div>
-                  <div className="flex justify-end">
-                    <button type="submit" className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700">
-                      Submit Evaluation
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <h3 className="mb-3 text-sm font-semibold text-slate-900">Team Members</h3>
+              <div className="space-y-2">
+                {members.map((member) => {
+                  const memberAvg = memberAverages[member.userId];
+                  return (
+                    <button
+                      key={member.userId}
+                      onClick={() => selectMember(member.userId)}
+                      className={`w-full rounded-xl border p-3 text-left transition ${selectedMemberId === member.userId ? "border-slate-500 bg-slate-50" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"}`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="h-8 w-8 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0" style={{ backgroundColor: avatarColor(member.userId) }}>
+                          {initials(member.userName)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-semibold text-slate-900 truncate">{member.userName}</div>
+                          <div className="text-xs text-slate-500 truncate">{member.userEmail}</div>
+                        </div>
+                        {memberAvg != null && (
+                          <span className={`text-xs font-bold shrink-0 ${scoreColor(memberAvg)}`}>{memberAvg.toFixed(1)}</span>
+                        )}
+                      </div>
                     </button>
-                  </div>
-                </form>
+                  );
+                })}
               </div>
+            </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-slate-900">Evaluation Summary</h3>
-                  {projectHistory.length > 0 && (
-                    <div className={`rounded-full border px-2.5 py-1 text-xs font-bold ${scoreBg(projectOverallAvg)} ${scoreColor(projectOverallAvg)}`}>
-                      Overall: {projectOverallAvg.toFixed(1)}/10
+            {selectedMember && (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="mb-3 flex items-center gap-2">
+                    <Sparkles size={13} className="text-purple-500" />
+                    <h3 className="text-sm font-semibold text-slate-900">New Evaluation — {selectedMember.userName}</h3>
+                  </div>
+                  <form onSubmit={handleSubmit} className="space-y-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <ScoreSlider label="Skill" value={form.skill} onChange={(v) => setForm((p) => ({ ...p, skill: v }))} />
+                      <ScoreSlider label="Teamwork" value={form.teamwork} onChange={(v) => setForm((p) => ({ ...p, teamwork: v }))} />
+                      <ScoreSlider label="Communication" value={form.communication} onChange={(v) => setForm((p) => ({ ...p, communication: v }))} />
+                      <ScoreSlider label="Deadline Adherence" value={form.deadline} onChange={(v) => setForm((p) => ({ ...p, deadline: v }))} />
+                    </div>
+                    <div className="flex justify-end">
+                      <button type="submit" disabled={submitting} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-60">
+                        {submitting ? "Submitting…" : "Submit Evaluation"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-slate-900">Evaluation History</h3>
+                    {history.length > 0 && (
+                      <div className={`rounded-full border px-2.5 py-1 text-xs font-bold ${scoreBg(historyAvg)} ${scoreColor(historyAvg)}`}>
+                        Average: {historyAvg.toFixed(1)}/10
+                      </div>
+                    )}
+                  </div>
+                  {historyLoading ? (
+                    <div className="flex justify-center py-6"><Loader2 size={18} className="animate-spin text-slate-400" /></div>
+                  ) : history.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">No evaluations yet.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {history.map((ev) => {
+                        const roundAvg = evalAvg(ev);
+                        return (
+                          <motion.div key={ev.evaluationId} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="rounded-xl border border-slate-200 p-3">
+                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                              <span className="text-xs font-semibold text-slate-700">
+                                {new Date(ev.createdAt).toLocaleDateString()} · by {ev.leaderName ?? `User #${ev.leaderId}`}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className={`text-xs font-bold ${scoreColor(roundAvg)}`}>{roundAvg.toFixed(1)}/10</span>
+                                <button onClick={() => handleDelete(ev.evaluationId)} className="rounded p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-600">
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                              <span>Skill {ev.skillScore ?? "—"}</span>
+                              <span>Teamwork {ev.teamworkScore ?? "—"}</span>
+                              <span>Communication {ev.communicationScore ?? "—"}</span>
+                              <span>Deadline {ev.deadlineScore ?? "—"}</span>
+                            </div>
+                          </motion.div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="h-52">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <RadarChart data={radarData} outerRadius="75%">
-                        <PolarGrid stroke="#E2E8F0" />
-                        <PolarAngleAxis dataKey="aspect" tick={{ fontSize: 11, fill: "#475569" }} />
-                        <PolarRadiusAxis domain={[0, 10]} tick={{ fontSize: 9, fill: "#94A3B8" }} tickCount={6} />
-                        <Radar dataKey="score" stroke="#1A237E" fill="#1A237E" fillOpacity={0.25} />
-                      </RadarChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div className="flex flex-col justify-center gap-3">
-                    <div className="rounded-xl border border-purple-100 bg-purple-50/50 p-3">
-                      <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-purple-700">
-                        <Sparkles size={12} /> AI Insights
-                      </div>
-                      <p className="text-xs text-purple-800 leading-relaxed">{aiInsight}</p>
-                    </div>
-                    {radarData.map((a) => (
-                      <div key={a.aspect} className="flex items-center justify-between text-xs">
-                        <span className="text-slate-500">{a.aspect}</span>
-                        <span className={`font-bold ${scoreColor(a.score)}`}>{a.score.toFixed(1)}/10</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {projectHistory.length > 0 && (
-                  <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">
-                    {projectHistory.map((ev) => {
-                      const roundAvg = avg([ev.quality, ev.timeline, ev.teamEfficiency]);
-                      return (
-                        <div key={ev.id} className="rounded-lg border border-slate-200 p-2.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[11px] font-semibold text-slate-700">{ev.date}</span>
-                            <span className={`text-[11px] font-bold ${scoreColor(roundAvg)}`}>{roundAvg.toFixed(1)}/10</span>
-                          </div>
-                          {ev.comment && <p className="text-[11px] text-slate-500 mt-1">{ev.comment}</p>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
-            </div>
-          )}
+            )}
+          </div>
+        )
+      )}
+
+      {tab === "project" && (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
+          <Info size={22} className="mx-auto mb-3 text-slate-400" />
+          <h3 className="text-sm font-semibold text-slate-800 mb-1.5">Project Evaluations aren't available yet</h3>
+          <p className="mx-auto max-w-md text-sm text-slate-500">
+            The backend only supports evaluating projects that belong to an Organization
+            (<code className="text-xs">POST /api/Organizations/&#123;orgId&#125;/projects/&#123;projectId&#125;/evaluate</code>),
+            and there's currently no way to create an Organization or link a project to one through the API.
+            This tab will be wired up once that capability exists.
+          </p>
         </div>
       )}
     </div>

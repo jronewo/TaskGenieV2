@@ -8,6 +8,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Plus, MoreVertical, Clock, AlertTriangle } from 'lucide-react-native';
 import { colors, AVATAR_GRADIENTS } from '../theme';
 
+import { fetchTasksByProject } from '../services/taskService';
+
 const PRIORITY_CONFIG = {
   High:   { stripe: colors.red,    badgeBg: 'rgba(239,68,68,0.12)',   badgeColor: colors.red },
   Medium: { stripe: colors.yellow, badgeBg: 'rgba(245,158,11,0.12)',  badgeColor: colors.yellow },
@@ -15,13 +17,13 @@ const PRIORITY_CONFIG = {
 } as const;
 
 const columns = [
-  { id: 'todo',       title: 'To Do',       count: 2 },
-  { id: 'inprogress', title: 'In Progress',  count: 2 },
-  { id: 'review',     title: 'Review',       count: 1 },
-  { id: 'done',       title: 'Done',         count: 1 },
+  { id: 'todo',       title: 'To Do' },
+  { id: 'inprogress', title: 'In Progress' },
+  { id: 'review',     title: 'Review' },
+  { id: 'done',       title: 'Done' },
 ];
 
-const tasks = {
+const initialMockTasks = {
   todo: [
     { id: '3', title: 'Database Query Optimization', priority: 'High' as const, assignee: { name: 'Alex Rivera', avatar: 'AR' }, risk: 60, tags: ['Backend', 'Performance'], dueDate: '2026-05-30' },
     { id: '4', title: 'Mobile App Testing Suite',    priority: 'Medium' as const, assignee: { name: 'Emma Davis', avatar: 'ED' }, risk: 25, tags: ['QA', 'Mobile'], dueDate: '2026-06-02' },
@@ -50,10 +52,13 @@ function FadeSlide({ children, delay }: { children: React.ReactNode; delay: numb
   return <Animated.View style={{ opacity, transform: [{ translateY }] }}>{children}</Animated.View>;
 }
 
-export default function KanbanBoardScreen() {
+export default function KanbanBoardScreen({ route }: any) {
   const navigation = useNavigation<any>();
   const [activeColumn, setActiveColumn] = useState(0);
-  const swipeX = useRef(new Animated.Value(0)).current;
+  const [tasksState, setTasksState] = useState(initialMockTasks);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const projectId = route?.params?.projectId ?? 1;
 
   const panResponder = PanResponder.create({
     onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > Math.abs(g.dy) && Math.abs(g.dx) > 10,
@@ -63,7 +68,57 @@ export default function KanbanBoardScreen() {
     },
   });
 
-  const currentTasks = tasks[columns[activeColumn].id as keyof typeof tasks];
+  useEffect(() => {
+    let isMounted = true;
+    setIsLoading(true);
+
+    fetchTasksByProject(projectId)
+      .then(apiTasks => {
+        if (!isMounted || !apiTasks) return;
+
+        const grouped = {
+          todo: [] as any[],
+          inprogress: [] as any[],
+          review: [] as any[],
+          done: [] as any[],
+        };
+
+        apiTasks.forEach(t => {
+          const statusLower = (t.status || 'todo').toLowerCase().replace(/\s+/g, '');
+          const mappedTask = {
+            id: String(t.taskId),
+            title: t.title || 'Untitled Task',
+            priority: (t.priority === 'High' || t.priority === 'Low' ? t.priority : 'Medium') as 'High' | 'Medium' | 'Low',
+            assignee: {
+              name: t.assignees?.[0]?.userName || 'Assignee',
+              avatar: (t.assignees?.[0]?.userName || 'US').substring(0, 2).toUpperCase(),
+            },
+            risk: t.riskLevel === 'HIGH' ? 85 : t.riskLevel === 'MEDIUM' ? 45 : 15,
+            tags: [`Project #${t.projectId || projectId}`],
+            dueDate: t.deadline || '2026-06-01',
+          };
+
+          if (statusLower.includes('progress')) grouped.inprogress.push(mappedTask);
+          else if (statusLower.includes('review')) grouped.review.push(mappedTask);
+          else if (statusLower.includes('done')) grouped.done.push(mappedTask);
+          else grouped.todo.push(mappedTask);
+        });
+
+        if (apiTasks.length > 0) {
+          setTasksState(grouped);
+        }
+      })
+      .catch(err => {
+        console.warn('API fetch error, falling back to mock tasks:', err);
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
+      });
+
+    return () => { isMounted = false; };
+  }, [projectId]);
+
+  const currentTasks = tasksState[columns[activeColumn].id as keyof typeof tasksState] || [];
 
   return (
     <View style={s.container}>
@@ -77,6 +132,7 @@ export default function KanbanBoardScreen() {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.pillScroll} contentContainerStyle={s.pillContent}>
         {columns.map((col, i) => {
           const isActive = i === activeColumn;
+          const count = (tasksState[col.id as keyof typeof tasksState] || []).length;
           return (
             <TouchableOpacity
               key={col.id}
@@ -85,7 +141,7 @@ export default function KanbanBoardScreen() {
             >
               <Text style={[s.pillText, { color: isActive ? '#fff' : colors.muted }]}>{col.title}</Text>
               <View style={[s.pillCount, { backgroundColor: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.06)' }]}>
-                <Text style={[s.pillCountText, { color: isActive ? '#fff' : colors.muted }]}>{col.count}</Text>
+                <Text style={[s.pillCountText, { color: isActive ? '#fff' : colors.muted }]}>{count}</Text>
               </View>
             </TouchableOpacity>
           );

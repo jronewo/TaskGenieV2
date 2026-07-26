@@ -126,7 +126,7 @@ export default function DashboardScreen() {
       {/* Recent Tasks */}
       <View style={s.row}>
         <Text style={s.sectionTitle}>Recent Tasks</Text>
-        <TouchableOpacity style={s.row} onPress={() => navigation.navigate('Board')}>
+        <TouchableOpacity style={s.row} onPress={() => navigation.navigate('Board', { projectId: 1 })}>
           <Text style={[s.mutedXs, { color: colors.blue }]}>View all </Text>
           <ChevronRight size={14} color={colors.blue} />
         </TouchableOpacity>

@@ -106,7 +106,7 @@ export default function AiInsightsPage() {
           <Sparkles size={12} /> AI Insights
         </div>
         <h2 className="text-lg font-semibold text-slate-900">Risk analysis, assignment recommender &amp; workload balance</h2>
-        <p className="mt-1 text-sm text-slate-500">Risk analysis and assignment recommender are live. Workload balance is still demo data.</p>
+        <p className="mt-1 text-sm text-slate-500">Risk analysis, assignment recommender, and workload balance are all live.</p>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -338,7 +338,7 @@ export default function AiInsightsPage() {
             {(workload?.suggestions ?? []).map((s) => (
               <div key={s.userId} className="rounded-xl border border-slate-200 p-3">
                 <div className="mb-1 text-sm font-semibold text-slate-900">{s.userName}</div>
-                <p className="mb-2 text-xs text-slate-500">{s.reason}</p>
+                <p className="mb-2 whitespace-pre-line text-xs text-slate-500">{s.reason}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {s.suggestedTasks.map((t) => (
                     <span key={t} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-700">
@@ -348,6 +348,9 @@ export default function AiInsightsPage() {
                 </div>
               </div>
             ))}
+            {!loadingWorkload && projectId !== "" && (workload?.suggestions ?? []).length === 0 && (
+              <p className="text-sm text-slate-500">No workload suggestions — project needs a team and active tasks.</p>
+            )}
           </div>
         </div>
       )}

@@ -35,7 +35,7 @@ pointing at the real endpoint it should call. To wire a module for real:
 | `features/activitylogs` | `/api/activitylogs` | ❌ mock |
 | `features/projects/api/exportApi.ts` | `/api/projects/{id}/export/{xlsx,pdf}` | ❌ mock (binary file — see note below) |
 | `features/admin` | `/api/admin/platform-stats` | ❌ mock |
-| `features/ai/api/aiApi.ts` | `/api/ai-analysis`, `/api/task-assignment`, `/api/tasks/{id}/evidence` | 🟡 partial — risk analysis + assignment recommender real, summarize/classify/task-analyses/workload/evidence still mock |
+| `features/ai/api/aiApi.ts` | `/api/ai-analysis`, `/api/task-assignment`, `/api/tasks/{id}/evidence` | ✅ yes |
 | `features/tasks/api/taskCommentsApi.ts` | `/api/taskcomments` | ❌ mock |
 | `features/tasks/api/taskRequiredSkillsApi.ts` | `/api/taskrequiredskills` | ❌ mock |
 | `features/tasks/api/taskProgressApi.ts` | `/api/task-progress/{taskId}/logs` | ❌ mock (the PUT that updates % is already real — see note) |
@@ -76,4 +76,13 @@ pointing at the real endpoint it should call. To wire a module for real:
   recommendation run for that task, so a stale `recommend` result will get rejected. (2) Risk
   level thresholds and factor codes (`DEADLINE`/`PROGRESS`/`DEPENDENCY`/`WORKLOAD`/`HISTORICAL`)
   come straight from the backend now — don't recompute them client-side.
-  `summarizeTask`/`classifyTask`/`getTaskAnalyses`/`getProjectWorkload`/evidence remain mock.
+- **Summarize/classify/workload/evidence (now real too)**: `summarizeTask`/`classifyTask`
+  only return `{ message }`, not the created analysis — call `getTaskAnalyses` separately to
+  see the result (neither is wired into any page yet, same as before this pass).
+  `getProjectWorkload`'s real handler always returns a single synthetic
+  `{ userId: 0, userName: "AI Workload Analysis" }` item with the raw LLM text in `reason`
+  and an empty `suggestedTasks` — it's not a real per-user breakdown despite the DTO shape;
+  the UI renders `reason` as free text and just won't show any task chips. Evidence's real
+  `EvidenceDto` has more fields than the old mock shape (`taskId`, `taskLogId`, `attachment`,
+  `submittedBy`) — added to the FE type; `addUrlEvidence` now sends `evidenceType: "URL"`
+  explicitly since the backend requires it.

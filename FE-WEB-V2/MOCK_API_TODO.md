@@ -33,7 +33,7 @@ pointing at the real endpoint it should call. To wire a module for real:
 | `features/evaluations` | `/api/evaluations` | ✅ yes |
 | `features/rewards` | `/api/user-scores` | ✅ yes |
 | `features/activitylogs` | `/api/activitylogs` | ✅ yes |
-| `features/projects/api/exportApi.ts` | `/api/projects/{id}/export/{xlsx,pdf}` | ❌ mock (binary file — see note below) |
+| `features/projects/api/exportApi.ts` | `/api/projects/{id}/export/{xlsx,pdf}` | ✅ yes |
 | `features/admin` | `/api/admin/platform-stats` | ✅ yes |
 | `features/ai/api/aiApi.ts` | `/api/ai-analysis`, `/api/task-assignment`, `/api/tasks/{id}/evidence` | ✅ yes |
 | `features/tasks/api/taskCommentsApi.ts` | `/api/taskcomments` | ❌ mock |
@@ -42,10 +42,14 @@ pointing at the real endpoint it should call. To wire a module for real:
 
 ## Notes / gotchas for whoever wires these next
 
-- **Export**: the real endpoints return a binary file stream (`FileContentResult`), not
-  JSON. `exportApi.ts` currently fakes a text-file download so the buttons are clickable
-  in the demo. Real wiring should `fetch` the endpoint with the auth header and trigger a
-  `Blob` download from the response body instead of calling `apiClient.get<T>()`.
+- **Export (now real)**: the real endpoints return a binary file stream (`FileContentResult`),
+  not JSON, so `core/api/client.ts` gained a new `apiClient.getBlob(path)` method (separate
+  from `get/post/put/delete`, which always assume JSON) — it skips the JSON parsing/204
+  handling, reads the response as a `Blob`, and pulls the filename out of the
+  `Content-Disposition` header if present. `exportApi.ts` uses it and falls back to
+  `${projectName}.xlsx`/`.pdf` if the header is missing. Note the route is
+  `/api/projects/{id}/export/...` (lowercase `projects`, hardcoded in `[Route(...)]` on
+  `ExportController` rather than using the `[controller]` token like most other controllers).
 - **Task progress**: there are *two* separate BE progress mechanisms. `tasksApi.updateProgress`
   (`PUT /api/tasks/{id}/progress`) is already real and wired to the progress slider in
   `TaskDetailModal`. The dedicated `TaskProgressController` (`PUT/GET /api/task-progress/{taskId}` +

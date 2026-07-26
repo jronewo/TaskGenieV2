@@ -59,9 +59,38 @@ function toBody(body: unknown): BodyInit | undefined {
   return JSON.stringify(body);
 }
 
+function filenameFromContentDisposition(value: string | null): string | null {
+  if (!value) return null;
+  const match = value.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+async function requestBlob(path: string): Promise<{ blob: Blob; filename: string | null }> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  });
+
+  if (response.status === 401) {
+    unauthorizedHandler?.();
+    throw new ApiError("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.", 401);
+  }
+
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type") ?? "";
+    const payload = contentType.includes("application/json") ? await response.json().catch(() => null) : null;
+    const message =
+      (payload && (payload.message ?? payload.error ?? payload.title)) ??
+      `Yêu cầu thất bại (${response.status}).`;
+    throw new ApiError(message, response.status);
+  }
+
+  return { blob: await response.blob(), filename: filenameFromContentDisposition(response.headers.get("content-disposition")) };
+}
+
 export const apiClient = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: "POST", body: toBody(body) }),
   put: <T>(path: string, body?: unknown) => request<T>(path, { method: "PUT", body: toBody(body) }),
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
+  getBlob: (path: string) => requestBlob(path),
 };

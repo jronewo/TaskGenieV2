@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { toast } from "sonner";
 import { Download, FileSpreadsheet, FileText } from "lucide-react";
+import { ApiError } from "../../../core/api/client";
 import { exportApi } from "../api/exportApi";
 
 interface ExportButtonsProps {
@@ -16,7 +17,9 @@ export function ExportButtons({ projectId, projectName }: ExportButtonsProps) {
     try {
       if (kind === "xlsx") await exportApi.downloadXlsx(projectId, projectName);
       else await exportApi.downloadPdf(projectId, projectName);
-      toast.success(`Exported ${kind.toUpperCase()} (mock file).`);
+      toast.success(`Exported ${kind.toUpperCase()}.`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : `Xuất ${kind.toUpperCase()} thất bại.`);
     } finally {
       setPending(null);
     }

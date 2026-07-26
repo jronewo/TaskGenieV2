@@ -106,7 +106,7 @@ export default function AiInsightsPage() {
           <Sparkles size={12} /> AI Insights
         </div>
         <h2 className="text-lg font-semibold text-slate-900">Risk analysis, assignment recommender &amp; workload balance</h2>
-        <p className="mt-1 text-sm text-slate-500">Dữ liệu demo (mock) — sẽ nối API thật /api/ai-analysis &amp; /api/task-assignment sau khi merge source.</p>
+        <p className="mt-1 text-sm text-slate-500">Risk analysis and assignment recommender are live. Workload balance is still demo data.</p>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -288,7 +288,7 @@ export default function AiInsightsPage() {
                         </button>
                       </div>
                     </div>
-                    <p className="mb-2 text-xs text-slate-500">{s.reason}</p>
+                    <p className="mb-2 whitespace-pre-line text-xs text-slate-500">{s.reason}</p>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
                       <ScoreBar label="Skill match (40%)" value={s.skillMatchScore} />
                       <ScoreBar label="Semantic similarity (25%)" value={s.semanticSimilarityScore} />

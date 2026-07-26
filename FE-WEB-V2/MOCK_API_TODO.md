@@ -30,12 +30,12 @@ pointing at the real endpoint it should call. To wire a module for real:
 | `features/invitations` | `/api/invitations` | ❌ mock |
 | `features/skills` | `/api/skills` | ❌ mock |
 | `features/meetings` | `/api/meetings` | ❌ mock |
-| `features/evaluations` | `/api/evaluations` | ❌ mock |
+| `features/evaluations` | `/api/evaluations` | ✅ yes |
 | `features/rewards` | `/api/user-scores` | ❌ mock |
 | `features/activitylogs` | `/api/activitylogs` | ❌ mock |
 | `features/projects/api/exportApi.ts` | `/api/projects/{id}/export/{xlsx,pdf}` | ❌ mock (binary file — see note below) |
 | `features/admin` | `/api/admin/platform-stats` | ❌ mock |
-| `features/ai/api/aiApi.ts` | `/api/ai-analysis`, `/api/task-assignment`, `/api/tasks/{id}/evidence` | ❌ mock (was already unused/unwired before this pass) |
+| `features/ai/api/aiApi.ts` | `/api/ai-analysis`, `/api/task-assignment`, `/api/tasks/{id}/evidence` | 🟡 partial — risk analysis + assignment recommender real, summarize/classify/task-analyses/workload/evidence still mock |
 | `features/tasks/api/taskCommentsApi.ts` | `/api/taskcomments` | ❌ mock |
 | `features/tasks/api/taskRequiredSkillsApi.ts` | `/api/taskrequiredskills` | ❌ mock |
 | `features/tasks/api/taskProgressApi.ts` | `/api/task-progress/{taskId}/logs` | ❌ mock (the PUT that updates % is already real — see note) |
@@ -68,3 +68,13 @@ pointing at the real endpoint it should call. To wire a module for real:
   signatures for risk/assignment/evidence) but had zero pages using it — it's been converted
   to mock and extended with the missing endpoints (`analyze-all`, `summary`, `classify`,
   workload, executions, assignment history) so `AiInsightsPage` has full coverage.
+- **AI risk + assignment recommender (now real)**: `analyzeRisk`, `getRiskHistory`,
+  `analyzeAllProject`, `getTaskExecutions`, `recommend`, `acceptRecommendation`,
+  `rejectRecommendation`, `getAssignmentHistory` call the real backend. Two real-DTO quirks
+  worth knowing: (1) `accept`/`reject` send `{ taskId, userId }`, not `candidateId` — the FE
+  function param is still named `candidateId` for hook-signature stability, just mapped to
+  `userId` in the request body; the backend also requires `userId` to be part of the *latest*
+  recommendation run for that task, so a stale `recommend` result will get rejected. (2) Risk
+  level thresholds and factor codes (`DEADLINE`/`PROGRESS`/`DEPENDENCY`/`WORKLOAD`/`HISTORICAL`)
+  come straight from the backend now — don't recompute them client-side.
+  `summarizeTask`/`classifyTask`/`getTaskAnalyses`/`getProjectWorkload`/evidence remain mock.

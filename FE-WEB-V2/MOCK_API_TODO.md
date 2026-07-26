@@ -28,7 +28,7 @@ pointing at the real endpoint it should call. To wire a module for real:
 | `features/notifications` | `/api/notifications` | ✅ yes |
 | `features/organizations` | `/api/organizations` | ❌ mock |
 | `features/invitations` | `/api/invitations` | ❌ mock |
-| `features/skills` | `/api/skills` | ❌ mock |
+| `features/skills` | `/api/skills` | ✅ yes |
 | `features/meetings` | `/api/meetings` | ❌ mock |
 | `features/evaluations` | `/api/evaluations` | ✅ yes |
 | `features/rewards` | `/api/user-scores` | ❌ mock |

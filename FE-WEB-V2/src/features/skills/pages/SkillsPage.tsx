@@ -52,7 +52,7 @@ export default function SkillsPage() {
           <GraduationCap size={12} /> Skills
         </div>
         <h2 className="text-lg font-semibold text-slate-900">Skill catalog &amp; my proficiency</h2>
-        <p className="mt-1 text-sm text-slate-500">Dữ liệu demo (mock) — dùng bởi AI task-assignment (skill match 40%) khi nối API thật.</p>
+        <p className="mt-1 text-sm text-slate-500">Used by AI task-assignment (skill match, 40% weight).</p>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

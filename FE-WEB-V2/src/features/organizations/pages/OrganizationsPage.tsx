@@ -5,6 +5,8 @@ import { useMyOrganization, useEvaluateProject, useProjectEvaluation } from "../
 import { OrganizationProjectDto } from "../types";
 import { ApiError } from "../../../core/api/client";
 
+const NOT_FOUND_MESSAGE = "You don't own an organization yet — this page is for organization owners managing their delivery teams' projects.";
+
 const riskBadge = (riskLevel: string) => {
   if (riskLevel === "HIGH" || riskLevel === "CRITICAL") return "bg-red-100 text-red-700 border-red-200";
   if (riskLevel === "MEDIUM") return "bg-amber-100 text-amber-700 border-amber-200";
@@ -13,10 +15,10 @@ const riskBadge = (riskLevel: string) => {
 
 function EvaluateForm({ orgId, project, onDone }: { orgId: number; project: OrganizationProjectDto; onDone: () => void }) {
   const evaluate = useEvaluateProject(orgId, project.projectId);
-  const [overallScore, setOverallScore] = useState(4);
-  const [qualityScore, setQualityScore] = useState(4);
-  const [timelinessScore, setTimelinessScore] = useState(4);
-  const [communicationScore, setCommunicationScore] = useState(4);
+  const [overallScore, setOverallScore] = useState(7);
+  const [qualityScore, setQualityScore] = useState(7);
+  const [timelinessScore, setTimelinessScore] = useState(7);
+  const [communicationScore, setCommunicationScore] = useState(7);
   const [comment, setComment] = useState("");
 
   const submit = async (e: React.FormEvent) => {
@@ -40,7 +42,7 @@ function EvaluateForm({ orgId, project, onDone }: { orgId: number; project: Orga
   const scoreField = (label: string, value: number, setValue: (v: number) => void) => (
     <div className="flex items-center justify-between gap-3">
       <span className="text-xs text-slate-600">{label}</span>
-      <input type="range" min={0} max={5} step={0.5} value={value} onChange={(e) => setValue(Number(e.target.value))} className="flex-1 accent-slate-700" />
+      <input type="range" min={0} max={10} step={1} value={value} onChange={(e) => setValue(Number(e.target.value))} className="flex-1 accent-slate-700" />
       <span className="w-8 text-right text-xs font-semibold text-slate-800">{value}</span>
     </div>
   );
@@ -123,7 +125,8 @@ function ProjectRow({ orgId, project }: { orgId: number; project: OrganizationPr
 }
 
 export default function OrganizationsPage() {
-  const { data, isLoading, isError } = useMyOrganization();
+  const { data, isLoading, isError, error } = useMyOrganization();
+  const notFound = error instanceof ApiError && error.status === 404;
 
   return (
     <div className="h-full overflow-y-auto bg-slate-50 p-4 lg:p-6">
@@ -132,7 +135,7 @@ export default function OrganizationsPage() {
           <Building2 size={12} /> Organization
         </div>
         <h2 className="text-lg font-semibold text-slate-900">Organization projects &amp; closing evaluations</h2>
-        <p className="mt-1 text-sm text-slate-500">Dữ liệu demo (mock) — sẽ nối API thật /api/organizations sau khi merge source.</p>
+        <p className="mt-1 text-sm text-slate-500">Only visible to the organization's owner.</p>
       </div>
 
       {isLoading && (
@@ -140,7 +143,12 @@ export default function OrganizationsPage() {
           <Loader2 className="animate-spin" size={16} /> Loading organization...
         </div>
       )}
-      {isError && <div className="py-10 text-center text-sm text-red-500">Không tải được tổ chức.</div>}
+      {isError && notFound && (
+        <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+          {NOT_FOUND_MESSAGE}
+        </div>
+      )}
+      {isError && !notFound && <div className="py-10 text-center text-sm text-red-500">Không tải được tổ chức.</div>}
 
       {data && !data.org && (
         <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">

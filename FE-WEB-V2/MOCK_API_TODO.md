@@ -26,7 +26,7 @@ pointing at the real endpoint it should call. To wire a module for real:
 | `features/tasks` (core CRUD) | `/api/tasks` | ✅ yes |
 | `features/teams` (core CRUD) | `/api/teams` | ✅ yes |
 | `features/notifications` | `/api/notifications` | ✅ yes |
-| `features/organizations` | `/api/organizations` | ❌ mock |
+| `features/organizations` | `/api/organizations` | ✅ yes |
 | `features/invitations` | `/api/invitations` | ✅ yes |
 | `features/skills` | `/api/skills` | ✅ yes |
 | `features/meetings` | `/api/meetings` | ✅ yes |
@@ -77,6 +77,26 @@ pointing at the real endpoint it should call. To wire a module for real:
   signatures for risk/assignment/evidence) but had zero pages using it — it's been converted
   to mock and extended with the missing endpoints (`analyze-all`, `summary`, `classify`,
   workload, executions, assignment history) so `AiInsightsPage` has full coverage.
+- **Organizations (now real, with a real design constraint)**: there is no create-organization
+  endpoint anywhere in the backend — organizations only exist via `DataSeeder.cs` (exactly one,
+  "TaskGenie Corp", owned by the seeded `an@taskgenie.dev`). `GET /organizations/my` 404s for
+  every other user with "You do not own any organization." — this isn't a bug, it's the only
+  state most accounts will ever be in, so the page now distinguishes a 404 (friendly empty
+  state) from a real failure (error banner) instead of treating both the same. Fixed the same
+  0–5-float-vs-0–10-int score mismatch as the Team Evaluations page (backend's
+  `EvaluateProjectRequest` scores are `int?`). A real backend bug was found and fixed while
+  testing this: `OrganizationRepository.GetProjectsByOrganizationIdAsync` combined
+  `.Include(p => p.Team).ThenInclude(...TeamMembers)`, `.Include(p => p.Tasks)` and
+  `.Include(p => p.ProjectEvaluations)` in one query — three sibling collections joined
+  together multiply rows against each other (cartesian product), which was slow enough to
+  time out `GET /organizations/my` entirely even with a modest amount of seeded data. Fixed
+  with `.AsSplitQuery()` (now several simpler queries instead of one exploding join);
+  confirmed the endpoint went from hanging indefinitely to a consistent <100ms.
+  `GetProjectEvaluationQuery` returns a nullable
+  DTO wrapped in `Ok(...)`, so "no evaluation yet" comes back as 204 (same
+  `HttpNoContentOutputFormatter` pattern as Meetings) — `apiClient` already treats 204 as
+  `undefined`, which the page's truthiness checks handle fine. `GET /organizations/admin/all`
+  has no role-based authorization either, same gap as `/admin/platform-stats`.
 - **Admin**: `GET /api/admin/platform-stats` has no role-based authorization on the backend —
   any authenticated user can call it if they hit the URL directly, not just admins
   (pre-existing backend gap, not something this pass touched or fixed). The FE sidebar does

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { AlertTriangle, BrainCircuit, Check, Clock3, Link, Loader2, RefreshCw, UserCheck, X } from "lucide-react";
 import { toast } from "sonner";
-import { AssignmentResponse, coreAiApi, EvidenceItem, RiskAssessment } from "../services/coreAiApi";
+import { AssignmentResponse, aiApi, EvidenceItem, RiskAssessment } from "../../features/ai/api/aiApi";
 
 const scoreColor = (score: number) =>
   score >= 80 ? "text-red-700 bg-red-50 border-red-200" :
@@ -12,7 +12,6 @@ const scoreColor = (score: number) =>
 export const CoreAiDemoPanel = () => {
   const [taskId, setTaskId] = useState(1);
   const [projectId, setProjectId] = useState(1);
-  const [leaderId, setLeaderId] = useState(1);
   const [risk, setRisk] = useState<RiskAssessment | null>(null);
   const [history, setHistory] = useState<RiskAssessment[]>([]);
   const [recommendations, setRecommendations] = useState<AssignmentResponse | null>(null);
@@ -28,32 +27,32 @@ export const CoreAiDemoPanel = () => {
   };
 
   const analyzeRisk = () => run("risk", async () => {
-    const assessment = await coreAiApi.analyzeRisk(taskId, leaderId);
+    const assessment = await aiApi.analyzeRisk(taskId);
     setRisk(assessment);
-    setHistory(await coreAiApi.getRiskHistory(taskId, leaderId));
+    setHistory(await aiApi.getRiskHistory(taskId));
     toast.success(`Risk ${assessment.riskLevel}: ${assessment.totalScore}/100`);
   });
 
   const recommend = () => run("recommend", async () => {
-    const response = await coreAiApi.recommend(taskId, projectId, leaderId);
+    const response = await aiApi.recommend(taskId, projectId);
     setRecommendations(response);
     toast.success(`${response.suggestions.length} candidates ranked.`);
   });
 
   const refreshEvidence = () => run("evidence", async () => {
-    setEvidence(await coreAiApi.getEvidence(taskId, leaderId));
+    setEvidence(await aiApi.getEvidence(taskId));
   });
 
   const addEvidence = () => run("add-evidence", async () => {
-    await coreAiApi.addUrlEvidence(taskId, evidenceUrl, "Demo evidence", leaderId);
+    await aiApi.addUrlEvidence(taskId, evidenceUrl, "Demo evidence");
     setEvidenceUrl("");
-    setEvidence(await coreAiApi.getEvidence(taskId, leaderId));
+    setEvidence(await aiApi.getEvidence(taskId));
     toast.success("Evidence saved.");
   });
 
   const decide = (candidateId: number, accepted: boolean) => run(`decision-${candidateId}`, async () => {
-    if (accepted) await coreAiApi.acceptRecommendation(taskId, candidateId, leaderId);
-    else await coreAiApi.rejectRecommendation(taskId, candidateId, leaderId);
+    if (accepted) await aiApi.acceptRecommendation(taskId, candidateId);
+    else await aiApi.rejectRecommendation(taskId, candidateId);
     toast.success(accepted ? "Recommendation accepted and task assigned." : "Rejection feedback recorded.");
   });
 
@@ -69,7 +68,7 @@ export const CoreAiDemoPanel = () => {
         </div>
 
         <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-3">
-          {[{ label: "Task ID", value: taskId, set: setTaskId }, { label: "Project ID", value: projectId, set: setProjectId }, { label: "Leader/User ID", value: leaderId, set: setLeaderId }].map((field) => (
+          {[{ label: "Task ID", value: taskId, set: setTaskId }, { label: "Project ID", value: projectId, set: setProjectId }].map((field) => (
             <label key={field.label} className="text-[10px] font-bold uppercase text-slate-500">{field.label}
               <input type="number" min={1} value={field.value} onChange={(event) => field.set(Number(event.target.value))} className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-500" />
             </label>

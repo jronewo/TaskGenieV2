@@ -32,7 +32,7 @@ export default function InvitationsPage() {
           <Mail size={12} /> Invitations
         </div>
         <h2 className="text-lg font-semibold text-slate-900">Team invitations sent to {user?.email}</h2>
-        <p className="mt-1 text-sm text-slate-500">Dữ liệu demo (mock) — sẽ nối API thật /api/invitations sau khi merge source.</p>
+        <p className="mt-1 text-sm text-slate-500">Accept to join the team, or reject to decline.</p>
       </div>
 
       {isLoading && (

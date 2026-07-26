@@ -27,7 +27,7 @@ pointing at the real endpoint it should call. To wire a module for real:
 | `features/teams` (core CRUD) | `/api/teams` | ✅ yes |
 | `features/notifications` | `/api/notifications` | ✅ yes |
 | `features/organizations` | `/api/organizations` | ❌ mock |
-| `features/invitations` | `/api/invitations` | ❌ mock |
+| `features/invitations` | `/api/invitations` | ✅ yes |
 | `features/skills` | `/api/skills` | ✅ yes |
 | `features/meetings` | `/api/meetings` | ❌ mock |
 | `features/evaluations` | `/api/evaluations` | ✅ yes |
@@ -51,10 +51,9 @@ pointing at the real endpoint it should call. To wire a module for real:
   `TaskDetailModal`. The dedicated `TaskProgressController` (`PUT/GET /api/task-progress/{taskId}` +
   `/logs`) is a separate feature for progress **log history** with notes/risk — only the mock
   side of that is implemented (the "History" tab in `TaskDetailModal`).
-- **Invitations vs direct add**: `TeamsPage` has two flows — the pre-existing "Add Member"
-  (real API, adds immediately) and the new "Send Invitation" (mock, pending → accept/reject).
-  Once `/api/invitations` is wired, decide whether "Add Member" should be retired in favor of
-  always going through the invitation flow.
+- **Invitations vs direct add**: `TeamsPage` still has two live flows — "Add Member" (adds
+  immediately) and "Send Invitation" (pending → accept/reject, now real too). Nobody has
+  decided whether "Add Member" should be retired in favor of always going through invitations.
 - **Meetings attendees**: mock resolves an attendee "user" from a typed email locally
   (`attendeeFromEmail` in `meetingsApi.ts`) instead of looking up a real user, since the real
   `POST /meetings/{id}/attendees` expects a `userId` not an email. Once wired, swap the

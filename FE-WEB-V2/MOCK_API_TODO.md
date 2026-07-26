@@ -29,7 +29,7 @@ pointing at the real endpoint it should call. To wire a module for real:
 | `features/organizations` | `/api/organizations` | ❌ mock |
 | `features/invitations` | `/api/invitations` | ✅ yes |
 | `features/skills` | `/api/skills` | ✅ yes |
-| `features/meetings` | `/api/meetings` | ❌ mock |
+| `features/meetings` | `/api/meetings` | ✅ yes |
 | `features/evaluations` | `/api/evaluations` | ✅ yes |
 | `features/rewards` | `/api/user-scores` | ✅ yes |
 | `features/activitylogs` | `/api/activitylogs` | ✅ yes |
@@ -54,10 +54,13 @@ pointing at the real endpoint it should call. To wire a module for real:
 - **Invitations vs direct add**: `TeamsPage` still has two live flows — "Add Member" (adds
   immediately) and "Send Invitation" (pending → accept/reject, now real too). Nobody has
   decided whether "Add Member" should be retired in favor of always going through invitations.
-- **Meetings attendees**: mock resolves an attendee "user" from a typed email locally
-  (`attendeeFromEmail` in `meetingsApi.ts`) instead of looking up a real user, since the real
-  `POST /meetings/{id}/attendees` expects a `userId` not an email. Once wired, swap the
-  email input for a user search (same pattern as `usersApi.searchByEmail` in `TeamsPage`).
+- **Meetings (now real)**: `addAttendeeByEmail` calls `usersApi.searchByEmail` first, then
+  `POST /meetings/{id}/attendees` with the resolved `userId` — the UI still just asks for an
+  email, same pattern as `TeamsPage`'s invite flow, so `MeetingsPanel.tsx` didn't need to
+  change. `GetMeetingByIdQuery` returns `MeetingDto?` wrapped in a plain `Ok(...)` — ASP.NET's
+  default `HttpNoContentOutputFormatter` turns a null `Ok()` body into 204, so fetching a
+  meeting that was deleted (or never existed) returns 204, not 404. Pre-existing backend gap
+  (previously logged as "Bug #7"), not fixed here.
 - **Evaluations "Given by me"**: evaluatee picker reuses the real `useMyTeams()` team-member
   list (already real data) rather than adding a second mock user directory.
 - **Rewards (now real)**: manual adjust still takes a raw numeric User ID typed by hand —

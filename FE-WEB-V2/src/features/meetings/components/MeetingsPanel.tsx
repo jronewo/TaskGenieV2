@@ -94,7 +94,7 @@ function MeetingCard({ meeting, onDelete }: { meeting: MeetingDto; onDelete: (id
         </form>
       )}
 
-      {myAttendance && myAttendance.status === "Pending" && (
+      {myAttendance && myAttendance.status === "Invited" && (
         <div className="mt-2 flex items-center gap-2 rounded-lg bg-amber-50 px-2.5 py-1.5">
           <span className="text-[11px] text-amber-800">You're invited — respond?</span>
           <button

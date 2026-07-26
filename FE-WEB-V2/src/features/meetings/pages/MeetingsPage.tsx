@@ -10,7 +10,7 @@ export default function MeetingsPage() {
           <Calendar size={12} /> Meetings
         </div>
         <h2 className="text-lg font-semibold text-slate-900">Project meetings across your workspace</h2>
-        <p className="mt-1 text-sm text-slate-500">Dữ liệu demo (mock) — sẽ nối API thật /api/meetings sau khi merge source.</p>
+        <p className="mt-1 text-sm text-slate-500">Schedule meetings and manage attendees.</p>
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

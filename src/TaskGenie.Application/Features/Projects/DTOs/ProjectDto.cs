@@ -17,6 +17,7 @@ public sealed class ProjectDto
     public int Progress { get; init; }
     public DateOnly? PredictedEndDate { get; init; }
     public string RiskLevel { get; init; } = "LOW";
+    public string ProjectType { get; init; } = "Team";
     public DateTime? CreatedAt { get; init; }
     public DateTime? UpdatedAt { get; init; }
 
@@ -35,6 +36,7 @@ public sealed class ProjectDto
         Progress = p.Progress ?? 0,
         PredictedEndDate = p.PredictedEndDate,
         RiskLevel = "LOW",
+        ProjectType = p.ProjectType ?? "Team",
         CreatedAt = p.CreatedAt,
         UpdatedAt = p.UpdatedAt
     };

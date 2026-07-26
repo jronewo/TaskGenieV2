@@ -31,6 +31,9 @@ public class Project
 
     public DateTime? UpdatedAt { get; internal set; }
 
+    /// <summary>Personal = solo workspace; Team = collaborative project with invites.</summary>
+    public string ProjectType { get; internal set; } = "Team";
+
     public virtual ICollection<Task> Tasks { get; internal set; } = new List<Task>();
 
     public virtual Team? Team { get; internal set; }
@@ -46,13 +49,15 @@ public class Project
         string? description,
         int createdBy,
         int? organizationId = null,
-        DateOnly? deadline = null) => new()
+        DateOnly? deadline = null,
+        string projectType = "Team") => new()
     {
         Name = name,
         Description = description,
         CreatedBy = createdBy,
         OrganizationId = organizationId,
         Deadline = deadline,
+        ProjectType = projectType is "Personal" or "Team" ? projectType : "Team",
         Status = "Planning",
         Progress = 0,
         CreatedAt = DateTime.UtcNow

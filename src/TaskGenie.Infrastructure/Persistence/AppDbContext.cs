@@ -263,6 +263,10 @@ public partial class AppDbContext : DbContext
                 .HasColumnType("datetime")
                 .HasColumnName("updated_at");
             entity.Property(e => e.TeamId).HasColumnName("team_id");
+            entity.Property(e => e.ProjectType)
+                .HasMaxLength(20)
+                .HasDefaultValue("Team")
+                .HasColumnName("project_type");
 
             entity.HasOne(d => d.Team).WithMany(p => p.Projects)
                 .HasForeignKey(d => d.TeamId)

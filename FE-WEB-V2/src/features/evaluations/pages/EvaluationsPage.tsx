@@ -14,7 +14,7 @@ function ScoreBar({ label, value }: { label: string; value: number | null }) {
       <span className="text-slate-500">{label}</span>
       <div className="flex items-center gap-1.5">
         <div className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-100">
-          <div className="h-full rounded-full bg-slate-700" style={{ width: `${((value ?? 0) / 5) * 100}%` }} />
+          <div className="h-full rounded-full bg-slate-700" style={{ width: `${((value ?? 0) / 10) * 100}%` }} />
         </div>
         <span className="w-6 text-right font-semibold text-slate-800">{value ?? "—"}</span>
       </div>
@@ -33,7 +33,7 @@ export default function EvaluationsPage() {
 
   const [teamId, setTeamId] = useState<number | "">("");
   const [memberId, setMemberId] = useState<number | "">("");
-  const [scores, setScores] = useState({ skillScore: 4, teamworkScore: 4, deadlineScore: 4, communicationScore: 4 });
+  const [scores, setScores] = useState({ skillScore: 7, teamworkScore: 7, deadlineScore: 7, communicationScore: 7 });
 
   const members = useMemo(() => teams?.find((t) => t.teamId === teamId)?.members ?? [], [teams, teamId]);
 
@@ -58,8 +58,8 @@ export default function EvaluationsPage() {
       <input
         type="range"
         min={0}
-        max={5}
-        step={0.5}
+        max={10}
+        step={1}
         value={scores[key]}
         onChange={(e) => setScores((p) => ({ ...p, [key]: Number(e.target.value) }))}
         className="flex-1 accent-slate-700"
@@ -75,7 +75,7 @@ export default function EvaluationsPage() {
           <ClipboardCheck size={12} /> Evaluations
         </div>
         <h2 className="text-lg font-semibold text-slate-900">Peer performance evaluations</h2>
-        <p className="mt-1 text-sm text-slate-500">Dữ liệu demo (mock) — sẽ nối API thật /api/evaluations sau khi merge source.</p>
+        <p className="mt-1 text-sm text-slate-500">Score teammates on skill, teamwork, deadline adherence, and communication.</p>
       </div>
 
       <div className="mb-4 inline-flex rounded-lg border border-slate-200 bg-white p-1">

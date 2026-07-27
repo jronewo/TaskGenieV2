@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
 import { Layers, CheckCircle, TrendingUp, AlertTriangle, Loader2 } from "lucide-react";
+import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useAuth } from "../../../core/auth/AuthContext";
 import { useProjects } from "../../projects/hooks/useProjects";
 import { useMyTasks } from "../../tasks/hooks/useTasks";
@@ -12,6 +13,19 @@ const riskBadge = (riskLevel: string) => {
   if (riskLevel === "HIGH") return { label: "High Risk", cls: "bg-amber-100 text-amber-700 border-amber-200" };
   if (riskLevel === "MEDIUM") return { label: "At Risk", cls: "bg-gray-100 text-gray-600 border-gray-200" };
   return { label: "On Track", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" };
+};
+
+const RISK_COLORS: Record<string, string> = {
+  LOW: "#10B981",
+  MEDIUM: "#9CA3AF",
+  HIGH: "#F59E0B",
+  CRITICAL: "#EF4444",
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  Todo: "#1E88E5",
+  InProgress: "#7C4DFF",
+  Done: "#10B981",
 };
 
 export default function DashboardPage() {
@@ -34,6 +48,25 @@ export default function DashboardPage() {
     { label: "Critical", value: critical, sub: "need attention", icon: AlertTriangle, alert: critical > 0 },
     { label: "Notifications", value: unread?.count ?? 0, sub: "unread", icon: AlertTriangle, alert: (unread?.count ?? 0) > 0 },
   ];
+
+  const riskChartData = useMemo(() => {
+    const counts: Record<string, number> = { LOW: 0, MEDIUM: 0, HIGH: 0, CRITICAL: 0 };
+    (projects ?? []).forEach((p) => {
+      const key = p.riskLevel in counts ? p.riskLevel : "MEDIUM";
+      counts[key] = (counts[key] ?? 0) + 1;
+    });
+    return Object.entries(counts)
+      .filter(([, value]) => value > 0)
+      .map(([name, value]) => ({ name, value }));
+  }, [projects]);
+
+  const statusChartData = useMemo(() => {
+    const counts: Record<string, number> = { Todo: 0, InProgress: 0, Done: 0 };
+    (myTasks ?? []).forEach((t) => {
+      if (t.status && t.status in counts) counts[t.status] += 1;
+    });
+    return Object.entries(counts).map(([name, value]) => ({ name, value }));
+  }, [myTasks]);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -71,6 +104,51 @@ export default function DashboardPage() {
               Create your first project
             </button>
             .
+          </div>
+        )}
+
+        {!loadingProjects && !loadingTasks && (projects ?? []).length > 0 && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 mb-3">
+            <div className="rounded-lg border border-gray-100 bg-white p-3.5">
+              <h3 className="text-xs font-semibold text-gray-700 mb-0.5">Project Risk Distribution</h3>
+              <p className="text-[10px] text-gray-400 mb-2">{projects?.length ?? 0} projects by risk level</p>
+              <ResponsiveContainer width="100%" height={140}>
+                <PieChart>
+                  <Pie data={riskChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={32} outerRadius={56} strokeWidth={1} stroke="white">
+                    {riskChartData.map((entry) => (
+                      <Cell key={entry.name} fill={RISK_COLORS[entry.name] ?? "#9CA3AF"} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #E5E7EB", fontSize: 11 }} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="flex flex-wrap gap-x-3 gap-y-1 justify-center mt-1">
+                {riskChartData.map((d) => (
+                  <div key={d.name} className="flex items-center gap-1">
+                    <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: RISK_COLORS[d.name] }} />
+                    <span className="text-[10px] text-gray-500">{d.name} ({d.value})</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-gray-100 bg-white p-3.5">
+              <h3 className="text-xs font-semibold text-gray-700 mb-0.5">My Tasks by Status</h3>
+              <p className="text-[10px] text-gray-400 mb-2">{total} tasks assigned to you</p>
+              <ResponsiveContainer width="100%" height={140}>
+                <BarChart data={statusChartData} barSize={36}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#6B7280" }} axisLine={false} tickLine={false} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "#6B7280" }} axisLine={false} tickLine={false} width={22} />
+                  <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #E5E7EB", fontSize: 11 }} cursor={{ fill: "rgba(0,0,0,0.02)" }} />
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                    {statusChartData.map((entry) => (
+                      <Cell key={entry.name} fill={STATUS_COLORS[entry.name] ?? "#9CA3AF"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         )}
 

@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AlertTriangle, Check, Gauge, Loader2, Scale, Sparkles, X, Zap } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { ApiError } from "../../../core/api/client";
 import { useProjects } from "../../projects/hooks/useProjects";
 import { useTasksByProject } from "../../tasks/hooks/useTasks";
@@ -58,6 +59,15 @@ export default function AiInsightsPage() {
 
   const latestRisk = riskHistory?.[0];
   const latestSuggestions = recommend.data?.suggestions ?? [];
+
+  const riskTrendData = useMemo(
+    () =>
+      (riskHistory ?? [])
+        .slice()
+        .reverse()
+        .map((r) => ({ time: new Date(r.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }), score: r.totalScore })),
+    [riskHistory]
+  );
 
   const handleAnalyze = async () => {
     if (taskId === "") return toast.error("Chọn một task.");
@@ -227,7 +237,18 @@ export default function AiInsightsPage() {
           <div className="space-y-4">
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <h3 className="mb-2 text-sm font-semibold text-slate-900">Risk History</h3>
-              <div className="space-y-2">
+              {riskTrendData.length > 1 && (
+                <ResponsiveContainer width="100%" height={100}>
+                  <LineChart data={riskTrendData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                    <XAxis dataKey="time" tick={{ fontSize: 9, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
+                    <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: "#94A3B8" }} axisLine={false} tickLine={false} width={20} />
+                    <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #E5E7EB", fontSize: 11 }} />
+                    <Line type="monotone" dataKey="score" stroke="#EF4444" strokeWidth={2} dot={{ fill: "#EF4444", r: 2.5 }} name="Risk score" />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+              <div className="space-y-2 mt-2">
                 {(riskHistory ?? []).map((r) => (
                   <div key={r.runId} className="flex items-center justify-between rounded-lg border border-slate-100 px-2.5 py-1.5 text-xs">
                     <span className={`rounded px-1.5 py-0.5 font-semibold ${riskColor[r.riskLevel]}`}>{r.riskLevel}</span>

@@ -1,10 +1,12 @@
 import React from "react";
-import { Navigate, Link } from "react-router";
+import { Navigate, Link, useSearchParams } from "react-router";
 import { Loader2 } from "lucide-react";
 import { useProjects } from "../../projects/hooks/useProjects";
 
 export default function TasksIndexPage() {
   const { data: projects, isLoading } = useProjects();
+  const [searchParams] = useSearchParams();
+  const createSuffix = searchParams.get("create") === "1" ? "?create=1" : "";
 
   if (isLoading) {
     return (
@@ -15,7 +17,7 @@ export default function TasksIndexPage() {
   }
 
   if (projects && projects.length > 0) {
-    return <Navigate to={`/app/tasks/${projects[0].projectId}`} replace />;
+    return <Navigate to={`/app/tasks/${projects[0].projectId}${createSuffix}`} replace />;
   }
 
   return (

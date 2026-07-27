@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { motion } from "motion/react";
 import { Briefcase, Plus, Search, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -21,8 +21,21 @@ export default function ProjectsPage() {
   const navigate = useNavigate();
   const { data: projects, isLoading, isError } = useProjects();
   const createProject = useCreateProject();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState("");
-  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(searchParams.get("create") === "1");
+
+  React.useEffect(() => {
+    if (searchParams.get("create") === "1") {
+      setShowCreateForm(true);
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("create");
+        return next;
+      }, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filtered = useMemo(() => {
     const query = search.toLowerCase();

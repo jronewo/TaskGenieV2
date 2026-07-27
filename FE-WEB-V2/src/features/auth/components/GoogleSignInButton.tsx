@@ -32,7 +32,13 @@ function loadGsiScript(): Promise<void> {
   });
 }
 
-export const GoogleSignInButton = ({ onCredential }: { onCredential: (idToken: string) => void }) => {
+export const GoogleSignInButton = ({
+  onCredential,
+  width = 340,
+}: {
+  onCredential: (idToken: string) => void;
+  width?: number;
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 
@@ -49,7 +55,7 @@ export const GoogleSignInButton = ({ onCredential }: { onCredential: (idToken: s
       window.google.accounts.id.renderButton(containerRef.current, {
         theme: "outline",
         size: "large",
-        width: 340,
+        width,
         text: "continue_with",
       });
     });
@@ -58,7 +64,7 @@ export const GoogleSignInButton = ({ onCredential }: { onCredential: (idToken: s
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientId]);
+  }, [clientId, width]);
 
   if (!clientId) {
     return (

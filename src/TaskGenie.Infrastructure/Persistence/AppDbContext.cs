@@ -79,6 +79,8 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<MeetingAttendee> MeetingAttendees { get; set; }
 
+    public virtual DbSet<Payment> Payments { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ActivityLog>(entity =>
@@ -385,10 +387,66 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.UpdatedAt)
                 .HasColumnType("datetime")
                 .HasColumnName("updated_at");
+            entity.Property(e => e.Plan)
+                .HasMaxLength(20)
+                .HasDefaultValue("Free")
+                .HasColumnName("plan");
+            entity.Property(e => e.PlanExpiresAt)
+                .HasColumnType("datetime")
+                .HasColumnName("plan_expires_at");
+            entity.Property(e => e.AiQuota)
+                .HasDefaultValue(Organization.DefaultFreeAiQuota)
+                .HasColumnName("ai_quota");
 
             entity.HasOne(d => d.Owner).WithMany(p => p.Organizations)
                 .HasForeignKey(d => d.OwnerId)
                 .HasConstraintName("FK_organizations_users");
+        });
+
+        modelBuilder.Entity<Payment>(entity =>
+        {
+            entity.HasKey(e => e.PaymentId).HasName("PK_payments");
+
+            entity.ToTable("payments");
+
+            entity.HasIndex(e => e.OrderCode, "UQ_payments_order_code").IsUnique();
+
+            entity.Property(e => e.PaymentId).HasColumnName("payment_id");
+            entity.Property(e => e.OrderCode).HasColumnName("order_code");
+            entity.Property(e => e.OrganizationId).HasColumnName("organization_id");
+            entity.Property(e => e.Provider)
+                .HasMaxLength(20)
+                .HasColumnName("provider");
+            entity.Property(e => e.Purpose)
+                .HasMaxLength(30)
+                .HasColumnName("purpose");
+            entity.Property(e => e.PackageCode)
+                .HasMaxLength(50)
+                .HasColumnName("package_code");
+            entity.Property(e => e.Amount).HasColumnName("amount");
+            entity.Property(e => e.Status)
+                .HasMaxLength(20)
+                .HasDefaultValue(PaymentStatuses.Pending)
+                .HasColumnName("status");
+            entity.Property(e => e.ProviderTransactionId)
+                .HasMaxLength(100)
+                .HasColumnName("provider_transaction_id");
+            entity.Property(e => e.RawWebhookPayload).HasColumnName("raw_webhook_payload");
+            entity.Property(e => e.RequestedByUserId).HasColumnName("requested_by_user_id");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("(getdate())")
+                .HasColumnType("datetime")
+                .HasColumnName("created_at");
+            entity.Property(e => e.PaidAt)
+                .HasColumnType("datetime")
+                .HasColumnName("paid_at");
+            entity.Property(e => e.ExpiresAt)
+                .HasColumnType("datetime")
+                .HasColumnName("expires_at");
+
+            entity.HasOne(d => d.Organization).WithMany()
+                .HasForeignKey(d => d.OrganizationId)
+                .HasConstraintName("FK_payments_organizations");
         });
 
         modelBuilder.Entity<ProjectEvaluation>(entity =>

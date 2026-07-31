@@ -17,6 +17,9 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<JwtSettings>(configuration.GetSection(JwtSettings.SectionName));
+        services.Configure<PayOSOptions>(configuration.GetSection(PayOSOptions.SectionName));
+        services.Configure<MomoOptions>(configuration.GetSection(MomoOptions.SectionName));
+        services.Configure<AppUrlOptions>(configuration.GetSection(AppUrlOptions.SectionName));
 
         services.AddDbContext<AppDbContext>(options =>
         {
@@ -52,11 +55,14 @@ public static class DependencyInjection
         services.AddScoped<IMeetingRepository, MeetingRepository>();
         services.AddScoped<IRiskRepository, RiskRepository>();
         services.AddScoped<IEvidenceRepository, EvidenceRepository>();
+        services.AddScoped<IPaymentRepository, PaymentRepository>();
 
         // External Services
         services.AddHttpClient<IHuggingFaceService, HuggingFaceService>();
         services.AddHttpClient<ITextGenerationService, TextGenerationService>();
         services.AddHttpClient<IClassificationService, ClassificationService>();
+        services.AddHttpClient<IPayOSService, PayOSService>();
+        services.AddHttpClient<IMomoService, MomoService>();
         services.AddSingleton<ICloudinaryService, CloudinaryService>();
         services.AddScoped<IGoogleAuthService, GoogleAuthService>();
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();

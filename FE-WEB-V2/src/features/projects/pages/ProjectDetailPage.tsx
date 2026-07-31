@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useNavigate, useParams, Link } from "react-router";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import { ArrowLeft, Pencil, Trash2, UserPlus, Kanban, Loader2, X } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, UserPlus, Users, Kanban, Loader2, X } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,7 +22,9 @@ import {
   useProject,
   useUpdateProject,
   useDeleteProject,
+  useProjectMembers,
   useAddProjectMember,
+  useRemoveProjectMember,
   usePreviewProjectSummary,
   useCloseProject,
 } from "../hooks/useProjects";
@@ -38,7 +40,9 @@ export default function ProjectDetailPage() {
   const { data: project, isLoading, isError } = useProject(id);
   const updateProject = useUpdateProject(id);
   const deleteProject = useDeleteProject();
+  const { data: members, isLoading: membersLoading } = useProjectMembers(id);
   const addMember = useAddProjectMember(id);
+  const removeMember = useRemoveProjectMember(id);
   const previewSummary = usePreviewProjectSummary(id);
   const closeProject = useCloseProject(id);
 
@@ -94,7 +98,22 @@ export default function ProjectDetailPage() {
       toast.success("Member added successfully.");
       setMemberEmail("");
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Thêm thành viên thất bại.");
+      toast.error(
+        err instanceof ApiError && err.status === 404
+          ? "Không tìm thấy tài khoản nào với email này — người đó cần đăng ký/đăng nhập TaskGenie trước."
+          : err instanceof ApiError
+            ? err.message
+            : "Thêm thành viên thất bại."
+      );
+    }
+  };
+
+  const handleRemoveMember = async (memberId: number) => {
+    try {
+      await removeMember.mutateAsync(memberId);
+      toast.success("Đã xoá thành viên khỏi dự án.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Xoá thành viên thất bại.");
     }
   };
 
@@ -224,12 +243,45 @@ export default function ProjectDetailPage() {
 
           <div className="rounded-xl border border-slate-200 bg-white p-3">
             <div className="mb-2 flex items-center gap-2">
+              <Users size={15} className="text-slate-600" />
+              <h4 className="text-sm font-semibold text-slate-900">Members{members ? ` (${members.length})` : ""}</h4>
+            </div>
+
+            {membersLoading ? (
+              <div className="mb-3 flex items-center gap-2 text-xs text-slate-400">
+                <Loader2 className="animate-spin" size={13} /> Loading members...
+              </div>
+            ) : members && members.length > 0 ? (
+              <ul className="mb-3 space-y-1.5">
+                {members.map((m) => (
+                  <li key={m.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-medium text-slate-800">{m.userName || m.userEmail || `User #${m.userId}`}</p>
+                      <p className="truncate text-[11px] text-slate-400">{m.userEmail}</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">{m.role ?? "MEMBER"}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveMember(m.id)}
+                        disabled={removeMember.isPending}
+                        className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                        aria-label="Remove member"
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mb-3 text-[11px] text-slate-400">Chưa có thành viên nào trong dự án này.</p>
+            )}
+
+            <div className="mb-2 flex items-center gap-2 border-t border-slate-100 pt-3">
               <UserPlus size={15} className="text-emerald-600" />
               <h4 className="text-sm font-semibold text-slate-900">Add Member</h4>
             </div>
-            <p className="mb-3 text-[11px] text-slate-400">
-              Backend hiện chưa có API liệt kê thành viên dự án — chỉ hỗ trợ thêm mới bằng email.
-            </p>
             <form onSubmit={handleAddMember} className="space-y-2">
               <div className="space-y-1">
                 <Label htmlFor="member-email">Email</Label>

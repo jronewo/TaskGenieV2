@@ -1,4 +1,5 @@
 using MediatR;
+using TaskGenie.Application.Common.Exceptions;
 using TaskGenie.Domain.Entities;
 using TaskGenie.Domain.Interfaces.Repositories;
 
@@ -19,11 +20,14 @@ public sealed class AddProjectMemberCommandHandler(
 {
     public async Task<bool> Handle(AddProjectMemberCommand cmd, CancellationToken ct)
     {
-        var project = await projectRepo.GetByIdAsync(cmd.ProjectId, ct);
-        if (project is null) return false;
+        var project = await projectRepo.GetByIdAsync(cmd.ProjectId, ct)
+            ?? throw new NotFoundException(nameof(Project), cmd.ProjectId);
 
-        var user = await userRepo.GetByEmailAsync(cmd.Email, ct);
-        if (user is null) return false;
+        // Fails silently (returns false) on purpose was the old behavior — but the controller
+        // ignored the result and always answered 200, so a typo'd email looked like success.
+        // Throwing here surfaces a real 404 with a message the frontend can show.
+        var user = await userRepo.GetByEmailAsync(cmd.Email, ct)
+            ?? throw new NotFoundException("User with email", cmd.Email);
 
         // Ensure project has a team; create one if needed
         if (project.TeamId is null or 0)

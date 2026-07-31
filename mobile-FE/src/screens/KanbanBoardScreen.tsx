@@ -1,7 +1,7 @@
-import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, Modal,
-  Animated, StyleSheet, PanResponder, RefreshControl, Alert,
+  View, Text, ScrollView, TouchableOpacity,
+  Animated, StyleSheet, PanResponder,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -45,8 +45,7 @@ export default function KanbanBoardScreen() {
       if (g.dx < -50 && activeColumn < COLUMN_DEFS.length - 1) setActiveColumn(c => c + 1);
       if (g.dx > 50  && activeColumn > 0)                      setActiveColumn(c => c - 1);
     },
-    [refetch],
-  );
+  });
 
   const columns = COLUMN_DEFS.map(col => ({ ...col, tasks: tasksByColumn(col.id) }));
   const currentTasks = columns[activeColumn].tasks;
@@ -55,13 +54,13 @@ export default function KanbanBoardScreen() {
     <View style={s.container}>
       {/* Header */}
       <View style={s.header}>
-        <ProjectPicker />
+        <Text style={s.subtitle}>Sprint 14 · Q2 2026</Text>
         <Text style={s.title}>Kanban Board</Text>
       </View>
 
       {/* Column selector pills */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.pillScroll} contentContainerStyle={s.pillContent}>
-        {COLUMNS.map((col, i) => {
+        {columns.map((col, i) => {
           const isActive = i === activeColumn;
           return (
             <TouchableOpacity
@@ -79,14 +78,7 @@ export default function KanbanBoardScreen() {
       </ScrollView>
 
       {/* Task cards */}
-      <ScrollView
-        style={s.taskScroll}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={refetch} tintColor={colors.blue} />
-        }
-        {...panResponder.panHandlers}
-      >
+      <ScrollView style={s.taskScroll} showsVerticalScrollIndicator={false} {...panResponder.panHandlers}>
         <View style={s.taskList}>
           {/* Add task button */}
           <TouchableOpacity style={s.addBtn} onPress={() => navigation.navigate('CreateTask')}>
@@ -95,49 +87,42 @@ export default function KanbanBoardScreen() {
           </TouchableOpacity>
 
           {currentTasks.map((task, index) => {
-            const pCfg = priorityStyle(task.priority);
-            const assignee = primaryAssignee(task);
-            const risk = riskPercent(task.riskLevel);
+            const pCfg = PRIORITY_CONFIG[task.priority];
+            const date = new Date(task.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             return (
-              <FadeSlide key={task.taskId} delay={index * 60}>
+              <FadeSlide key={task.id} delay={index * 60}>
                 <TouchableOpacity
                   style={s.taskCard}
-                  onPress={() => navigation.navigate('TaskDetail', { taskId: task.taskId })}
+                  onPress={() => navigation.navigate('TaskDetail', { id: task.id })}
                   activeOpacity={0.8}
                 >
                   <View style={[s.stripe, { backgroundColor: pCfg.stripe }]} />
                   <View style={{ flex: 1, padding: 16 }}>
                     {/* Title row */}
                     <View style={[s.row, { marginBottom: 12 }]}>
-                      <Text style={[s.cardLabel, { flex: 1 }]} numberOfLines={2}>{task.title}</Text>
-                      <TouchableOpacity onPress={() => setMenuTask(task)} hitSlop={8}>
+                      <Text style={[s.cardLabel, { flex: 1 }]}>{task.title}</Text>
+                      <TouchableOpacity onPress={e => e.stopPropagation?.()}>
                         <MoreVertical size={16} color={colors.muted} />
                       </TouchableOpacity>
                     </View>
-
-                    {/* Badges */}
+                    {/* Tags */}
                     <View style={[s.wrap, { marginBottom: 12 }]}>
-                      <View style={s.tagBadge}>
-                        <Text style={s.tagText}>{statusLabel(task.status)}</Text>
-                      </View>
-                      <View style={[s.tagBadge, { backgroundColor: pCfg.badgeBg }]}>
-                        <Text style={[s.tagText, { color: pCfg.badgeColor }]}>{task.priority ?? 'Medium'}</Text>
-                      </View>
-                      {task.progress !== null && (
-                        <View style={s.tagBadge}>
-                          <Text style={s.tagText}>{task.progress}%</Text>
+                      {task.tags.map(tag => (
+                        <View key={tag} style={s.tagBadge}>
+                          <Text style={s.tagText}>{tag}</Text>
                         </View>
-                      )}
+                      ))}
+                      <View style={[s.tagBadge, { backgroundColor: pCfg.badgeBg }]}>
+                        <Text style={[s.tagText, { color: pCfg.badgeColor }]}>{task.priority}</Text>
+                      </View>
                     </View>
-
                     {/* Risk warning */}
-                    {risk >= 55 && (
+                    {task.risk > 55 && (
                       <View style={[s.riskBox, { marginBottom: 12 }]}>
                         <AlertTriangle size={14} color={colors.red} />
-                        <Text style={s.riskText}>AI: rủi ro {task.riskLevel}</Text>
+                        <Text style={s.riskText}>AI: {task.risk}% delay probability</Text>
                       </View>
                     )}
-
                     {/* Footer */}
                     <View style={[s.row, { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)', paddingTop: 12, marginBottom: 0 }]}>
                       <View style={s.row}>
@@ -148,7 +133,7 @@ export default function KanbanBoardScreen() {
                       </View>
                       <View style={s.row}>
                         <Clock size={12} color={colors.muted} strokeWidth={1.75} />
-                        <Text style={[s.mutedXs, { marginLeft: 4 }]}>{formatDeadline(task.deadline)}</Text>
+                        <Text style={[s.mutedXs, { marginLeft: 4 }]}>{date}</Text>
                       </View>
                     </View>
                   </View>
@@ -158,40 +143,6 @@ export default function KanbanBoardScreen() {
           })}
         </View>
       </ScrollView>
-
-      {/* Per-task action sheet */}
-      <Modal transparent visible={menuTask !== null} animationType="fade" onRequestClose={() => setMenuTask(null)}>
-        <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={() => setMenuTask(null)}>
-          <View style={s.menuSheet}>
-            <Text style={s.menuTitle} numberOfLines={1}>{menuTask?.title}</Text>
-            {COLUMNS.filter(c => c.id !== menuTask?.status).map(col => (
-              <TouchableOpacity
-                key={col.id}
-                style={s.menuItem}
-                onPress={() => menuTask && moveTo(menuTask, col.id)}
-              >
-                <Text style={s.menuItemText}>Chuyển sang “{col.title}”</Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              style={s.menuItem}
-              onPress={() => menuTask && confirmDelete(menuTask)}
-            >
-              <Trash2 size={14} color={colors.red} />
-              <Text style={[s.menuItemText, { color: colors.red }]}>Xoá task</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      {activeProjectId !== null && (
-        <CreateTaskModal
-          projectId={activeProjectId}
-          visible={isCreating}
-          onClose={() => setIsCreating(false)}
-          onCreated={refetch}
-        />
-      )}
     </View>
   );
 }
@@ -199,12 +150,13 @@ export default function KanbanBoardScreen() {
 const s = StyleSheet.create({
   container:     { flex: 1, backgroundColor: colors.bg },
   header:        { paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20 },
+  subtitle:      { fontSize: 11, color: colors.muted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4 },
   title:         { fontSize: 26, fontWeight: '700', color: colors.foreground },
   pillScroll:    { flexGrow: 0, marginBottom: 4 },
   pillContent:   { paddingHorizontal: 20, paddingBottom: 16, gap: 8 },
   pill:          { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, gap: 6 },
   pillText:      { fontSize: 12, fontWeight: '600' },
-  pillCount:     { minWidth: 16, height: 16, paddingHorizontal: 4, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  pillCount:     { width: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   pillCountText: { fontSize: 10, fontWeight: '600' },
   taskScroll:    { flex: 1 },
   taskList:      { paddingHorizontal: 20, paddingBottom: 20, gap: 12 },
@@ -222,9 +174,4 @@ const s = StyleSheet.create({
   avatarXsText:  { color: '#fff', fontSize: 9, fontWeight: '700' },
   mutedSm:       { fontSize: 13, color: colors.muted },
   mutedXs:       { fontSize: 11, color: colors.muted },
-  backdrop:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end', padding: 20 },
-  menuSheet:     { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 20, padding: 8, marginBottom: 24 },
-  menuTitle:     { fontSize: 13, fontWeight: '700', color: colors.foreground, padding: 12 },
-  menuItem:      { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 14, borderRadius: 12 },
-  menuItemText:  { fontSize: 14, color: colors.foreground },
 });

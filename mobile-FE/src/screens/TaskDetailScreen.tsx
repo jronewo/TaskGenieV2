@@ -1,7 +1,7 @@
-import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, TextInput,
-  Animated, StyleSheet, RefreshControl, ActivityIndicator, Alert,
+  View, Text, ScrollView, TouchableOpacity,
+  Animated, StyleSheet,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -97,90 +97,46 @@ export default function TaskDetailScreen() {
           <TouchableOpacity style={s.iconBtn} onPress={() => navigation.goBack()}>
             <ArrowLeft size={16} color={colors.foreground} />
           </TouchableOpacity>
-          <TouchableOpacity style={s.iconBtn} onPress={runAnalysis} disabled={isAnalyzing}>
-            {isAnalyzing
-              ? <ActivityIndicator size="small" color={colors.foreground} />
-              : <RefreshCw size={16} color={colors.foreground} />}
+          <TouchableOpacity style={s.iconBtn}>
+            <MoreVertical size={16} color={colors.foreground} />
           </TouchableOpacity>
         </View>
-        <View style={[s.rowStart, { marginBottom: 8, gap: 8 }]}>
+        <View style={[s.row, { marginBottom: 8 }]}>
           <View style={[s.badge, { backgroundColor: pCfg.badgeBg }]}>
-            <Text style={[s.badgeText, { color: pCfg.badgeColor }]}>{task.priority ?? 'Medium'} Priority</Text>
+            <Text style={[s.badgeText, { color: pCfg.badgeColor }]}>{task.priority} Priority</Text>
           </View>
           <View style={[s.badge, { backgroundColor: 'rgba(41,98,255,0.12)' }]}>
-            <Text style={[s.badgeText, { color: '#60A5FA' }]}>{statusLabel(task.status)}</Text>
+            <Text style={[s.badgeText, { color: '#60A5FA' }]}>{task.status}</Text>
           </View>
         </View>
         <Text style={s.mainTitle}>{task.title}</Text>
       </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={s.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={taskQuery.isRefreshing}
-            onRefresh={taskQuery.refetch}
-            tintColor={colors.blue}
-          />
-        }
-      >
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.content}>
         {/* Progress */}
         <View style={s.card}>
           <View style={[s.row, { marginBottom: 12 }]}>
-            <Text style={s.mutedXs}>Tiến độ tổng thể</Text>
-            <Text style={s.bigNum}>{progress}%</Text>
+            <Text style={s.mutedXs}>Overall Progress</Text>
+            <Text style={s.bigNum}>{task.progress}%</Text>
           </View>
-          <AnimatedBar progress={progress} color={pCfg.stripe} />
+          <AnimatedBar progress={task.progress} color={pCfg.stripe} />
           <View style={[s.row, { marginTop: 8 }]}>
-            <Text style={s.mutedXs}>
-              {task.dependencies.length > 0
-                ? `${doneDependencies}/${task.dependencies.length} phụ thuộc đã xong`
-                : 'Không có phụ thuộc'}
-            </Text>
-            <Text style={s.mutedXs}>Hạn {formatDeadline(task.deadline)}</Text>
+            <Text style={s.mutedXs}>{completedSubtasks}/{task.subtasks.length} subtasks done</Text>
+            <Text style={s.mutedXs}>Due {dueShort}</Text>
           </View>
-        </View>
-
-        {/* Status switcher */}
-        <View style={s.statusRow}>
-          {TASK_STATUSES.map(status => {
-            const isActive = task.status === status;
-            return (
-              <TouchableOpacity
-                key={status}
-                style={[
-                  s.statusBtn,
-                  {
-                    backgroundColor: isActive ? colors.blue : 'rgba(255,255,255,0.04)',
-                    borderColor: isActive ? 'transparent' : colors.border,
-                  },
-                ]}
-                onPress={() => !isActive && changeStatus(status)}
-                disabled={isChangingStatus}
-              >
-                <Text style={[s.statusText, { color: isActive ? '#fff' : colors.muted }]}>
-                  {statusLabel(status)}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
         </View>
 
         {/* Risk alert */}
-        {risk >= 50 && (
+        {task.risk > 50 && (
           <View style={[s.card, { backgroundColor: 'rgba(239,68,68,0.07)', borderColor: 'rgba(239,68,68,0.25)' }]}>
             <View style={s.rowStart}>
               <View style={[s.iconBox, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
                 <AlertTriangle size={16} color={colors.red} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[s.cardTitle, { marginBottom: 4 }]}>
-                  Rủi ro {riskBand}{latestRisk ? ` · ${risk} điểm` : ''}
-                </Text>
-                <Text style={s.mutedXs}>
-                  {latestRisk?.explanation ?? 'Chạy phân tích AI để xem lý do chi tiết.'}
-                </Text>
+                <Text style={[s.cardTitle, { marginBottom: 4 }]}>{task.risk}% delay probability</Text>
+                <Text style={s.mutedXs}>AI flags 2 blocking dependencies and low velocity on auth layer</Text>
+                <Text style={[s.mutedXs, { color: colors.red, marginTop: 6 }]}>View recommendations →</Text>
               </View>
             </View>
           </View>
@@ -200,9 +156,9 @@ export default function TaskDetailScreen() {
           <View style={[s.card, { flex: 1, marginLeft: 6 }]}>
             <View style={[s.row, { marginBottom: 8 }]}>
               <Calendar size={12} color={colors.muted} strokeWidth={1.75} />
-              <Text style={[s.mutedXs, { marginLeft: 4, flex: 1 }]}>DEADLINE</Text>
+              <Text style={[s.mutedXs, { marginLeft: 4 }]}>DUE DATE</Text>
             </View>
-            <Text style={s.cardTitle}>{formatDeadline(task.deadline)}</Text>
+            <Text style={s.cardTitle}>{dueShort}</Text>
           </View>
         </View>
 
@@ -216,10 +172,8 @@ export default function TaskDetailScreen() {
         </View>
 
         {/* Description */}
-        <Accordion title="Mô tả">
-          <Text style={[s.mutedXs, { lineHeight: 20 }]}>
-            {task.description || 'Chưa có mô tả cho task này.'}
-          </Text>
+        <Accordion title="Description">
+          <Text style={[s.mutedXs, { lineHeight: 20 }]}>{task.description}</Text>
         </Accordion>
 
         {/* AI Insights */}
@@ -229,63 +183,22 @@ export default function TaskDetailScreen() {
             <Text style={[s.cardTitle, { marginLeft: 8 }]}>AI Insights</Text>
           </View>
         }>
-          {riskQuery.isLoading ? (
-            <ActivityIndicator color={colors.purpleLight} />
-          ) : (
-            <>
-              <View style={[s.rowStart, { marginBottom: 12 }]}>
-                <Clock size={16} color="#60A5FA" strokeWidth={1.75} />
-                <View style={{ marginLeft: 12, flex: 1 }}>
-                  <Text style={s.cardTitle}>Ước lượng thời gian</Text>
-                  <Text style={s.mutedXs}>
-                    {task.aiEstimatedTime != null
-                      ? `AI: ${task.aiEstimatedTime}h · Thực tế: ${task.actualTime ?? 0}h`
-                      : 'AI chưa ước lượng cho task này'}
-                  </Text>
+          {[
+            { icon: Clock,          iconColor: '#60A5FA', title: 'Estimated completion', desc: 'May 31 · 6 days behind schedule' },
+            { icon: AlertTriangle,  iconColor: colors.yellow, title: 'Blockers detected', desc: '2 dependencies waiting on Platform team' },
+            { icon: TrendingUp,     iconColor: colors.green,  title: 'Recommendation', desc: 'Add 1 engineer to authentication work stream' },
+          ].map((item, i) => {
+            const Icon = item.icon;
+            return (
+              <View key={i} style={[s.rowStart, { marginBottom: i < 2 ? 12 : 0 }]}>
+                <Icon size={16} color={item.iconColor} strokeWidth={1.75} />
+                <View style={{ marginLeft: 12 }}>
+                  <Text style={s.cardTitle}>{item.title}</Text>
+                  <Text style={s.mutedXs}>{item.desc}</Text>
                 </View>
               </View>
-
-              <View style={[s.rowStart, { marginBottom: 12 }]}>
-                <AlertTriangle size={16} color={colors.yellow} strokeWidth={1.75} />
-                <View style={{ marginLeft: 12, flex: 1 }}>
-                  <Text style={s.cardTitle}>Yếu tố rủi ro</Text>
-                  {latestRisk && latestRisk.factors.length > 0 ? (
-                    latestRisk.factors
-                      .slice()
-                      .sort((a, b) => b.contribution - a.contribution)
-                      .slice(0, 3)
-                      .map(factor => (
-                        <Text key={factor.code} style={s.mutedXs}>
-                          {factor.code}: {factor.rawValue} (+{factor.contribution.toFixed(1)})
-                        </Text>
-                      ))
-                  ) : (
-                    <Text style={s.mutedXs}>Chưa có dữ liệu phân tích</Text>
-                  )}
-                </View>
-              </View>
-
-              <View style={s.rowStart}>
-                <TrendingUp size={16} color={colors.green} strokeWidth={1.75} />
-                <View style={{ marginLeft: 12, flex: 1 }}>
-                  <Text style={s.cardTitle}>Khuyến nghị</Text>
-                  {latestRisk && latestRisk.mitigationActions.length > 0 ? (
-                    latestRisk.mitigationActions.map((action, i) => (
-                      <Text key={i} style={s.mutedXs}>• {action}</Text>
-                    ))
-                  ) : (
-                    <Text style={s.mutedXs}>{task.aiSummary || 'Chưa có khuyến nghị'}</Text>
-                  )}
-                </View>
-              </View>
-
-              <TouchableOpacity style={s.analyzeBtn} onPress={runAnalysis} disabled={isAnalyzing}>
-                {isAnalyzing
-                  ? <ActivityIndicator size="small" color={colors.purpleLight} />
-                  : <Text style={s.analyzeText}>Chạy phân tích rủi ro</Text>}
-              </TouchableOpacity>
-            </>
-          )}
+            );
+          })}
         </Accordion>
 
         {/* AI Assignment Suggestions */}
@@ -324,11 +237,10 @@ export default function TaskDetailScreen() {
 
         {/* Subtasks */}
         <Accordion
-          title="Phụ thuộc"
-          defaultOpen={task.dependencies.length > 0}
+          title="Subtasks"
           badge={
             <View style={[s.badge, { backgroundColor: 'rgba(41,98,255,0.12)', marginLeft: 8 }]}>
-              <Text style={[s.badgeText, { color: '#60A5FA' }]}>{doneDependencies}/{task.dependencies.length}</Text>
+              <Text style={[s.badgeText, { color: '#60A5FA' }]}>{completedSubtasks}/{task.subtasks.length}</Text>
             </View>
           }
         >
@@ -337,8 +249,11 @@ export default function TaskDetailScreen() {
               <View style={[s.check, { backgroundColor: st.done ? colors.green : 'transparent', borderColor: st.done ? colors.green : 'rgba(93,126,166,0.5)' }]}>
                 {st.done && <Text style={{ color: '#fff', fontSize: 10 }}>✓</Text>}
               </View>
-            ))
-          )}
+              <Text style={[s.mutedXs, { marginLeft: 12, flex: 1, color: st.done ? colors.muted : colors.foreground, textDecorationLine: st.done ? 'line-through' : 'none' }]}>
+                {st.title}
+              </Text>
+            </View>
+          ))}
         </Accordion>
 
         {/* Action buttons */}
@@ -368,7 +283,6 @@ export default function TaskDetailScreen() {
 }
 
 const s = StyleSheet.create({
-  centered:     { flex: 1, backgroundColor: colors.bg, justifyContent: 'center', paddingHorizontal: 20, gap: 12, alignItems: 'center' },
   stickyHeader: { paddingHorizontal: 20, paddingTop: 60, paddingBottom: 16, backgroundColor: 'rgba(3,12,26,0.95)' },
   content:      { paddingHorizontal: 20, paddingTop: 12 },
   card:         { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: 16, marginBottom: 12 },
@@ -381,9 +295,12 @@ const s = StyleSheet.create({
   mutedXs:      { fontSize: 11, color: colors.muted },
   badge:        { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
   badgeText:    { fontSize: 10, fontWeight: '600' },
+  tagPill:      { backgroundColor: 'rgba(41,98,255,0.1)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  tagText:      { fontSize: 11, fontWeight: '500', color: '#60A5FA' },
   row:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   rowStart:     { flexDirection: 'row', alignItems: 'flex-start' },
   grid2:        { flexDirection: 'row', marginBottom: 12 },
+  wrap:         { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   iconBtn:      { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center' },
   iconBox:      { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   avatarSm:     { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
@@ -392,10 +309,6 @@ const s = StyleSheet.create({
   acceptBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: colors.blue, borderRadius: 10, paddingVertical: 8 },
   acceptBtnText:{ color: '#fff', fontSize: 12, fontWeight: '600' },
   check:        { width: 20, height: 20, borderRadius: 10, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
-  commentRow:   { flexDirection: 'row', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.04)' },
-  commentInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 12 },
-  commentInput: { flex: 1, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: colors.foreground, maxHeight: 100 },
-  sendBtn:      { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.blue, alignItems: 'center', justifyContent: 'center' },
   barTrack:     { height: 3, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 4, overflow: 'hidden' },
   barFill:      { height: '100%', borderRadius: 4 },
 });

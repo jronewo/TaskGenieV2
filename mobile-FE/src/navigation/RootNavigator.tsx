@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -72,17 +72,6 @@ function TabsWithFAB() {
 
 function MainStack() {
   return (
-    <ProjectProvider>
-      <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
-        <Stack.Screen name="Tabs"       component={TabsWithFAB} />
-        <Stack.Screen name="TaskDetail" component={TaskDetailScreen} options={{ animation: 'slide_from_right' }} />
-      </Stack.Navigator>
-    </ProjectProvider>
-  );
-}
-
-function AuthStack() {
-  return (
     <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
       <Stack.Screen name="Tabs"           component={TabsWithFAB} />
       <Stack.Screen name="TaskDetail"      component={TaskDetailScreen}     options={{ animation: 'slide_from_right' }} />
@@ -147,5 +136,4 @@ const styles = StyleSheet.create({
     backgroundColor: colors.blue,
   },
   tabLabel: { fontSize: 10, fontWeight: '500', marginTop: 2 },
-  splash: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
 });

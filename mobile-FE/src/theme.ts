@@ -15,11 +15,26 @@ export const colors = {
   white: '#FFFFFF',
 };
 
+/**
+ * Avatar colours are picked from this palette by hashing the user's name, so
+ * every real account gets a stable gradient without a hand-maintained map.
+ */
+export const AVATAR_PALETTE: [string, string][] = [
+  ['#2962FF', '#00BCD4'],
+  ['#FF6F00', '#FFC107'],
+  ['#00897B', '#26C6DA'],
+  ['#E91E63', '#FF5252'],
+  ['#7C4DFF', '#9C27B0'],
+  ['#00897B', '#66BB6A'],
+  ['#3949AB', '#5C6BC0'],
+  ['#D81B60', '#8E24AA'],
+];
+
 export const AVATAR_GRADIENTS: Record<string, [string, string]> = {
-  SC: ['#2962FF', '#00BCD4'],
-  MJ: ['#FF6F00', '#FFC107'],
-  AR: ['#00897B', '#26C6DA'],
-  ED: ['#E91E63', '#FF5252'],
-  JS: ['#7C4DFF', '#9C27B0'],
-  LW: ['#00897B', '#66BB6A'],
+  SC: AVATAR_PALETTE[0],
+  MJ: AVATAR_PALETTE[1],
+  AR: AVATAR_PALETTE[2],
+  ED: AVATAR_PALETTE[3],
+  JS: AVATAR_PALETTE[4],
+  LW: AVATAR_PALETTE[5],
 };

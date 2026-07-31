@@ -1,39 +1,29 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  Animated, StyleSheet, Dimensions,
+  Animated, StyleSheet, RefreshControl,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   CheckCircle2, Clock, AlertCircle, TrendingUp, ChevronRight, Sparkles,
 } from 'lucide-react-native';
-import { colors, AVATAR_GRADIENTS } from '../theme';
-
-const PRIORITY_CONFIG = {
-  High:   { stripe: colors.red,    badgeBg: 'rgba(239,68,68,0.12)',   badgeColor: colors.red },
-  Medium: { stripe: colors.yellow, badgeBg: 'rgba(245,158,11,0.12)',  badgeColor: colors.yellow },
-  Low:    { stripe: colors.green,  badgeBg: 'rgba(16,185,129,0.12)',  badgeColor: colors.green },
-} as const;
-
-const stats = [
-  { label: 'Active Tasks', value: '24', change: '+12%', up: true,  icon: CheckCircle2 },
-  { label: 'In Progress',  value: '8',  change: '+5%',  up: true,  icon: Clock },
-  { label: 'At Risk',      value: '3',  change: '−2 tasks', up: false, icon: AlertCircle },
-  { label: 'Velocity',     value: '92%', change: '+8 pts', up: true, icon: TrendingUp },
-];
-
-const recentTasks = [
-  { id: '1', title: 'API Migration to GraphQL',    status: 'In Progress', priority: 'High' as const,   assignee: 'Sarah Chen', avatarKey: 'SC', risk: 85, progress: 45, due: 'May 27' },
-  { id: '2', title: 'User Dashboard Redesign',     status: 'In Review',   priority: 'Medium' as const, assignee: 'Mike Johnson', avatarKey: 'MJ', risk: 20, progress: 80, due: 'May 28' },
-  { id: '3', title: 'Database Query Optimization', status: 'To Do',       priority: 'High' as const,   assignee: 'Alex Rivera', avatarKey: 'AR', risk: 60, progress: 15, due: 'May 30' },
-];
+import { colors } from '../theme';
+import { tasksApi, type TaskDetail } from '../api';
+import { useApiQuery, useRefetchOnFocus } from '../hooks/useApi';
+import { useAuth } from '../contexts/AuthContext';
+import { useProjects } from '../contexts/ProjectContext';
+import { LoadingState, ErrorState, EmptyState } from '../components/StateViews';
+import { gradientFor, getInitials } from '../utils/avatar';
+import {
+  priorityStyle, statusLabel, riskPercent, formatDeadline, primaryAssignee, daysUntilDeadline,
+} from '../utils/task';
 
 function AnimatedBar({ progress, color, delay }: { progress: number; color: string; delay: number }) {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.timing(anim, { toValue: progress, duration: 900, delay, useNativeDriver: false }).start();
-  }, []);
+  }, [progress]);
   return (
     <View style={s.barTrack}>
       <Animated.View
@@ -55,118 +45,233 @@ function FadeSlide({ children, delay }: { children: React.ReactNode; delay: numb
   return <Animated.View style={{ opacity, transform: [{ translateY }] }}>{children}</Animated.View>;
 }
 
+/** Derives the four headline numbers from the user's task list. */
+function buildStats(tasks: TaskDetail[]) {
+  const done = tasks.filter(t => t.status === 'Done').length;
+  const inProgress = tasks.filter(t => t.status === 'InProgress').length;
+  const active = tasks.filter(t => t.status !== 'Done').length;
+  const atRisk = tasks.filter(t => (t.riskLevel ?? '').toUpperCase() === 'HIGH').length;
+  const completion = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
+
+  return {
+    done,
+    active,
+    cards: [
+      { label: 'Active Tasks', value: String(active),      hint: `${tasks.length} total`,     good: true,          icon: CheckCircle2 },
+      { label: 'In Progress',  value: String(inProgress),  hint: `${done} done`,              good: true,          icon: Clock },
+      { label: 'At Risk',      value: String(atRisk),      hint: atRisk ? 'needs attention' : 'all clear', good: atRisk === 0, icon: AlertCircle },
+      { label: 'Completion',   value: `${completion}%`,    hint: `${done}/${tasks.length}`,   good: completion >= 50, icon: TrendingUp },
+    ],
+  };
+}
+
+/** A short, honest summary — no forecast the backend cannot back up. */
+function buildInsight(tasks: TaskDetail[]) {
+  const highRisk = tasks.filter(t => (t.riskLevel ?? '').toUpperCase() === 'HIGH');
+  if (highRisk.length > 0) {
+    return {
+      headline: `${highRisk.length} task đang ở mức rủi ro cao`,
+      detail: highRisk.map(t => t.title).filter(Boolean).slice(0, 2).join(' · ') || 'Xem chi tiết trên bảng công việc',
+    };
+  }
+
+  const overdue = tasks.filter(t => t.status !== 'Done' && (daysUntilDeadline(t.deadline) ?? 1) < 0);
+  if (overdue.length > 0) {
+    return {
+      headline: `${overdue.length} task đã quá hạn`,
+      detail: 'Cập nhật tiến độ hoặc dời deadline để AI đánh giá lại rủi ro',
+    };
+  }
+
+  const dueSoon = tasks.filter(t => {
+    const days = daysUntilDeadline(t.deadline);
+    return t.status !== 'Done' && days !== null && days >= 0 && days <= 3;
+  });
+  if (dueSoon.length > 0) {
+    return {
+      headline: `${dueSoon.length} task đến hạn trong 3 ngày tới`,
+      detail: dueSoon.map(t => t.title).filter(Boolean).slice(0, 2).join(' · '),
+    };
+  }
+
+  return { headline: 'Không có rủi ro nào được ghi nhận', detail: 'Toàn bộ task của bạn đang đúng tiến độ' };
+}
+
 export default function DashboardScreen() {
   const navigation = useNavigation<any>();
+  const { session } = useAuth();
+  const { activeProject, isLoading: isLoadingProjects } = useProjects();
+
+  const { data, error, isLoading, isRefreshing, refetch } = useApiQuery(
+    signal => tasksApi.getMine(signal),
+    [],
+  );
+  useRefetchOnFocus(refetch);
+
+  const tasks = useMemo(() => data ?? [], [data]);
+  const stats = useMemo(() => buildStats(tasks), [tasks]);
+  const insight = useMemo(() => buildInsight(tasks), [tasks]);
+
+  const recentTasks = useMemo(
+    () =>
+      [...tasks]
+        .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+        .slice(0, 5),
+    [tasks],
+  );
+
+  const today = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const firstName = (session?.name ?? '').trim().split(/\s+/).pop() || 'bạn';
+
+  const renderBody = useCallback(() => {
+    if (isLoading) return <LoadingState label="Đang tải công việc của bạn…" />;
+    if (error) return <ErrorState error={error} onRetry={refetch} />;
+    if (tasks.length === 0) return <EmptyState message="Bạn chưa được giao task nào." />;
+    return null;
+  }, [isLoading, error, tasks.length, refetch]);
 
   return (
-    <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={s.scroll}
+      contentContainerStyle={s.content}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl refreshing={isRefreshing} onRefresh={refetch} tintColor={colors.blue} />
+      }
+    >
       {/* Header */}
       <View style={s.header}>
-        <View>
-          <Text style={s.subtitle}>Mon, May 25 — Q2 Sprint</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={s.subtitle}>
+            {today}{activeProject ? ` — ${activeProject.name}` : ''}
+          </Text>
           <Text style={s.title}>
-            Good morning, <Text style={{ color: colors.blue }}>Sarah</Text>
+            Xin chào, <Text style={{ color: colors.blue }}>{firstName}</Text>
           </Text>
         </View>
-        <LinearGradient colors={AVATAR_GRADIENTS['SC']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatar}>
-          <Text style={s.avatarText}>SC</Text>
+        <LinearGradient colors={gradientFor(session?.name)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatar}>
+          <Text style={s.avatarText}>{getInitials(session?.name)}</Text>
         </LinearGradient>
       </View>
 
-      {/* Sprint progress */}
-      <View style={s.card}>
-        <View style={s.row}>
-          <Text style={s.cardLabel}>Sprint 14 · Week 3 of 4</Text>
-          <Text style={s.mutedSm}>21/30 days</Text>
+      {/* Project progress */}
+      {activeProject && (
+        <View style={s.card}>
+          <View style={s.row}>
+            <Text style={s.cardLabel}>{activeProject.name}</Text>
+            <Text style={s.mutedSm}>{activeProject.status ?? 'Active'}</Text>
+          </View>
+          <View style={s.barTrack}>
+            <LinearGradient
+              colors={[colors.blue, colors.purple]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={[s.barFill, { width: `${Math.min(100, Math.max(0, activeProject.progress))}%` }]}
+            />
+          </View>
+          <View style={s.row}>
+            <Text style={s.mutedXs}>{activeProject.progress}% hoàn thành</Text>
+            <Text style={s.mutedXs}>Hạn {formatDeadline(activeProject.deadline)}</Text>
+          </View>
         </View>
-        <View style={s.barTrack}>
-          <LinearGradient colors={[colors.blue, colors.purple]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[s.barFill, { width: '70%' }]} />
+      )}
+      {!activeProject && !isLoadingProjects && (
+        <View style={s.card}>
+          <Text style={s.mutedXs}>Bạn chưa thuộc dự án nào.</Text>
         </View>
-        <View style={s.row}>
-          <Text style={s.mutedXs}>32 tasks completed</Text>
-          <Text style={s.mutedXs}>8 remaining</Text>
-        </View>
-      </View>
+      )}
 
       {/* Stats grid */}
-      <View style={s.grid2}>
-        {stats.map((stat, i) => {
-          const Icon = stat.icon;
-          return (
-            <FadeSlide key={i} delay={i * 70}>
-              <View style={[s.card, s.statCard]}>
-                <View style={s.row}>
-                  <Icon size={16} color={colors.muted} strokeWidth={1.75} />
-                  <View style={[s.badge, { backgroundColor: stat.up ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)' }]}>
-                    <Text style={[s.badgeText, { color: stat.up ? colors.green : colors.red }]}>{stat.change}</Text>
+      {!isLoading && !error && (
+        <View style={s.grid2}>
+          {stats.cards.map((stat, i) => {
+            const Icon = stat.icon;
+            return (
+              <FadeSlide key={stat.label} delay={i * 70}>
+                <View style={[s.card, s.statCard]}>
+                  <View style={s.row}>
+                    <Icon size={16} color={colors.muted} strokeWidth={1.75} />
+                    <View style={[s.badge, { backgroundColor: stat.good ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)' }]}>
+                      <Text style={[s.badgeText, { color: stat.good ? colors.green : colors.red }]}>{stat.hint}</Text>
+                    </View>
                   </View>
+                  <Text style={s.statValue}>{stat.value}</Text>
+                  <Text style={s.mutedXs}>{stat.label}</Text>
                 </View>
-                <Text style={s.statValue}>{stat.value}</Text>
-                <Text style={s.mutedXs}>{stat.label}</Text>
-              </View>
-            </FadeSlide>
-          );
-        })}
-      </View>
+              </FadeSlide>
+            );
+          })}
+        </View>
+      )}
 
       {/* AI Insight */}
-      <View style={[s.card, { borderColor: 'rgba(124,77,255,0.25)', backgroundColor: 'rgba(124,77,255,0.08)' }]}>
-        <View style={s.rowStart}>
-          <View style={[s.iconBox, { backgroundColor: 'rgba(124,77,255,0.2)' }]}>
-            <Sparkles size={16} color={colors.purpleLight} strokeWidth={1.75} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[s.mutedXs, { color: colors.purpleLight, marginBottom: 4 }]}>AI INSIGHT</Text>
-            <Text style={s.cardLabel}>Team velocity up 23% — on track to exceed sprint goals</Text>
-            <Text style={[s.mutedXs, { marginTop: 2 }]}>Projected to complete 7 more tasks than last sprint</Text>
+      {!isLoading && !error && tasks.length > 0 && (
+        <View style={[s.card, { borderColor: 'rgba(124,77,255,0.25)', backgroundColor: 'rgba(124,77,255,0.08)' }]}>
+          <View style={s.rowStart}>
+            <View style={[s.iconBox, { backgroundColor: 'rgba(124,77,255,0.2)' }]}>
+              <Sparkles size={16} color={colors.purpleLight} strokeWidth={1.75} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.mutedXs, { color: colors.purpleLight, marginBottom: 4 }]}>AI INSIGHT</Text>
+              <Text style={s.cardLabel}>{insight.headline}</Text>
+              {!!insight.detail && <Text style={[s.mutedXs, { marginTop: 2 }]}>{insight.detail}</Text>}
+            </View>
           </View>
         </View>
-      </View>
+      )}
 
       {/* Recent Tasks */}
       <View style={s.row}>
-        <Text style={s.sectionTitle}>Recent Tasks</Text>
+        <Text style={s.sectionTitle}>Task gần đây</Text>
         <TouchableOpacity style={s.row} onPress={() => navigation.navigate('Board')}>
-          <Text style={[s.mutedXs, { color: colors.blue }]}>View all </Text>
+          <Text style={[s.mutedXs, { color: colors.blue }]}>Xem tất cả </Text>
           <ChevronRight size={14} color={colors.blue} />
         </TouchableOpacity>
       </View>
 
+      {renderBody()}
+
       {recentTasks.map((task, i) => {
-        const pCfg = PRIORITY_CONFIG[task.priority];
+        const pCfg = priorityStyle(task.priority);
+        const assignee = primaryAssignee(task);
+        const risk = riskPercent(task.riskLevel);
+        const progress = task.progress ?? 0;
         return (
-          <FadeSlide key={task.id} delay={280 + i * 80}>
+          <FadeSlide key={task.taskId} delay={280 + i * 80}>
             <TouchableOpacity
               style={s.taskCard}
-              onPress={() => navigation.navigate('TaskDetail', { id: task.id })}
+              onPress={() => navigation.navigate('TaskDetail', { taskId: task.taskId })}
               activeOpacity={0.8}
             >
               <View style={[s.taskStripe, { backgroundColor: pCfg.stripe }]} />
               <View style={{ flex: 1, padding: 16 }}>
                 <View style={[s.row, { marginBottom: 8 }]}>
-                  <Text style={[s.cardLabel, { flex: 1 }]}>{task.title}</Text>
+                  <Text style={[s.cardLabel, { flex: 1 }]} numberOfLines={2}>{task.title}</Text>
                   <View style={[s.badge, { backgroundColor: pCfg.badgeBg }]}>
-                    <Text style={[s.badgeText, { color: pCfg.badgeColor }]}>{task.priority}</Text>
+                    <Text style={[s.badgeText, { color: pCfg.badgeColor }]}>{task.priority ?? 'Medium'}</Text>
                   </View>
                 </View>
                 <View style={[s.row, { marginBottom: 12 }]}>
                   <View style={[s.pill, { backgroundColor: 'rgba(41,98,255,0.12)' }]}>
-                    <Text style={[s.badgeText, { color: '#60A5FA' }]}>{task.status}</Text>
+                    <Text style={[s.badgeText, { color: '#60A5FA' }]}>{statusLabel(task.status)}</Text>
                   </View>
-                  <Text style={s.mutedXs}> · </Text>
-                  <LinearGradient colors={AVATAR_GRADIENTS[task.avatarKey]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatarXs}>
-                    <Text style={{ color: '#fff', fontSize: 8, fontWeight: '700' }}>{task.avatarKey}</Text>
-                  </LinearGradient>
-                  <Text style={[s.mutedXs, { marginLeft: 4 }]}>{task.assignee}</Text>
+                  {assignee && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <LinearGradient colors={gradientFor(assignee.userName)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatarXs}>
+                        <Text style={{ color: '#fff', fontSize: 8, fontWeight: '700' }}>{getInitials(assignee.userName)}</Text>
+                      </LinearGradient>
+                      <Text style={[s.mutedXs, { marginLeft: 4 }]}>{assignee.userName}</Text>
+                    </View>
+                  )}
                 </View>
                 <View style={s.row}>
-                  <Text style={s.mutedXs}>Progress</Text>
-                  <Text style={[s.mutedXs, { color: colors.foreground }]}>{task.progress}%</Text>
+                  <Text style={s.mutedXs}>Tiến độ</Text>
+                  <Text style={[s.mutedXs, { color: colors.foreground }]}>{progress}%</Text>
                 </View>
-                <AnimatedBar progress={task.progress} color={pCfg.stripe} delay={400 + i * 100} />
+                <AnimatedBar progress={progress} color={pCfg.stripe} delay={400 + i * 100} />
                 <View style={[s.row, { marginTop: 10 }]}>
-                  <Text style={s.mutedXs}>Due {task.due}</Text>
-                  {task.risk > 60 && <Text style={[s.mutedXs, { color: colors.red }]}>{task.risk}% delay risk</Text>}
+                  <Text style={s.mutedXs}>Hạn {formatDeadline(task.deadline)}</Text>
+                  {risk >= 55 && <Text style={[s.mutedXs, { color: colors.red }]}>Rủi ro {task.riskLevel}</Text>}
                 </View>
               </View>
             </TouchableOpacity>

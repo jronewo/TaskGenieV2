@@ -1,50 +1,139 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  Animated, StyleSheet, Dimensions,
+  Animated, StyleSheet, Dimensions, RefreshControl,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { TrendingUp, TrendingDown, Sparkles } from 'lucide-react-native';
-import { colors, AVATAR_GRADIENTS } from '../theme';
+import { colors } from '../theme';
+import { scoresApi, tasksApi, type TaskDetail } from '../api';
+import { useApiQuery, useRefetchOnFocus } from '../hooks/useApi';
+import { useProjects } from '../contexts/ProjectContext';
+import { LoadingState, ErrorState, EmptyState } from '../components/StateViews';
+import ProjectPicker from '../components/ProjectPicker';
+import { gradientFor, getInitials } from '../utils/avatar';
+import { formatDeadline } from '../utils/task';
 
 const { width } = Dimensions.get('window');
 const CHART_W = width - 40;
-const CHART_H = 160;
+const CHART_H = 140;
 
-const velocityData = [
-  { day: 'Mon', v: 85 }, { day: 'Tue', v: 92 }, { day: 'Wed', v: 88 },
-  { day: 'Thu', v: 95 }, { day: 'Fri', v: 90 }, { day: 'Sat', v: 75 }, { day: 'Sun', v: 60 },
-];
+const WINDOWS = [
+  { id: '7', label: '7 ngày', days: 7 },
+  { id: '30', label: '30 ngày', days: 30 },
+  { id: '90', label: '90 ngày', days: 90 },
+] as const;
 
-const riskData = [
-  { week: 'Wk 1', low: 12, medium: 5, high: 2 },
-  { week: 'Wk 2', low: 15, medium: 4, high: 3 },
-  { week: 'Wk 3', low: 18, medium: 6, high: 1 },
-  { week: 'Wk 4', low: 20, medium: 3, high: 2 },
-];
+interface Bucket {
+  label: string;
+  completed: number;
+}
 
-const metrics = [
-  { label: 'Avg Velocity', value: '92', unit: '%', change: '+8 pts',   up: true },
-  { label: 'Completed',    value: '64', unit: '',  change: '+12 tasks', up: true },
-  { label: 'At Risk',      value: '3',  unit: '',  change: '−2 tasks',  up: false },
-  { label: 'Cycle Time',   value: '3.2', unit: 'd', change: '−0.5d',   up: true },
-];
+/** Groups completions into evenly sized buckets across the selected window. */
+function completionBuckets(tasks: TaskDetail[], days: number): Bucket[] {
+  const bucketCount = 7;
+  const bucketDays = Math.max(1, Math.round(days / bucketCount));
+  const now = Date.now();
 
-const teamPerformance = [
-  { name: 'Sarah Chen',  initials: 'SC', completed: 18, velocity: 95 },
-  { name: 'Emma Davis',  initials: 'ED', completed: 14, velocity: 90 },
-  { name: 'Mike Johnson', initials: 'MJ', completed: 15, velocity: 88 },
-  { name: 'Alex Rivera', initials: 'AR', completed: 12, velocity: 82 },
-];
+  const buckets: Bucket[] = Array.from({ length: bucketCount }, (_, i) => {
+    const end = new Date(now - (bucketCount - 1 - i) * bucketDays * 86400000);
+    return {
+      label:
+        bucketDays === 1
+          ? end.toLocaleDateString('en-US', { weekday: 'short' })
+          : end.toLocaleDateString('en-US', { day: 'numeric', month: 'numeric' }),
+      completed: 0,
+    };
+  });
+
+  const windowStart = now - days * 86400000;
+  for (const task of tasks) {
+    if (!task.completedAt) continue;
+    const at = new Date(task.completedAt).getTime();
+    if (Number.isNaN(at) || at < windowStart || at > now) continue;
+    const index = Math.min(
+      bucketCount - 1,
+      Math.floor((at - windowStart) / (bucketDays * 86400000)),
+    );
+    buckets[index].completed += 1;
+  }
+
+  return buckets;
+}
+
+function CompletionChart({ buckets }: { buckets: Bucket[] }) {
+  const max = Math.max(1, ...buckets.map(b => b.completed));
+  return (
+    <View>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: CHART_H, gap: 8 }}>
+        {buckets.map((bucket, i) => (
+          <View key={i} style={{ flex: 1, alignItems: 'center', justifyContent: 'flex-end' }}>
+            <Text style={[a.mutedXs, { marginBottom: 4 }]}>{bucket.completed || ''}</Text>
+            <LinearGradient
+              colors={[colors.blue, colors.purple]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={{
+                width: '100%',
+                height: Math.max(3, (bucket.completed / max) * (CHART_H - 24)),
+                borderRadius: 6,
+              }}
+            />
+          </View>
+        ))}
+      </View>
+      <View style={{ flexDirection: 'row', marginTop: 8, gap: 8 }}>
+        {buckets.map((bucket, i) => (
+          <Text key={i} style={[a.mutedXs, { flex: 1, textAlign: 'center' }]}>{bucket.label}</Text>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function RiskDistribution({ tasks }: { tasks: TaskDetail[] }) {
+  const bands = useMemo(() => {
+    const counts = { LOW: 0, MEDIUM: 0, HIGH: 0, NONE: 0 };
+    for (const task of tasks) {
+      const band = (task.riskLevel ?? '').toUpperCase();
+      if (band === 'LOW' || band === 'MEDIUM' || band === 'HIGH') counts[band] += 1;
+      else counts.NONE += 1;
+    }
+    return [
+      { label: 'Low', value: counts.LOW, color: colors.green },
+      { label: 'Medium', value: counts.MEDIUM, color: colors.yellow },
+      { label: 'High', value: counts.HIGH, color: colors.red },
+      { label: 'Chưa đánh giá', value: counts.NONE, color: colors.muted },
+    ];
+  }, [tasks]);
+
+  const max = Math.max(1, ...bands.map(b => b.value));
+
+  return (
+    <View style={{ gap: 12 }}>
+      {bands.map(band => (
+        <View key={band.label}>
+          <View style={a.row}>
+            <Text style={a.mutedXs}>{band.label}</Text>
+            <Text style={[a.mutedXs, { color: colors.foreground }]}>{band.value}</Text>
+          </View>
+          <View style={a.barTrack}>
+            <View style={[a.barFill, { backgroundColor: band.color, width: `${(band.value / max) * 100}%` }]} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 function AnimatedBar({ target, color, delay }: { target: number; color: string; delay: number }) {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.timing(anim, { toValue: target, duration: 800, delay, useNativeDriver: false }).start();
-  }, []);
+  }, [target]);
   return (
-    <View style={s.barTrack}>
-      <Animated.View style={[s.barFill, { backgroundColor: color, width: anim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }) }]} />
+    <View style={a.barTrack}>
+      <Animated.View style={[a.barFill, { backgroundColor: color, width: anim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }) }]} />
     </View>
   );
 }
@@ -61,192 +150,231 @@ function FadeSlide({ children, delay }: { children: React.ReactNode; delay: numb
   return <Animated.View style={{ opacity, transform: [{ translateY }] }}>{children}</Animated.View>;
 }
 
-function SimpleLineChart() {
-  const minV = 50; const maxV = 100;
-  const pts = velocityData.map((d, i) => ({
-    x: (i / (velocityData.length - 1)) * (CHART_W - 32),
-    y: CHART_H - ((d.v - minV) / (maxV - minV)) * CHART_H,
-  }));
-  return (
-    <View style={{ height: CHART_H + 24, width: CHART_W - 32 }}>
-      <View style={{ position: 'relative', height: CHART_H }}>
-        {/* Grid lines */}
-        {[60, 70, 80, 90, 100].map(val => {
-          const y = CHART_H - ((val - minV) / (maxV - minV)) * CHART_H;
-          return (
-            <View key={val} style={{ position: 'absolute', top: y, left: 0, right: 0, flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={{ fontSize: 10, color: colors.muted, width: 28 }}>{val}</Text>
-              <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.05)' }} />
-            </View>
-          );
-        })}
-        {/* Dots and line simulation */}
-        {pts.map((pt, i) => (
-          <View key={i} style={{ position: 'absolute', left: 28 + pt.x - 4, top: pt.y - 4 }}>
-            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.blue }} />
-          </View>
-        ))}
-      </View>
-      {/* Day labels */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, paddingLeft: 28 }}>
-        {velocityData.map(d => (
-          <Text key={d.day} style={{ fontSize: 10, color: colors.muted }}>{d.day}</Text>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function SimpleBarChart() {
-  const maxVal = 25;
-  return (
-    <View>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-around', height: 120 }}>
-        {riskData.map(d => {
-          const total = d.low + d.medium + d.high;
-          return (
-            <View key={d.week} style={{ alignItems: 'center', gap: 2 }}>
-              <View style={{ width: 32, overflow: 'hidden', borderRadius: 6 }}>
-                <View style={{ height: (d.high / maxVal) * 100, backgroundColor: colors.red }} />
-                <View style={{ height: (d.medium / maxVal) * 100, backgroundColor: colors.yellow }} />
-                <View style={{ height: (d.low / maxVal) * 100, backgroundColor: colors.green }} />
-              </View>
-            </View>
-          );
-        })}
-      </View>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginTop: 8 }}>
-        {riskData.map(d => (
-          <Text key={d.week} style={{ fontSize: 10, color: colors.muted }}>{d.week}</Text>
-        ))}
-      </View>
-    </View>
-  );
-}
-
 export default function AnalyticsScreen() {
-  const [timeframe, setTimeframe] = useState('week');
+  const { activeProject, activeProjectId } = useProjects();
+  const [windowId, setWindowId] = useState<string>('30');
+
+  const tasksQuery = useApiQuery<TaskDetail[]>(
+    signal => tasksApi.getByProject(activeProjectId!, signal),
+    [activeProjectId],
+    { enabled: activeProjectId !== null },
+  );
+  useRefetchOnFocus(tasksQuery.refetch, activeProjectId !== null);
+
+  const leaderboardQuery = useApiQuery(
+    signal => scoresApi.getProjectLeaderboard(activeProjectId!, signal),
+    [activeProjectId],
+    { enabled: activeProjectId !== null },
+  );
+
+  const tasks = useMemo(() => tasksQuery.data ?? [], [tasksQuery.data]);
+  const selectedWindow = WINDOWS.find(w => w.id === windowId) ?? WINDOWS[1];
+
+  const metrics = useMemo(() => {
+    const done = tasks.filter(t => t.status === 'Done');
+    const highRisk = tasks.filter(t => (t.riskLevel ?? '').toUpperCase() === 'HIGH');
+    const late = done.filter(t => t.isLate);
+    const completion = tasks.length ? Math.round((done.length / tasks.length) * 100) : 0;
+    const onTimeRate = done.length
+      ? Math.round(((done.length - late.length) / done.length) * 100)
+      : 0;
+
+    const withTime = done.filter(t => (t.actualTime ?? 0) > 0);
+    const avgTime = withTime.length
+      ? withTime.reduce((sum, t) => sum + (t.actualTime ?? 0), 0) / withTime.length
+      : 0;
+
+    return [
+      { label: 'Hoàn thành', value: String(completion), unit: '%', hint: `${done.length}/${tasks.length}`, up: completion >= 50 },
+      { label: 'Đã xong',    value: String(done.length), unit: '', hint: `${tasks.length} tổng`, up: true },
+      { label: 'Rủi ro cao', value: String(highRisk.length), unit: '', hint: highRisk.length ? 'cần xử lý' : 'ổn định', up: highRisk.length === 0 },
+      { label: 'Đúng hạn',   value: String(onTimeRate), unit: '%', hint: avgTime ? `~${avgTime.toFixed(1)}h/task` : 'chưa có giờ', up: onTimeRate >= 70 },
+    ];
+  }, [tasks]);
+
+  const buckets = useMemo(
+    () => completionBuckets(tasks, selectedWindow.days),
+    [tasks, selectedWindow.days],
+  );
+
+  const performers = useMemo(() => {
+    const completedByUser = new Map<number, number>();
+    for (const task of tasks) {
+      if (task.status !== 'Done') continue;
+      for (const assignee of task.assignees) {
+        completedByUser.set(assignee.userId, (completedByUser.get(assignee.userId) ?? 0) + 1);
+      }
+    }
+
+    const members = leaderboardQuery.data?.members ?? [];
+    if (members.length === 0) return [];
+
+    const maxScore = Math.max(1, ...members.map(m => Math.abs(m.totalScore)));
+    return [...members]
+      .sort((x, y) => y.totalScore - x.totalScore)
+      .slice(0, 5)
+      .map(m => ({
+        userId: m.userId,
+        name: m.userName ?? 'Không rõ',
+        level: m.level,
+        completed: completedByUser.get(m.userId) ?? 0,
+        totalScore: m.totalScore,
+        barTarget: Math.max(0, Math.round((m.totalScore / maxScore) * 100)),
+      }));
+  }, [tasks, leaderboardQuery.data]);
+
+  const refetchAll = () => {
+    tasksQuery.refetch();
+    leaderboardQuery.refetch();
+  };
+
+  const renderBody = () => {
+    if (activeProjectId === null) return <EmptyState message="Bạn chưa thuộc dự án nào." />;
+    if (tasksQuery.isLoading) return <LoadingState label="Đang tổng hợp số liệu…" />;
+    if (tasksQuery.error) return <ErrorState error={tasksQuery.error} onRetry={refetchAll} />;
+    if (tasks.length === 0) return <EmptyState message="Dự án chưa có task nào để phân tích." />;
+    return null;
+  };
+
+  const body = renderBody();
 
   return (
-    <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-      <Text style={s.subtitle}>Sprint 14 · Q2 2026</Text>
-      <Text style={s.title}>Analytics</Text>
+    <ScrollView
+      style={a.scroll}
+      contentContainerStyle={a.content}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl refreshing={tasksQuery.isRefreshing} onRefresh={refetchAll} tintColor={colors.blue} />
+      }
+    >
+      <ProjectPicker />
+      <Text style={a.title}>Phân tích</Text>
 
-      {/* Timeframe selector */}
-      <View style={s.segmented}>
-        {['day', 'week', 'month'].map(p => (
+      {/* Window selector */}
+      <View style={a.segmented}>
+        {WINDOWS.map(w => (
           <TouchableOpacity
-            key={p}
-            onPress={() => setTimeframe(p)}
-            style={[s.segmentBtn, { backgroundColor: timeframe === p ? colors.blue : 'transparent' }]}
+            key={w.id}
+            onPress={() => setWindowId(w.id)}
+            style={[a.segmentBtn, { backgroundColor: windowId === w.id ? colors.blue : 'transparent' }]}
           >
-            <Text style={[s.segmentText, { color: timeframe === p ? '#fff' : colors.muted }]}>
-              {p.charAt(0).toUpperCase() + p.slice(1)}
+            <Text style={[a.segmentText, { color: windowId === w.id ? '#fff' : colors.muted }]}>
+              {w.label}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      {/* Metric cards */}
-      <View style={s.grid2}>
-        {metrics.map((m, i) => (
-          <FadeSlide key={i} delay={i * 60}>
-            <View style={[s.card, s.metricCard]}>
-              <View style={[s.row, { marginBottom: 12 }]}>
-                <Text style={s.mutedXs}>{m.label}</Text>
-                <View style={s.row}>
-                  {m.up
-                    ? <TrendingUp size={12} color={colors.green} />
-                    : <TrendingDown size={12} color={colors.red} />}
-                  <Text style={[s.mutedXs, { color: m.up ? colors.green : colors.red, marginLeft: 4 }]}>{m.change}</Text>
+      {body}
+
+      {!body && (
+        <>
+          {/* Metric cards */}
+          <View style={a.grid2}>
+            {metrics.map((m, i) => (
+              <FadeSlide key={m.label} delay={i * 60}>
+                <View style={[a.card, a.metricCard]}>
+                  <View style={[a.row, { marginBottom: 12 }]}>
+                    <Text style={a.mutedXs}>{m.label}</Text>
+                    <View style={a.row}>
+                      {m.up
+                        ? <TrendingUp size={12} color={colors.green} />
+                        : <TrendingDown size={12} color={colors.red} />}
+                    </View>
+                  </View>
+                  <View style={a.row}>
+                    <Text style={a.bigNum}>{m.value}</Text>
+                    {!!m.unit && <Text style={a.mutedXs}>{m.unit}</Text>}
+                  </View>
+                  <Text style={[a.mutedXs, { marginTop: 4 }]}>{m.hint}</Text>
+                </View>
+              </FadeSlide>
+            ))}
+          </View>
+
+          {/* Completion chart */}
+          <View style={a.card}>
+            <Text style={a.cardTitle}>Task hoàn thành · {selectedWindow.label}</Text>
+            <View style={{ marginTop: 16 }}>
+              <CompletionChart buckets={buckets} />
+            </View>
+          </View>
+
+          {/* Risk distribution */}
+          <View style={a.card}>
+            <Text style={[a.cardTitle, { marginBottom: 16 }]}>Phân bố rủi ro</Text>
+            <RiskDistribution tasks={tasks} />
+          </View>
+
+          {/* Top performers */}
+          <View style={a.card}>
+            <Text style={[a.cardTitle, { marginBottom: 16 }]}>Xếp hạng điểm</Text>
+            {leaderboardQuery.isLoading ? (
+              <Text style={a.mutedXs}>Đang tải…</Text>
+            ) : performers.length === 0 ? (
+              <Text style={a.mutedXs}>Chưa có điểm thưởng/phạt nào được ghi nhận.</Text>
+            ) : (
+              performers.map((member, i) => (
+                <View key={member.userId} style={{ marginBottom: i < performers.length - 1 ? 16 : 0 }}>
+                  <View style={[a.row, { marginBottom: 6 }]}>
+                    <View style={a.row}>
+                      <LinearGradient colors={gradientFor(member.name)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={a.avatarSm}>
+                        <Text style={a.avatarText}>{getInitials(member.name)}</Text>
+                      </LinearGradient>
+                      <View style={{ marginLeft: 10 }}>
+                        <Text style={a.cardTitle}>{member.name}</Text>
+                        <Text style={a.mutedXs}>{member.level}</Text>
+                      </View>
+                    </View>
+                    <View style={a.row}>
+                      <Text style={a.mutedXs}>{member.completed} task </Text>
+                      <Text style={[a.cardTitle, { fontSize: 13 }]}>{member.totalScore}đ</Text>
+                    </View>
+                  </View>
+                  <AnimatedBar target={member.barTarget} color={colors.blue} delay={i * 100 + 300} />
+                </View>
+              ))
+            )}
+          </View>
+
+          {/* Project forecast */}
+          {activeProject && (
+            <View style={[a.card, { borderColor: 'rgba(124,77,255,0.25)', backgroundColor: 'rgba(124,77,255,0.08)' }]}>
+              <View style={a.row}>
+                <View style={[a.iconBox, { backgroundColor: 'rgba(124,77,255,0.2)' }]}>
+                  <Sparkles size={16} color={colors.purpleLight} strokeWidth={1.75} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={[a.mutedXs, { color: colors.purpleLight, marginBottom: 4 }]}>DỰ BÁO DỰ ÁN</Text>
+                  <Text style={a.cardTitle}>
+                    {activeProject.predictedEndDate
+                      ? `Dự kiến kết thúc ${formatDeadline(activeProject.predictedEndDate)}`
+                      : 'Chưa có dự báo ngày kết thúc'}
+                  </Text>
+                  <Text style={[a.mutedXs, { marginTop: 4 }]}>
+                    Hạn chót {formatDeadline(activeProject.deadline)} · tiến độ {activeProject.progress}%
+                  </Text>
                 </View>
               </View>
-              <View style={s.row}>
-                <Text style={s.bigNum}>{m.value}</Text>
-                {m.unit ? <Text style={s.mutedXs}>{m.unit}</Text> : null}
-              </View>
             </View>
-          </FadeSlide>
-        ))}
-      </View>
-
-      {/* Velocity chart */}
-      <View style={s.card}>
-        <Text style={s.cardTitle}>Team Velocity</Text>
-        <View style={{ marginTop: 16 }}>
-          <SimpleLineChart />
-        </View>
-      </View>
-
-      {/* Risk distribution */}
-      <View style={s.card}>
-        <Text style={s.cardTitle}>Risk Distribution</Text>
-        <View style={{ marginTop: 16 }}>
-          <SimpleBarChart />
-        </View>
-        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 20, marginTop: 12 }}>
-          {[{ color: colors.green, label: 'Low' }, { color: colors.yellow, label: 'Medium' }, { color: colors.red, label: 'High' }].map(l => (
-            <View key={l.label} style={s.legend}>
-              <View style={[s.legendDot, { backgroundColor: l.color }]} />
-              <Text style={s.mutedXs}>{l.label} Risk</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-
-      {/* Top Performers */}
-      <View style={s.card}>
-        <Text style={[s.cardTitle, { marginBottom: 16 }]}>Top Performers</Text>
-        {teamPerformance.map((member, i) => (
-          <View key={i} style={{ marginBottom: i < teamPerformance.length - 1 ? 16 : 0 }}>
-            <View style={[s.row, { marginBottom: 6 }]}>
-              <View style={s.row}>
-                <LinearGradient colors={AVATAR_GRADIENTS[member.initials]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatarSm}>
-                  <Text style={s.avatarText}>{member.initials}</Text>
-                </LinearGradient>
-                <View style={{ marginLeft: 10 }}>
-                  <Text style={s.cardTitle}>{member.name}</Text>
-                </View>
-              </View>
-              <View style={s.row}>
-                <Text style={s.mutedXs}>{member.completed} tasks  </Text>
-                <Text style={[s.cardTitle, { fontSize: 13 }]}>{member.velocity}%</Text>
-              </View>
-            </View>
-            <AnimatedBar target={member.velocity} color={colors.blue} delay={i * 100 + 300} />
-          </View>
-        ))}
-      </View>
-
-      {/* AI Forecast */}
-      <View style={[s.card, { borderColor: 'rgba(124,77,255,0.25)', backgroundColor: 'rgba(124,77,255,0.08)' }]}>
-        <View style={s.row}>
-          <View style={[s.iconBox, { backgroundColor: 'rgba(124,77,255,0.2)' }]}>
-            <Sparkles size={16} color={colors.purpleLight} strokeWidth={1.75} />
-          </View>
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={[s.mutedXs, { color: colors.purpleLight, marginBottom: 4 }]}>AI FORECAST</Text>
-            <Text style={s.cardTitle}>Sprint 15 projected 23% faster based on current momentum</Text>
-            <Text style={[s.mutedXs, { color: colors.purpleLight, marginTop: 8 }]}>View detailed forecast →</Text>
-          </View>
-        </View>
-      </View>
+          )}
+        </>
+      )}
       <View style={{ height: 20 }} />
     </ScrollView>
   );
 }
 
-const s = StyleSheet.create({
+const a = StyleSheet.create({
   scroll:       { flex: 1, backgroundColor: colors.bg },
   content:      { paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20 },
-  subtitle:     { fontSize: 11, color: colors.muted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4 },
   title:        { fontSize: 26, fontWeight: '700', color: colors.foreground, marginBottom: 20 },
   segmented:    { flexDirection: 'row', backgroundColor: 'rgba(17,30,53,0.8)', borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 4, marginBottom: 16 },
   segmentBtn:   { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
   segmentText:  { fontSize: 12, fontWeight: '600' },
   grid2:        { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 4 },
   card:         { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: 16, marginBottom: 12 },
-  metricCard:   { flex: 1, margin: 4 },
+  metricCard:   { flex: 1, margin: 4, minWidth: CHART_W / 2 - 12 },
   cardTitle:    { fontSize: 14, fontWeight: '600', color: colors.foreground },
   bigNum:       { fontSize: 30, fontWeight: '600', color: colors.foreground },
   mutedXs:      { fontSize: 11, color: colors.muted },
@@ -254,8 +382,6 @@ const s = StyleSheet.create({
   iconBox:      { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   avatarSm:     { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   avatarText:   { color: '#fff', fontSize: 10, fontWeight: '700' },
-  barTrack:     { height: 3, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 4, overflow: 'hidden', marginTop: 4 },
+  barTrack:     { height: 4, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 4, overflow: 'hidden', marginTop: 4 },
   barFill:      { height: '100%', borderRadius: 4 },
-  legend:       { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  legendDot:    { width: 8, height: 8, borderRadius: 4 },
 });

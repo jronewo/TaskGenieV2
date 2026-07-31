@@ -9,8 +9,6 @@ import { Plus, MoreVertical, Clock, AlertTriangle } from 'lucide-react-native';
 import { colors, AVATAR_GRADIENTS } from '../theme';
 import { useTasks, ColumnId } from '../context/TasksContext';
 
-import { fetchTasksByProject } from '../services/taskService';
-
 const PRIORITY_CONFIG = {
   High:   { stripe: colors.red,    badgeBg: 'rgba(239,68,68,0.12)',   badgeColor: colors.red },
   Medium: { stripe: colors.yellow, badgeBg: 'rgba(245,158,11,0.12)',  badgeColor: colors.yellow },
@@ -36,7 +34,7 @@ function FadeSlide({ children, delay }: { children: React.ReactNode; delay: numb
   return <Animated.View style={{ opacity, transform: [{ translateY }] }}>{children}</Animated.View>;
 }
 
-export default function KanbanBoardScreen({ route }: any) {
+export default function KanbanBoardScreen() {
   const navigation = useNavigation<any>();
   const { tasksByColumn } = useTasks();
   const [activeColumn, setActiveColumn] = useState(0);
@@ -64,7 +62,6 @@ export default function KanbanBoardScreen({ route }: any) {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.pillScroll} contentContainerStyle={s.pillContent}>
         {columns.map((col, i) => {
           const isActive = i === activeColumn;
-          const count = (tasksState[col.id as keyof typeof tasksState] || []).length;
           return (
             <TouchableOpacity
               key={col.id}

@@ -1,4 +1,5 @@
 using MediatR;
+using TaskGenie.Application.Common;
 using TaskGenie.Application.Events;
 using TaskGenie.Application.Features.Tasks.DTOs;
 using TaskGenie.Domain.Interfaces.Repositories;
@@ -28,7 +29,7 @@ public sealed class CreateTaskCommandHandler(
             title: cmd.Title,
             description: cmd.Description,
             priority: cmd.Priority ?? "Medium",
-            deadline: !string.IsNullOrEmpty(cmd.Deadline) && DateOnly.TryParse(cmd.Deadline, out var dl) ? dl : null,
+            deadline: DateOnlyParser.TryParseFlexible(cmd.Deadline),
             difficulty: cmd.Difficulty,
             createdBy: cmd.CurrentUserId
         );

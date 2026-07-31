@@ -1,14 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Plus, MoreHorizontal, ChevronDown } from "lucide-react";
-import { statusColumns, Task, TaskStatus } from "../data/tmaiData";
+import { tasks as initialTasks, statusColumns, Task, TaskStatus } from "../data/tmaiData";
 import { TaskCard } from "./TaskCard";
 
 interface KanbanBoardProps {
-  tasks: Task[];
   onTaskClick: (task: Task) => void;
-  onAddTask?: () => void;
-  onStatusChange?: (taskId: string, status: TaskStatus) => void;
 }
 
 const columnIcons: Record<string, string> = {
@@ -27,12 +24,8 @@ const columnBgColor: Record<string, string> = {
   done: "rgba(16,185,129,0.06)",
 };
 
-export const KanbanBoard = ({ tasks: initialTasks, onTaskClick, onAddTask, onStatusChange }: KanbanBoardProps) => {
+export const KanbanBoard = ({ onTaskClick }: KanbanBoardProps) => {
   const [tasks, setTasks] = useState(initialTasks);
-
-  useEffect(() => {
-    setTasks(initialTasks);
-  }, [initialTasks]);
   const [collapsedColumns, setCollapsedColumns] = useState<Set<string>>(new Set());
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
@@ -63,11 +56,11 @@ export const KanbanBoard = ({ tasks: initialTasks, onTaskClick, onAddTask, onSta
   const handleDrop = (e: React.DragEvent, columnId: string) => {
     e.preventDefault();
     if (draggedTask) {
-      const newStatus = columnId as TaskStatus;
-      setTasks((prev) =>
-        prev.map((t) => (t.id === draggedTask.id ? { ...t, status: newStatus } : t))
+      setTasks(prev =>
+        prev.map(t =>
+          t.id === draggedTask.id ? { ...t, status: columnId as TaskStatus } : t
+        )
       );
-      onStatusChange?.(draggedTask.id, newStatus);
     }
     setDraggedTask(null);
     setDragOverColumn(null);
@@ -159,7 +152,7 @@ export const KanbanBoard = ({ tasks: initialTasks, onTaskClick, onAddTask, onSta
                     className="h-full rounded-full"
                     style={{ background: col.color }}
                     initial={{ width: 0 }}
-                    animate={{ width: `${tasks.length > 0 ? Math.min((colTasks.length / tasks.length) * 100, 100) : 0}%` }}
+                    animate={{ width: `${Math.min((colTasks.length / tasks.length) * 100, 100)}%` }}
                     transition={{ duration: 0.8 }}
                   />
                 </div>
@@ -196,8 +189,6 @@ export const KanbanBoard = ({ tasks: initialTasks, onTaskClick, onAddTask, onSta
 
                 {/* Add task button */}
                 <motion.button
-                  type="button"
-                  onClick={onAddTask}
                   className="w-full flex items-center gap-2 p-2.5 rounded-xl border-2 border-dashed border-gray-200 text-gray-400 hover:border-blue-300 hover:text-blue-500 hover:bg-blue-50/50 transition-all text-sm"
                   whileHover={{ scale: 1.01 }}
                   whileTap={{ scale: 0.98 }}

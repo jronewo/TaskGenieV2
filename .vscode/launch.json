@@ -1,0 +1,24 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "TaskGenie API (InMemory Demo)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "TaskGenie: build API",
+      "program": "${workspaceFolder}/src/TaskGenie.API/bin/Debug/net10.0/TaskGenie.API.dll",
+      "cwd": "${workspaceFolder}/src/TaskGenie.API",
+      "stopAtEntry": false,
+      "env": {
+        "Database__UseInMemory": "true",
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_URLS": "http://localhost:5258"
+      },
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "\\bNow listening on:\\s+(https?://\\S+)",
+        "uriFormat": "%s/swagger"
+      }
+    }
+  ]
+}

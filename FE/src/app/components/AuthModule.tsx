@@ -6,9 +6,6 @@ import {
   BarChart2, RefreshCw
 } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth } from "../../context/AuthContext";
-import { ApiError } from "../../lib/apiClient";
-import { GoogleSignInButton } from "./GoogleSignInButton";
 
 type AuthScreen =
   | "login"
@@ -20,6 +17,9 @@ type AuthScreen =
 
 type SuccessType = "register" | "reset" | null;
 
+interface AuthModuleProps {
+  onLogin: () => void;
+}
 
 // ── Shared primitives ─────────────────────────────────────────────────────────
 
@@ -311,66 +311,16 @@ const validate = {
   match: (a: string, b: string) => (a !== b ? "Passwords do not match" : ""),
 };
 
-const AuthDivider = () => (
-  <div className="relative my-4">
-    <div className="absolute inset-0 flex items-center">
-      <div className="w-full border-t border-gray-200" />
-    </div>
-    <div className="relative flex justify-center text-xs">
-      <span className="bg-white px-2 text-gray-400">or continue with</span>
-    </div>
-  </div>
-);
-
-const GoogleAuthSection = ({
-  remember = true,
-  onError,
-  disabled,
-}: {
-  remember?: boolean;
-  onError: (message: string) => void;
-  disabled?: boolean;
-}) => {
-  const { loginWithGoogle } = useAuth();
-  const [googleLoading, setGoogleLoading] = useState(false);
-
-  const handleGoogleCredential = async (idToken: string) => {
-    setGoogleLoading(true);
-    onError("");
-    try {
-      const user = await loginWithGoogle(idToken, remember);
-      toast.success(`Welcome${user.name ? `, ${user.name}` : ""}!`);
-    } catch (err) {
-      const message =
-        err instanceof ApiError ? err.message : "Google sign-in failed. Please try again.";
-      onError(message);
-    } finally {
-      setGoogleLoading(false);
-    }
-  };
-
-  return (
-    <>
-      <AuthDivider />
-      <GoogleSignInButton
-        onCredential={handleGoogleCredential}
-        disabled={disabled || googleLoading}
-      />
-    </>
-  );
-};
-
 // Login
 const LoginScreen = ({
+  onLogin,
   onForgot,
   onRegister,
-  onBackToLanding,
 }: {
+  onLogin: () => void;
   onForgot: () => void;
   onRegister: () => void;
-  onBackToLanding?: () => void;
 }) => {
-  const { login } = useAuth();
   const [form, setForm] = useState({ email: "", password: "", remember: false });
   const [showPw, setShowPw] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -386,28 +336,14 @@ const LoginScreen = ({
     const pe = validate.password(form.password); if (pe) errs.password = pe;
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setLoading(true); setApiError("");
-    try {
-      const user = await login(form.email, form.password, form.remember);
-      toast.success(`Welcome back${user.name ? `, ${user.name}` : ""}!`);
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Login failed. Please try again.";
-      setApiError(message);
-    } finally {
-      setLoading(false);
-    }
+    await new Promise((r) => setTimeout(r, 1300));
+    setLoading(false);
+    toast.success("Welcome back, Huy Pham!");
+    onLogin();
   };
 
   return (
     <motion.div {...SLIDE}>
-      {onBackToLanding && (
-        <button
-          type="button"
-          onClick={onBackToLanding}
-          className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-[#1A237E] mb-5 transition-colors cursor-pointer"
-        >
-          <ArrowLeft size={13} /> Back to home
-        </button>
-      )}
       <div className="mb-7">
         <h2 className="text-2xl font-bold text-gray-900 mb-1">Welcome back</h2>
         <p className="text-sm text-gray-500">Sign in to your TMAI console</p>
@@ -453,7 +389,6 @@ const LoginScreen = ({
         <div className="pt-1">
           <AuthButton type="submit" loading={loading}>Sign In</AuthButton>
         </div>
-        <GoogleAuthSection remember={form.remember} onError={setApiError} disabled={loading} />
         <p className="text-center text-xs text-gray-500">
           Don't have an account?{" "}
           <button type="button" onClick={onRegister} className="text-[#1A237E] font-semibold hover:text-[#0D1757] cursor-pointer">
@@ -467,18 +402,16 @@ const LoginScreen = ({
 
 // Register
 const RegisterScreen = ({
+  onNext,
   onBack,
-  onBackToLanding,
 }: {
+  onNext: () => void;
   onBack: () => void;
-  onBackToLanding?: () => void;
 }) => {
-  const { register } = useAuth();
   const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" });
   const [showPw, setShowPw] = useState(false);
   const [showCp, setShowCp] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [apiError, setApiError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const f = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }));
@@ -493,29 +426,14 @@ const RegisterScreen = ({
     if (!form.confirm) errs.confirm = "Please confirm your password";
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setLoading(true);
-    setApiError("");
-    try {
-      const user = await register(form.name, form.email, form.password);
-      toast.success(`Welcome, ${user.name ?? user.email}!`);
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Registration failed. Please try again.";
-      setApiError(message);
-    } finally {
-      setLoading(false);
-    }
+    await new Promise((r) => setTimeout(r, 1200));
+    setLoading(false);
+    toast.info("Verification code sent to " + form.email);
+    onNext();
   };
 
   return (
     <motion.div {...SLIDE}>
-      {onBackToLanding && (
-        <button
-          type="button"
-          onClick={onBackToLanding}
-          className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-[#1A237E] mb-3 transition-colors cursor-pointer"
-        >
-          <ArrowLeft size={13} /> Back to home
-        </button>
-      )}
       <button onClick={onBack} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 mb-5 cursor-pointer">
         <ArrowLeft size={14} /> Back to Login
       </button>
@@ -563,15 +481,9 @@ const RegisterScreen = ({
             }
           />
         </FormField>
-        {apiError && (
-          <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-            <AlertCircle size={14} /> {apiError}
-          </div>
-        )}
         <div className="pt-1">
           <AuthButton type="submit" loading={loading}>Create Account</AuthButton>
         </div>
-        <GoogleAuthSection onError={setApiError} disabled={loading} />
       </form>
     </motion.div>
   );
@@ -810,16 +722,8 @@ const SuccessModal = ({
 
 // ── Main AuthModule ───────────────────────────────────────────────────────────
 
-interface AuthModuleProps {
-  initialScreen?: Extract<AuthScreen, "login" | "register">;
-  onBackToLanding?: () => void;
-}
-
-export const AuthModule = ({
-  initialScreen = "login",
-  onBackToLanding,
-}: AuthModuleProps = {}) => {
-  const [screen, setScreen] = useState<AuthScreen>(initialScreen);
+export const AuthModule = ({ onLogin }: AuthModuleProps) => {
+  const [screen, setScreen] = useState<AuthScreen>("login");
   const [success, setSuccess] = useState<SuccessType>(null);
 
   const go = (s: AuthScreen) => setScreen(s);
@@ -838,16 +742,16 @@ export const AuthModule = ({
             {screen === "login" && (
               <LoginScreen
                 key="login"
+                onLogin={onLogin}
                 onForgot={() => go("forgot-password")}
                 onRegister={() => go("register")}
-                onBackToLanding={onBackToLanding}
               />
             )}
             {screen === "register" && (
               <RegisterScreen
                 key="register"
+                onNext={() => go("verify-register")}
                 onBack={() => go("login")}
-                onBackToLanding={onBackToLanding}
               />
             )}
             {screen === "verify-register" && (

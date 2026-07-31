@@ -38,7 +38,11 @@ public class OrganizationRepository : IOrganizationRepository
 
     public async Task<List<Project>> GetProjectsByOrganizationIdAsync(int organizationId, CancellationToken ct = default)
     {
+        // AsSplitQuery: Team.TeamMembers, Tasks, and ProjectEvaluations are sibling
+        // collections — a single query joining all of them multiplies rows together
+        // (cartesian product), which gets slow/expensive fast as any one of them grows.
         return await _context.Projects
+            .AsSplitQuery()
             .Include(p => p.Team)
                 .ThenInclude(t => t.TeamMembers)
                     .ThenInclude(tm => tm.User)

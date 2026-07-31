@@ -13,7 +13,6 @@ export interface TeamMember {
 
 export interface Task {
   id: string;
-  projectId?: string;
   title: string;
   description: string;
   status: TaskStatus;
@@ -31,8 +30,6 @@ export interface Task {
   storyPoints: number;
 }
 
-export type ProjectType = "Personal" | "Team";
-
 export interface Project {
   id: string;
   name: string;
@@ -40,10 +37,6 @@ export interface Project {
   icon: string;
   taskCount: number;
   riskScore: number;
-  progress?: number;
-  teamId?: number;
-  projectType?: ProjectType;
-  createdBy?: number;
   children?: Project[];
 }
 

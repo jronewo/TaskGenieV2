@@ -5,6 +5,7 @@ using TaskGenie.Application;
 using TaskGenie.Application.Common.Behaviors;
 using TaskGenie.Application.Features.Tasks.Commands;
 using TaskGenie.Infrastructure;
+using TaskGenie.Infrastructure.Persistence;
 using TaskGenie.API.Extensions;
 using TaskGenie.API.Middleware;
 
@@ -42,7 +43,7 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 builder.Services.AddCors(options =>
-    options.AddPolicy("AllowAll", p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
+    options.AddPolicy("AllowAll", p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader().WithExposedHeaders("Content-Disposition")));
 
 var app = builder.Build();
 
@@ -56,4 +57,14 @@ app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await DataSeeder.SeedAsync(db);
+}
+
 app.Run();
+
+public partial class Program { }

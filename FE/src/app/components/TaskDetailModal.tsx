@@ -6,27 +6,12 @@ import {
   CheckCircle, Circle, Plus, Send, Star, Zap, TrendingUp,
   ArrowRight, Brain, Target, Shield
 } from "lucide-react";
-import { Priority, Task, TaskStatus, TeamMember, aiSuggestedMembers } from "../data/tmaiData";
+import { Task, aiSuggestedMembers } from "../data/tmaiData";
 import { RadialBarChart, RadialBar, PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
 
 interface TaskDetailModalProps {
   task: Task | null;
   onClose: () => void;
-  onEdit?: (task: Task) => void;
-  onProgressUpdate?: (task: Task, progress: number) => void;
-  onStatusChange?: (task: Task, status: TaskStatus) => Promise<void> | void;
-  onPriorityChange?: (task: Task, priority: Priority) => Promise<void> | void;
-  onDeadlineChange?: (task: Task, deadline: string) => Promise<void> | void;
-  onAssigneeChange?: (task: Task, memberId: string) => Promise<void> | void;
-  assigneeOptions?: TeamMember[];
-  readOnly?: boolean;
 }
 
 const RiskGauge = ({ score }: { score: number }) => {
@@ -129,92 +114,14 @@ const RiskGauge = ({ score }: { score: number }) => {
   );
 };
 
-export const TaskDetailModal = ({
-  task,
-  onClose,
-  onEdit,
-  onProgressUpdate,
-  onStatusChange,
-  onPriorityChange,
-  onDeadlineChange,
-  onAssigneeChange,
-  assigneeOptions = [],
-  readOnly = false,
-}: TaskDetailModalProps) => {
+export const TaskDetailModal = ({ task, onClose }: TaskDetailModalProps) => {
   const [activeTab, setActiveTab] = useState<"overview" | "ai" | "activity">("overview");
   const [newComment, setNewComment] = useState("");
-  const [isAssigning, setIsAssigning] = useState(false);
-  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
-  const [isUpdatingPriority, setIsUpdatingPriority] = useState(false);
-  const [isUpdatingDeadline, setIsUpdatingDeadline] = useState(false);
 
   if (!task) return null;
 
   const completedSubtasks = task.subtasks?.filter(s => s.done).length || 0;
   const totalSubtasks = task.subtasks?.length || 0;
-  const assignees = assigneeOptions.length > 0
-    ? assigneeOptions
-    : task.assignee.id !== "0"
-      ? [task.assignee]
-      : [];
-  const canChangeAssignee = Boolean(onAssigneeChange && !readOnly && assignees.length > 0);
-  const currentAssigneeId = task.assignee.id !== "0" ? task.assignee.id : undefined;
-  const canChangeStatus = Boolean(onStatusChange && !readOnly);
-  const canChangePriority = Boolean(onPriorityChange && !readOnly);
-  const canChangeDeadline = Boolean(onDeadlineChange && !readOnly);
-  const statusOptions: { value: TaskStatus; label: string }[] = [
-    { value: "backlog", label: "Backlog" },
-    { value: "todo", label: "Todo" },
-    { value: "in_progress", label: "In Progress" },
-    { value: "review", label: "Review" },
-    { value: "done", label: "Done" },
-  ];
-  const priorityOptions: { value: Priority; label: string }[] = [
-    { value: "low", label: "Low" },
-    { value: "medium", label: "Medium" },
-    { value: "high", label: "High" },
-    { value: "urgent", label: "Urgent" },
-  ];
-
-  const handleAssigneeChange = async (memberId: string) => {
-    if (!onAssigneeChange || memberId === task.assignee.id) return;
-    setIsAssigning(true);
-    try {
-      await onAssigneeChange(task, memberId);
-    } finally {
-      setIsAssigning(false);
-    }
-  };
-
-  const handleStatusChange = async (status: TaskStatus) => {
-    if (!onStatusChange || status === task.status) return;
-    setIsUpdatingStatus(true);
-    try {
-      await onStatusChange(task, status);
-    } finally {
-      setIsUpdatingStatus(false);
-    }
-  };
-
-  const handlePriorityChange = async (priority: Priority) => {
-    if (!onPriorityChange || priority === task.priority) return;
-    setIsUpdatingPriority(true);
-    try {
-      await onPriorityChange(task, priority);
-    } finally {
-      setIsUpdatingPriority(false);
-    }
-  };
-
-  const handleDeadlineChange = async (deadline: string) => {
-    if (!onDeadlineChange || !deadline || deadline === task.deadline) return;
-    setIsUpdatingDeadline(true);
-    try {
-      await onDeadlineChange(task, deadline);
-    } finally {
-      setIsUpdatingDeadline(false);
-    }
-  };
 
   const tabs = [
     { id: "overview", label: "Overview", icon: Target },
@@ -274,25 +181,13 @@ export const TaskDetailModal = ({
                     ))}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 ml-4 shrink-0">
-                  {onEdit && !readOnly && (
-                    <motion.button
-                      type="button"
-                      onClick={() => onEdit(task)}
-                      className="h-8 px-3 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-semibold"
-                      whileTap={{ scale: 0.95 }}
-                    >
-                      Edit
-                    </motion.button>
-                  )}
-                  <motion.button
-                    onClick={onClose}
-                    className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white"
-                    whileTap={{ scale: 0.9 }}
-                  >
-                    <X size={18} />
-                  </motion.button>
-                </div>
+                <motion.button
+                  onClick={onClose}
+                  className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white ml-4"
+                  whileTap={{ scale: 0.9 }}
+                >
+                  <X size={18} />
+                </motion.button>
               </div>
 
               {/* Tabs */}
@@ -375,7 +270,7 @@ export const TaskDetailModal = ({
                           <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Progress</h4>
                           <span className="text-sm font-bold text-gray-800">{task.progress}%</span>
                         </div>
-                        <div className="h-3 bg-gray-100 rounded-full overflow-hidden mb-2">
+                        <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
                           <motion.div
                             className="h-full rounded-full"
                             style={{
@@ -386,24 +281,6 @@ export const TaskDetailModal = ({
                             transition={{ duration: 0.8 }}
                           />
                         </div>
-                        {onProgressUpdate && !readOnly && (
-                          <div className="flex gap-2">
-                            {[25, 50, 75, 100].map((pct) => (
-                              <button
-                                key={pct}
-                                type="button"
-                                onClick={() => onProgressUpdate(task, pct)}
-                                className={`flex-1 py-1.5 text-[10px] font-bold rounded border transition-colors ${
-                                  task.progress >= pct
-                                    ? "bg-[#1A237E] text-white border-[#1A237E]"
-                                    : "bg-white text-gray-600 border-gray-200 hover:border-[#1A237E]"
-                                }`}
-                              >
-                                {pct}%
-                              </button>
-                            ))}
-                          </div>
-                        )}
                       </div>
                     </div>
 
@@ -413,119 +290,43 @@ export const TaskDetailModal = ({
                         {
                           label: "Assignee",
                           content: (
-                            canChangeAssignee ? (
-                              <Select
-                                value={currentAssigneeId}
-                                onValueChange={handleAssigneeChange}
-                                disabled={isAssigning}
-                              >
-                                <SelectTrigger className="h-auto min-h-10 border-gray-200 bg-white px-2 py-1.5 text-left">
-                                  <SelectValue placeholder="Choose assignee" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {assignees.map((member) => (
-                                    <SelectItem key={member.id} value={member.id}>
-                                      <div className="flex items-center gap-2">
-                                        <img src={member.avatar} alt="" className="w-6 h-6 rounded-full object-cover" />
-                                        <div className="min-w-0">
-                                          <div className="text-xs font-semibold text-gray-800 truncate">{member.name}</div>
-                                          <div className="text-[10px] text-gray-500 truncate">{member.role}</div>
-                                        </div>
-                                      </div>
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            ) : (
-                              <div className="flex items-center gap-2">
-                                <img src={task.assignee.avatar} alt="" className="w-7 h-7 rounded-full object-cover" />
-                                <div>
-                                  <div className="text-xs font-semibold text-gray-800">{task.assignee.name}</div>
-                                  <div className="text-[10px] text-gray-500">{task.assignee.role}</div>
-                                </div>
+                            <div className="flex items-center gap-2">
+                              <img src={task.assignee.avatar} alt="" className="w-7 h-7 rounded-full object-cover" />
+                              <div>
+                                <div className="text-xs font-semibold text-gray-800">{task.assignee.name}</div>
+                                <div className="text-[10px] text-gray-500">{task.assignee.role}</div>
                               </div>
-                            )
+                            </div>
                           ),
                         },
                         {
                           label: "Deadline",
                           content: (
-                            canChangeDeadline ? (
-                              <div className="relative">
-                                <Clock size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
-                                <input
-                                  type="date"
-                                  value={task.deadline}
-                                  disabled={isUpdatingDeadline}
-                                  onChange={(event) => handleDeadlineChange(event.target.value)}
-                                  className="h-9 w-full rounded-md border border-gray-200 bg-white pl-8 pr-2 text-xs font-semibold text-gray-800 outline-none focus:border-[#1A237E] disabled:opacity-60"
-                                />
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-2 text-sm text-gray-700">
-                                <Clock size={14} className="text-gray-400" />
-                                {new Date(task.deadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                              </div>
-                            )
+                            <div className="flex items-center gap-2 text-sm text-gray-700">
+                              <Clock size={14} className="text-gray-400" />
+                              {new Date(task.deadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                            </div>
                           ),
                         },
                         {
                           label: "Priority",
                           content: (
-                            canChangePriority ? (
-                              <Select
-                                value={task.priority}
-                                onValueChange={(value) => handlePriorityChange(value as Priority)}
-                                disabled={isUpdatingPriority}
-                              >
-                                <SelectTrigger className="h-9 min-h-9 w-full border-gray-200 bg-white px-2 py-1.5 text-left">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {priorityOptions.map((priority) => (
-                                    <SelectItem key={priority.value} value={priority.value}>
-                                      <span className="text-xs font-semibold">{priority.label}</span>
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            ) : (
-                              <span className={`text-xs font-semibold capitalize px-2.5 py-1 rounded-full ${
-                                task.priority === "urgent" ? "bg-red-100 text-red-600" :
-                                task.priority === "high" ? "bg-orange-100 text-orange-600" :
-                                task.priority === "medium" ? "bg-blue-100 text-blue-600" :
-                                "bg-gray-100 text-gray-600"
-                              }`}>
-                                {task.priority}
-                              </span>
-                            )
+                            <span className={`text-xs font-semibold capitalize px-2.5 py-1 rounded-full ${
+                              task.priority === "urgent" ? "bg-red-100 text-red-600" :
+                              task.priority === "high" ? "bg-orange-100 text-orange-600" :
+                              task.priority === "medium" ? "bg-blue-100 text-blue-600" :
+                              "bg-gray-100 text-gray-600"
+                            }`}>
+                              {task.priority}
+                            </span>
                           ),
                         },
                         {
                           label: "Status",
                           content: (
-                            canChangeStatus ? (
-                              <Select
-                                value={task.status}
-                                onValueChange={(value) => handleStatusChange(value as TaskStatus)}
-                                disabled={isUpdatingStatus}
-                              >
-                                <SelectTrigger className="h-9 min-h-9 w-full border-gray-200 bg-white px-2 py-1.5 text-left">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {statusOptions.map((status) => (
-                                    <SelectItem key={status.value} value={status.value}>
-                                      <span className="text-xs font-semibold">{status.label}</span>
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            ) : (
-                              <span className="text-xs font-semibold capitalize px-2.5 py-1 rounded-full bg-purple-100 text-purple-700">
-                                {task.status.replace("_", " ")}
-                              </span>
-                            )
+                            <span className="text-xs font-semibold capitalize px-2.5 py-1 rounded-full bg-purple-100 text-purple-700">
+                              {task.status.replace("_", " ")}
+                            </span>
                           ),
                         },
                       ].map(({ label, content }) => (

@@ -2,22 +2,27 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
+import { MobileDashboard } from "./components/MobileDashboard";
 import { ReportsDashboard } from "./components/ReportsDashboard";
-import { ProjectWorkspace } from "./components/ProjectWorkspace";
-import { TaskDetailModal } from "./components/TaskDetailModal";
-import { TaskFormModal, taskToFormValues } from "./components/TaskFormModal";
-import { PublicGate } from "./components/PublicGate";
-import { Project, TeamMember, Task } from "./data/tmaiData";
+import { ProjectDetailSheet } from "./components/ProjectDetailSheet";
+import { AuthModule } from "./components/AuthModule";
+import { Project, projects, tasks, teamMembers, TeamMember } from "./data/tmaiData";
 import {
-  AlertTriangle, CheckCircle, TrendingUp, Layers, ChevronRight, Plus, LogOut, Loader2
+  AlertTriangle, CheckCircle, TrendingUp, Layers, ChevronRight, Plus, LogOut
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { useAuth } from "../context/AuthContext";
-import { useProject } from "../context/ProjectContext";
-import { ApiError } from "../lib/apiClient";
-import type { ProjectType } from "./data/tmaiData";
 
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "./components/ui/accordion";
+
+const useIsMobile = () => {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  return isMobile;
+};
 
 const getRiskBadge = (score: number) => {
   if (score >= 80) return { label: "Critical", cls: "bg-red-100 text-red-700 border border-red-200" };
@@ -27,15 +32,14 @@ const getRiskBadge = (score: number) => {
 };
 
 const getProgress = (project: Project) =>
-  project.progress ?? Math.round(Math.max(10, 92 - project.riskScore * 0.68));
+  Math.round(Math.max(10, 92 - project.riskScore * 0.68));
 
 const DashboardSummaryBar = () => {
-  const { projects, tasks } = useProject();
   const total = tasks.length;
   const done = tasks.filter((t) => t.status === "done").length;
   const critical = tasks.filter((t) => t.risk === "critical").length;
   const inProg = tasks.filter((t) => t.status === "in_progress").length;
-  const completion = total > 0 ? Math.round((done / total) * 100) : 0;
+  const completion = Math.round((done / total) * 100);
 
   const stats = [
     { label: "Total Tasks", value: total, sub: `${done} done`, icon: Layers, alert: false },
@@ -70,28 +74,16 @@ const DashboardSummaryBar = () => {
 
 const ProjectGrid = ({
   onSelect,
-  onInvite,
 }: {
   onSelect: (p: Project) => void;
-  onInvite?: (p: Project) => void;
 }) => {
-  const { projects, canInviteToProject } = useProject();
-
-  if (projects.length === 0) {
-    return (
-      <div className="p-8 text-center text-gray-500 text-sm">
-        No projects yet. Create your first project from the sidebar.
-      </div>
-    );
-  }
-
   return (
     <div className="p-4 overflow-y-auto h-full">
       <div className="flex items-center justify-between mb-3">
         <div>
           <h2 className="text-sm font-semibold text-gray-900">Projects Overview</h2>
           <p className="text-[10px] text-gray-500 mt-0.5">
-            {projects.length} active · Click any project to open board & tasks
+            {projects.length} active · Click any project to view team breakdown
           </p>
         </div>
       </div>
@@ -120,13 +112,6 @@ const ProjectGrid = ({
                   {project.name}
                 </span>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                    project.projectType === "Personal"
-                      ? "bg-violet-50 text-violet-700 border border-violet-100"
-                      : "bg-blue-50 text-blue-700 border border-blue-100"
-                  }`}>
-                    {project.projectType === "Personal" ? "Personal" : "Team"}
-                  </span>
                   <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${badge.cls}`}>
                     {badge.label}
                   </span>
@@ -168,15 +153,6 @@ const ProjectGrid = ({
                   />
                 </div>
               </div>
-              {canInviteToProject(project.id) && onInvite && (
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); onInvite(project); }}
-                  className="mt-2 text-[10px] font-bold text-[#1A237E] hover:underline text-left"
-                >
-                  + Invite member
-                </button>
-              )}
             </motion.button>
           );
         })}
@@ -245,31 +221,6 @@ const ProjectGrid = ({
   );
 };
 
-const PendingInvitationsBanner = () => {
-  const { pendingInvitations, acceptInvitation } = useProject();
-  if (pendingInvitations.length === 0) return null;
-
-  return (
-    <div className="mx-4 mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
-      <p className="text-xs font-bold text-blue-900">Project invitations</p>
-      {pendingInvitations.map((inv) => (
-        <div key={inv.invitationId} className="flex items-center justify-between gap-2 text-xs">
-          <span className="text-blue-800">
-            Join <strong>{inv.teamName ?? "team project"}</strong>
-          </span>
-          <button
-            type="button"
-            onClick={() => acceptInvitation(inv.invitationId)}
-            className="px-2.5 py-1 bg-[#1A237E] text-white rounded font-semibold text-[10px]"
-          >
-            Accept
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-};
-
 const MemberModalContent = ({ 
   member, 
   onClose 
@@ -277,11 +228,30 @@ const MemberModalContent = ({
   member: TeamMember; 
   onClose: () => void; 
 }) => {
-  const { tasks, projects } = useProject();
   const allMemberTasks = tasks.filter((t) => t.assignee.id === member.id);
-  const activeProjects = projects.filter((project) =>
-    allMemberTasks.some((task) => task.projectId === project.id)
-  );
+  
+  let activeProjects = projects.filter((project) => {
+    return allMemberTasks.some((task) => {
+      const isInfraOrDevOps = task.tags.some(tag => 
+        ["devops", "infrastructure", "performance"].includes(tag.toLowerCase())
+      );
+      if (isInfraOrDevOps && project.id === "p1") return true;
+
+      const matchesParent = task.tags.some((tag) => project.name.toLowerCase().includes(tag.toLowerCase()));
+      const matchesChild = project.children?.some((child) =>
+        task.tags.some((tag) => child.name.toLowerCase().includes(tag.toLowerCase()))
+      );
+      return matchesParent || matchesChild;
+    });
+  });
+
+  if (member.id === "t1") {
+    const hasMobileApp = activeProjects.some(p => p.id === "p2");
+    if (!hasMobileApp) {
+      const mobileProj = projects.find(p => p.id === "p2");
+      if (mobileProj) activeProjects = [...activeProjects, mobileProj];
+    }
+  }
 
   return (
     <>
@@ -309,9 +279,20 @@ const MemberModalContent = ({
         {activeProjects.length > 0 ? (
           <Accordion type="multiple" className="space-y-1.5">
             {activeProjects.map((project) => {
-              let projectTasks = allMemberTasks.filter((task) => task.projectId === project.id);
+              let projectTasks = allMemberTasks.filter((task) => {
+                const isInfraOrDevOps = task.tags.some(tag => 
+                  ["devops", "infrastructure", "performance"].includes(tag.toLowerCase())
+                );
+                if (isInfraOrDevOps && project.id === "p1") return true;
 
-              if (false) {
+                const matchesParent = task.tags.some((tag) => project.name.toLowerCase().includes(tag.toLowerCase()));
+                const matchesChild = project.children?.some((child) =>
+                  task.tags.some((tag) => child.name.toLowerCase().includes(tag.toLowerCase()))
+                );
+                return matchesParent || matchesChild;
+              });
+
+              if (member.id === "t1" && project.id === "p2") {
                 projectTasks = [{
                   id: "task-test",
                   title: "Cross-Project Mobile API Integration & Testing",
@@ -403,7 +384,6 @@ const MemberModalContent = ({
 };
 
 const TeamView = () => {
-  const { teamMembers, tasks } = useProject();
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
 
   return (
@@ -454,7 +434,7 @@ const TeamView = () => {
               <div className="w-full pt-2.5 mt-3 border-t border-gray-100 flex items-center justify-between text-[10px]">
                 <span className="text-gray-400 font-bold uppercase tracking-wider">Allocated Tasks</span>
                 <span className="font-bold text-gray-700 font-mono bg-gray-100 px-2 py-0.5 rounded border">
-                  {memberTasks.length} Items
+                  {member.id === "t1" ? memberTasks.length + 1 : memberTasks.length} Items
                 </span>
               </div>
             </motion.button>
@@ -488,28 +468,28 @@ const TeamView = () => {
   );
 };
 
-const NotificationsView = () => {
-  const { notifications } = useProject();
-
-  return (
+const NotificationsView = () => (
   <div className="p-4 space-y-2 max-w-xl">
     <div>
       <h2 className="text-sm font-semibold text-gray-900">Notifications</h2>
-      <p className="text-[10px] text-gray-500 mt-0.5">
-        {notifications.filter((n) => !n.isRead).length} unread
-      </p>
+      <p className="text-[10px] text-gray-500 mt-0.5">5 unread</p>
     </div>
-    {notifications.length === 0 ? (
-      <p className="text-sm text-gray-400 py-8 text-center">No notifications</p>
-    ) : (
-    notifications.map((notif) => (
+    {[
+      { title: "Critical Risk Detected", body: "Risk Prediction Engine: model accuracy 78% vs target 90%. Deadline in 2 days.", time: "2 min ago", urgent: true },
+      { title: "Deadline Conflict Alert", body: "API Integration has 3 blockers. Suggest reassigning 1 task to An Le.", time: "15 min ago", urgent: true },
+      { title: "New Comment", body: "An Le commented on Performance Benchmarking.", time: "1 hour ago", urgent: false },
+      { title: "Task Completed", body: "Design System Foundations marked complete by Minh Tran.", time: "3 hours ago", urgent: false },
+      { title: "Assignment Update", body: "You were assigned to Database Schema Design.", time: "5 hours ago", urgent: false },
+      { title: "Weekly Report Ready", body: "AI-generated weekly performance report is available.", time: "1 day ago", urgent: false },
+    ].map((notif, i) => (
       <motion.div
-        key={notif.id}
+        key={i}
         className={`flex items-start gap-3 p-3 rounded-lg border ${
           notif.urgent ? "bg-red-50 border-red-100" : "bg-white border-gray-100"
         }`}
         initial={{ opacity: 0, x: -10 }}
         animate={{ opacity: 1, x: 0 }}
+        transition={{ delay: i * 0.05 }}
       >
         <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${notif.urgent ? "bg-red-500" : "bg-gray-300"}`} />
         <div className="flex-1">
@@ -525,10 +505,9 @@ const NotificationsView = () => {
           <p className="text-[10px] text-gray-400 mt-1">{notif.time}</p>
         </div>
       </motion.div>
-    )))}
+    ))}
   </div>
-  );
-};
+);
 
 const SettingsView = () => {
   const [settingsState, setSettingsState] = useState({
@@ -655,303 +634,33 @@ const LogoutModal = ({
 );
 
 export default function App() {
-  const { isAuthenticated, user, logout } = useAuth();
-  const {
-    isLoading,
-    projects,
-    tasks,
-    teamMembers,
-    unreadCount,
-    createProject,
-    createTask,
-    editTask,
-    removeTask,
-    inviteToProject,
-    getProjectRole,
-    canInviteToProject,
-    updateTask,
-    updateTaskDetails,
-    assignTask,
-    teams,
-  } = useProject();
+  const isMobile = useIsMobile();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const [activeProject, setActiveProject] = useState("");
+  const [activeProject, setActiveProject] = useState("p1");
   const [activePage, setActivePage] = useState("dashboard");
-  const [workspaceProject, setWorkspaceProject] = useState<Project | null>(null);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [view, setView] = useState<"kanban" | "list">("kanban");
-  const [showNewProjectModal, setShowNewProjectModal] = useState(false);
-  const [newProjectName, setNewProjectName] = useState("");
-  const [newProjectType, setNewProjectType] = useState<ProjectType>("Personal");
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteProject, setInviteProject] = useState<Project | null>(null);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [taskFormOpen, setTaskFormOpen] = useState(false);
-  const [taskFormMode, setTaskFormMode] = useState<"create" | "edit">("create");
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [taskFormProjectId, setTaskFormProjectId] = useState("");
-
-  useEffect(() => {
-    if (projects.length > 0 && !activeProject) {
-      setActiveProject(projects[0].id);
-    }
-    if (projects.length > 0 && !taskFormProjectId) {
-      setTaskFormProjectId(projects[0].id);
-    }
-  }, [projects, activeProject, taskFormProjectId]);
-
-  useEffect(() => {
-    if (!workspaceProject) return;
-    const updated = projects.find((p) => p.id === workspaceProject.id);
-    if (updated) setWorkspaceProject(updated);
-  }, [projects, workspaceProject?.id]);
-
-  useEffect(() => {
-    if (!selectedTask) return;
-    const updated = tasks.find((t) => t.id === selectedTask.id);
-    if (updated) setSelectedTask(updated);
-  }, [tasks, selectedTask?.id]);
-
-  const openProjectWorkspace = (project: Project) => {
-    setActiveProject(project.id);
-    setWorkspaceProject(project);
-    setActivePage("project");
-    setTaskFormProjectId(project.id);
-  };
-
-  const closeProjectWorkspace = () => {
-    setWorkspaceProject(null);
-    setActivePage("dashboard");
-  };
-
-  const navigateTo = (page: string) => {
-    if (page !== "project") setWorkspaceProject(null);
-    setActivePage(page);
-  };
-
-  const openNewTaskModal = (projectId?: string) => {
-    setTaskFormMode("create");
-    setEditingTask(null);
-    setTaskFormProjectId(projectId ?? workspaceProject?.id ?? projects[0]?.id ?? "");
-    setTaskFormOpen(true);
-  };
-
-  const openEditTaskModal = (task: Task) => {
-    setSelectedTask(null);
-    setTaskFormMode("edit");
-    setEditingTask(task);
-    setTaskFormOpen(true);
-  };
-
-  const handleTaskFormSubmit = async (values: {
-    title: string;
-    description: string;
-    projectId: string;
-    deadline: string;
-    priority: Task["priority"];
-    status: Task["status"];
-  }) => {
-    try {
-      if (taskFormMode === "create") {
-        await createTask(values.projectId, {
-          title: values.title,
-          description: values.description,
-          deadline: values.deadline || undefined,
-          priority: values.priority,
-        });
-        toast.success("Task created");
-      } else if (editingTask) {
-        await editTask(editingTask.id, {
-          title: values.title,
-          description: values.description,
-          deadline: values.deadline || undefined,
-          priority: values.priority,
-          status: values.status,
-        });
-        toast.success("Task updated");
-      }
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Failed to save task";
-      toast.error(message);
-      throw err;
-    }
-  };
-
-  const handleTaskDelete = async () => {
-    if (!editingTask) return;
-    try {
-      await removeTask(editingTask.id);
-      toast.success("Task deleted");
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Failed to delete task";
-      toast.error(message);
-      throw err;
-    }
-  };
-
-  const handleTaskStatusChange = async (taskId: string, status: Task["status"]) => {
-    const task = tasks.find((t) => t.id === taskId);
-    if (!task) return;
-    const progress =
-      status === "done" ? 100 : status === "in_progress" || status === "review" ? Math.max(task.progress, 50) : task.progress;
-    try {
-      await updateTask(taskId, status, progress);
-    } catch {
-      toast.error("Failed to update task status");
-    }
-  };
-
-  const handleTaskAssigneeChange = async (task: Task, memberId: string) => {
-    try {
-      await assignTask(task.id, memberId);
-      const member = teamMembers.find((m) => m.id === memberId);
-      if (member) {
-        setSelectedTask((current) =>
-          current?.id === task.id ? { ...current, assignee: member } : current
-        );
-      }
-      toast.success("Assignee updated");
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Failed to update assignee";
-      toast.error(message);
-      throw err;
-    }
-  };
-
-  const handleTaskDetailStatusChange = async (task: Task, status: Task["status"]) => {
-    const progress =
-      status === "done"
-        ? 100
-        : status === "in_progress" || status === "review"
-          ? Math.max(task.progress, 50)
-          : task.progress;
-
-    try {
-      await updateTask(task.id, status, progress);
-      setSelectedTask((current) =>
-        current?.id === task.id ? { ...current, status, progress } : current
-      );
-      toast.success("Status updated");
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Failed to update status";
-      toast.error(message);
-      throw err;
-    }
-  };
-
-  const handleTaskPriorityChange = async (task: Task, priority: Task["priority"]) => {
-    try {
-      await updateTaskDetails(task.id, { priority });
-      setSelectedTask((current) =>
-        current?.id === task.id ? { ...current, priority } : current
-      );
-      toast.success("Priority updated");
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Failed to update priority";
-      toast.error(message);
-      throw err;
-    }
-  };
-
-  const handleTaskDeadlineChange = async (task: Task, deadline: string) => {
-    try {
-      await updateTaskDetails(task.id, { deadline });
-      setSelectedTask((current) =>
-        current?.id === task.id ? { ...current, deadline } : current
-      );
-      toast.success("Deadline updated");
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Failed to update deadline";
-      toast.error(message);
-      throw err;
-    }
-  };
-
-  const workspaceTasks = workspaceProject
-    ? tasks.filter((t) => t.projectId === workspaceProject.id)
-    : [];
-
-  const selectedTaskAssignees = (() => {
-    if (!selectedTask?.projectId) return teamMembers;
-    const project = projects.find((p) => p.id === selectedTask.projectId);
-    if (!project?.teamId) return teamMembers;
-    const team = teams.find((t) => t.teamId === project.teamId);
-    if (!team) return teamMembers;
-
-    const projectMemberIds = new Set(team.members.map((member) => String(member.userId)));
-    const options = teamMembers.filter((member) => projectMemberIds.has(member.id));
-    if (
-      selectedTask.assignee.id !== "0" &&
-      !options.some((member) => member.id === selectedTask.assignee.id)
-    ) {
-      return [selectedTask.assignee, ...options];
-    }
-    return options;
-  })();
 
   const [showAIChat, setShowAIChat] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [showNewTaskModal, setShowNewTaskModal] = useState(false);
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
     setShowLogoutModal(false);
-    await logout();
+    setIsAuthenticated(false);
     toast.success("You have been signed out.");
   };
 
   if (!isAuthenticated) {
-    return <PublicGate />;
-  }
-
-  if (isLoading && projects.length === 0) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
-        <Loader2 className="animate-spin text-[#1A237E]" size={32} />
-      </div>
+      <>
+        <Toaster position="top-right" richColors />
+        <AuthModule onLogin={() => setIsAuthenticated(true)} />
+      </>
     );
   }
-
-  const handleCreateProject = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const name = newProjectName.trim();
-    if (!name) return;
-    try {
-      const newId = await createProject(name, newProjectType);
-      setShowNewProjectModal(false);
-      setNewProjectName("");
-      openProjectWorkspace({
-        id: newId,
-        name,
-        color: "#1E88E5",
-        icon: "🚀",
-        taskCount: 0,
-        riskScore: 20,
-        projectType: newProjectType,
-      });
-      toast.success(newProjectType === "Personal" ? "Personal project created" : "Team project created");
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Failed to create project";
-      toast.error(message);
-    }
-  };
-
-  const handleInvite = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inviteProject || !inviteEmail.trim()) return;
-    try {
-      await inviteToProject(inviteProject.id, inviteEmail.trim());
-      setShowInviteModal(false);
-      setInviteEmail("");
-      setInviteProject(null);
-      toast.success("Invitation sent");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to send invitation");
-    }
-  };
-
-  const userRoleLabel = projects.some((p) => getProjectRole(p.id) === "LEADER")
-    ? "Project Leader"
-    : "Team Member";
 
   return (
     <div
@@ -959,7 +668,8 @@ export default function App() {
       style={{ fontFamily: "'Inter', 'Roboto', sans-serif" }}
     >
       <Toaster position="top-right" richColors />
-      <>
+      {!isMobile && (
+        <>
           <motion.div
             className="h-full shrink-0 overflow-hidden"
             animate={{ width: collapsed ? 52 : 220 }}
@@ -969,15 +679,10 @@ export default function App() {
               activeProject={activeProject}
               setActiveProject={setActiveProject}
               activePage={activePage}
-              setActivePage={navigateTo}
+              setActivePage={setActivePage}
               collapsed={collapsed}
-              onOpenProject={openProjectWorkspace}
+              onSelectProject={setSelectedProject}
               onLogout={() => setShowLogoutModal(true)}
-              projects={projects}
-              userName={user?.name ?? "User"}
-              userRole={userRoleLabel}
-              unreadCount={unreadCount}
-              onCreateProject={() => setShowNewProjectModal(true)}
             />
           </motion.div>
 
@@ -989,9 +694,7 @@ export default function App() {
               setView={setView}
               onAIToggle={() => setShowAIChat(!showAIChat)}
               onProfileToggle={() => setShowProfile(true)}
-              onNewTaskToggle={() => openNewTaskModal()}
-              projectName={activePage === "project" ? workspaceProject?.name : undefined}
-              onProjectsClick={closeProjectWorkspace}
+              onNewTaskToggle={() => setShowNewTaskModal(true)}
             />
 
             <div className="flex-1 flex overflow-hidden w-full relative">
@@ -1006,40 +709,10 @@ export default function App() {
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.15 }}
                     >
-                      <PendingInvitationsBanner />
                       <DashboardSummaryBar />
                       <div className="flex-1 overflow-hidden">
-                        <ProjectGrid
-                          onSelect={openProjectWorkspace}
-                          onInvite={(p) => { setInviteProject(p); setShowInviteModal(true); }}
-                        />
+                        <ProjectGrid onSelect={setSelectedProject} />
                       </div>
-                    </motion.div>
-                  )}
-
-                  {activePage === "project" && workspaceProject && (
-                    <motion.div
-                      key={`project-${workspaceProject.id}`}
-                      className="flex-1 flex flex-col overflow-hidden"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15 }}
-                    >
-                      <ProjectWorkspace
-                        project={workspaceProject}
-                        tasks={workspaceTasks}
-                        view={view}
-                        canInvite={canInviteToProject(workspaceProject.id)}
-                        onBack={closeProjectWorkspace}
-                        onNewTask={() => openNewTaskModal(workspaceProject.id)}
-                        onInvite={() => {
-                          setInviteProject(workspaceProject);
-                          setShowInviteModal(true);
-                        }}
-                        onTaskClick={setSelectedTask}
-                        onStatusChange={handleTaskStatusChange}
-                      />
                     </motion.div>
                   )}
 
@@ -1153,70 +826,11 @@ export default function App() {
             </div>
           </div>
         </>
-
-      {showNewProjectModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/20" onClick={() => setShowNewProjectModal(false)} />
-          <div className="relative bg-white rounded-xl p-5 max-w-sm w-full shadow-2xl z-10">
-            <h3 className="text-sm font-bold mb-1">Create Project</h3>
-            <p className="text-[10px] text-gray-500 mb-3">Like Jira: personal workspace or team project with invites.</p>
-            <form onSubmit={handleCreateProject} className="space-y-3">
-              <input
-                required
-                value={newProjectName}
-                onChange={(e) => setNewProjectName(e.target.value)}
-                placeholder="Project name"
-                className="w-full border rounded-lg px-3 py-2 text-sm"
-              />
-              <div className="grid grid-cols-2 gap-2">
-                {(["Personal", "Team"] as ProjectType[]).map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => setNewProjectType(type)}
-                    className={`p-2.5 rounded-lg border text-left text-xs transition-colors ${
-                      newProjectType === type
-                        ? "border-[#1A237E] bg-blue-50"
-                        : "border-gray-200 hover:border-gray-300"
-                    }`}
-                  >
-                    <div className="font-bold text-gray-900">{type}</div>
-                    <div className="text-[10px] text-gray-500 mt-0.5">
-                      {type === "Personal" ? "Solo workspace" : "Invite members"}
-                    </div>
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-2 justify-end">
-                <button type="button" onClick={() => setShowNewProjectModal(false)} className="px-3 py-1.5 text-xs border rounded-lg">Cancel</button>
-                <button type="submit" className="px-3 py-1.5 text-xs bg-[#1A237E] text-white rounded-lg font-semibold">Create</button>
-              </div>
-            </form>
-          </div>
-        </div>
       )}
 
-      {showInviteModal && inviteProject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/20" onClick={() => setShowInviteModal(false)} />
-          <div className="relative bg-white rounded-xl p-5 max-w-sm w-full shadow-2xl z-10">
-            <h3 className="text-sm font-bold mb-1">Invite to {inviteProject.name}</h3>
-            <p className="text-[10px] text-gray-500 mb-3">Member will receive a pending invitation to accept.</p>
-            <form onSubmit={handleInvite} className="space-y-3">
-              <input
-                required
-                type="email"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="member@company.com"
-                className="w-full border rounded-lg px-3 py-2 text-sm"
-              />
-              <div className="flex gap-2 justify-end">
-                <button type="button" onClick={() => setShowInviteModal(false)} className="px-3 py-1.5 text-xs border rounded-lg">Cancel</button>
-                <button type="submit" className="px-3 py-1.5 text-xs bg-[#1A237E] text-white rounded-lg font-semibold">Send Invite</button>
-              </div>
-            </form>
-          </div>
+      {isMobile && (
+        <div className="flex-1 overflow-hidden">
+          <MobileDashboard onTaskPress={() => {}} />
         </div>
       )}
 
@@ -1237,9 +851,9 @@ export default function App() {
                 <div className="w-16 h-16 rounded-lg bg-gray-200 mb-3 overflow-hidden border border-gray-300">
                   <img src="https://images.unsplash.com/photo-1601513043334-36a0088140d4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100" alt="Huy Pham" className="w-full h-full object-cover" />
                 </div>
-                <h3 className="text-sm font-black text-gray-900 uppercase tracking-wide">{user?.name ?? "User"}</h3>
+                <h3 className="text-sm font-black text-gray-900 uppercase tracking-wide">Nguyễn Huy Phạm</h3>
                 <span className="text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-md mt-1 font-mono uppercase">
-                  {userRoleLabel}
+                  PROJECT EXECUTIVE LEADER
                 </span>
               </div>
               <div className="p-4 bg-gray-50/50 space-y-3 text-xs flex-1">
@@ -1275,35 +889,73 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <TaskFormModal
-        open={taskFormOpen}
-        mode={taskFormMode}
-        projects={projects}
-        initial={
-          taskFormMode === "edit" && editingTask
-            ? taskToFormValues(editingTask)
-            : { projectId: taskFormProjectId }
-        }
-        onClose={() => {
-          setTaskFormOpen(false);
-          setEditingTask(null);
-        }}
-        onSubmit={handleTaskFormSubmit}
-        onDelete={taskFormMode === "edit" ? handleTaskDelete : undefined}
-      />
+      {/* --- POPUP 2: FORM TẠO MỚI TÁC VỤ --- */}
+      <AnimatePresence>
+        {showNewTaskModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/20 backdrop-blur-xs" onClick={() => setShowNewTaskModal(false)} />
+            <motion.div 
+              className="relative bg-white border-2 border-[#1A237E] rounded-xl w-full max-w-md shadow-2xl overflow-hidden z-10 flex flex-col"
+              initial={{ scale: 0.96, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.96, opacity: 0 }}
+            >
+              <div className="p-4 bg-[#1A237E] text-white flex items-center justify-between">
+                <span className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5"><Plus size={13}/> Dispatch New System Task</span>
+                <button type="button" onClick={() => setShowNewTaskModal(false)} className="text-xs font-mono opacity-70 hover:opacity-100">[X]</button>
+              </div>
+              <form onSubmit={(e) => { e.preventDefault(); setShowNewTaskModal(false); }} className="p-4 space-y-3 text-xs">
+                <div className="space-y-1">
+                  <label className="font-bold text-gray-700 uppercase text-[10px]">Task Title</label>
+                  <input required type="text" placeholder="e.g., Optimize Database Connection Pooling" className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 outline-none focus:border-[#1A237E]" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="font-bold text-gray-700 uppercase text-[10px]">Target Project</label>
+                    <select className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 outline-none focus:border-[#1A237E]">
+                      {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-gray-700 uppercase text-[10px]">Assign Core Resource</label>
+                    <select className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 outline-none focus:border-[#1A237E]">
+                      {teamMembers.map(m => <option key={m.id} value={m.id}>{m.name} ({m.role.split(' ')[0]})</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="font-bold text-gray-700 uppercase text-[10px]">Initial Status</label>
+                    <select className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 outline-none focus:border-[#1A237E]">
+                      <option value="backlog">Backlog</option>
+                      <option value="in_progress">In Progress</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-gray-700 uppercase text-[10px]">AI Risk Vector</label>
+                    <select className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 outline-none focus:border-[#1A237E] font-mono text-red-600 font-bold">
+                      <option value="safe" className="text-gray-900 font-normal">SAFE</option>
+                      <option value="medium" className="text-gray-900 font-normal">MEDIUM RISK</option>
+                      <option value="high" className="text-amber-600 font-bold">HIGH RISK</option>
+                      <option value="critical" className="text-red-600 font-black">CRITICAL ALERT</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="font-bold text-gray-700 uppercase text-[10px]">Task Description / Constraints</label>
+                  <textarea rows={3} placeholder="Provide technical implementation notes for the engineering core..." className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 outline-none focus:border-[#1A237E] resize-none" />
+                </div>
+                <div className="pt-3 flex gap-2 justify-end font-mono">
+                  <button type="button" onClick={() => setShowNewTaskModal(false)} className="px-3 py-1.5 border rounded hover:bg-gray-50">CANCEL</button>
+                  <button type="submit" className="px-4 py-1.5 bg-[#1A237E] text-white font-bold rounded hover:bg-[#0D1757]">DISPATCH</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
-      <TaskDetailModal
-        task={selectedTask}
-        onClose={() => setSelectedTask(null)}
-        onEdit={openEditTaskModal}
-        assigneeOptions={selectedTaskAssignees}
-        onAssigneeChange={handleTaskAssigneeChange}
-        onStatusChange={handleTaskDetailStatusChange}
-        onPriorityChange={handleTaskPriorityChange}
-        onDeadlineChange={handleTaskDeadlineChange}
-        onProgressUpdate={(task, progress) => {
-          updateTask(task.id, task.status, progress);
-        }}
+      <ProjectDetailSheet
+        project={selectedProject}
+        onClose={() => setSelectedProject(null)}
       />
 
       {/* Logout Confirmation Modal (Screen 9) */}

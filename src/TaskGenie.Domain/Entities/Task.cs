@@ -41,6 +41,8 @@ public class Task
 
     public string? AiSummary { get; internal set; }
 
+    public DateTime? CompletedAt { get; internal set; }
+
     public virtual ICollection<AiAnalysis> AiAnalyses { get; internal set; } = new List<AiAnalysis>();
 
     public virtual ICollection<AiRecommendation> AiRecommendations { get; internal set; } = new List<AiRecommendation>();
@@ -111,11 +113,23 @@ public class Task
         if (progress.HasValue) Progress = progress;
         if (riskLevel is not null) RiskLevel = riskLevel;
         if (actualTime.HasValue) ActualTime = actualTime;
-        if (status == "Done") Progress = 100;
+        if (status == "Done")
+        {
+            Progress = 100;
+            CompletedAt = DateTime.UtcNow;
+        }
     }
 
     public void SetAiEstimatedTime(int hours)
     {
         AiEstimatedTime = hours;
+    }
+
+    public void SetRiskAssessment(string riskLevel)
+    {
+        if (string.IsNullOrWhiteSpace(riskLevel))
+            throw new ArgumentException("Risk level is required.", nameof(riskLevel));
+
+        RiskLevel = riskLevel.Trim().ToUpperInvariant();
     }
 }

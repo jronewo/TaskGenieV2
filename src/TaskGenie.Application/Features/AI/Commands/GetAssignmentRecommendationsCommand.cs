@@ -1,7 +1,11 @@
 using System.Text;
+using System.Diagnostics;
+using System.Text.Json;
 using MediatR;
 using TaskGenie.Application.Features.AI.DTOs;
 using TaskGenie.Application.Interfaces;
+using TaskGenie.Application.Features.AI.Services;
+using TaskGenie.Application.Common.Exceptions;
 using TaskGenie.Domain.Entities;
 using TaskGenie.Domain.Interfaces.Repositories;
 using TaskEntity = TaskGenie.Domain.Entities.Task;
@@ -18,20 +22,20 @@ public sealed class GetAssignmentRecommendationsCommandHandler(
     IUserRepository userRepo,
     ITaskRequiredSkillRepository skillRepo,
     IAiRecommendationRepository recommendationRepo,
-    IHuggingFaceService huggingFaceService
+    IHuggingFaceService huggingFaceService,
+    IRiskRepository riskRepository,
+    AssignmentScoringEngine scoringEngine
 ) : IRequestHandler<GetAssignmentRecommendationsCommand, TaskAssignmentResponseDto>
 {
-    // Scoring weights
-    private const double SkillMatchWeight = 0.40;
-    private const double SemanticSimilarityWeight = 0.25;
-    private const double WorkloadWeight = 0.20;
-    private const double PerformanceWeight = 0.15;
-
     public async Task<TaskAssignmentResponseDto> Handle(GetAssignmentRecommendationsCommand cmd, CancellationToken ct)
     {
+        var stopwatch = Stopwatch.StartNew();
+        var runId = Guid.NewGuid();
         // 1. Load task (with project nav for TeamId)
         var task = await taskRepo.GetByIdAsync(cmd.TaskId, ct)
-            ?? throw new ArgumentException($"Task with ID {cmd.TaskId} not found");
+            ?? throw new NotFoundException("Task", cmd.TaskId);
+        if (task.ProjectId != cmd.ProjectId)
+            throw new InvalidOperationException("Task does not belong to the requested project.");
 
         // 2. Load required skills
         var requiredSkills = await skillRepo.GetByTaskIdAsync(cmd.TaskId, ct);
@@ -43,8 +47,7 @@ public sealed class GetAssignmentRecommendationsCommandHandler(
         }).ToList();
 
         // 3. Get team members via project's TeamId
-        var projectFull = await taskRepo.GetByIdAsync(cmd.TaskId, ct); // has .Project nav
-        var teamId = projectFull?.Project?.TeamId;
+        var teamId = task.Project?.TeamId;
 
         List<User> teamMembers = teamId.HasValue
             ? await userRepo.GetByTeamIdAsync(teamId.Value, ct)
@@ -52,11 +55,24 @@ public sealed class GetAssignmentRecommendationsCommandHandler(
 
         if (teamMembers.Count == 0)
         {
+            stopwatch.Stop();
+            await riskRepository.AddExecutionLogAsync(AiExecutionLog.Create(
+                runId,
+                task.TaskId,
+                "ASSIGNMENT_RECOMMENDATION",
+                "RULE_ENGINE",
+                AssignmentScoringEngine.ModelVersion,
+                JsonSerializer.Serialize(new { cmd.TaskId, cmd.ProjectId, CandidateCount = 0 }),
+                "[]",
+                "NO_CANDIDATES",
+                (int)stopwatch.ElapsedMilliseconds), ct);
             return new TaskAssignmentResponseDto
             {
+                RunId = runId,
                 TaskId = cmd.TaskId,
                 TaskTitle = task.Title,
-                RequiredSkills = taskSkillRequirements
+                RequiredSkills = taskSkillRequirements,
+                ProviderStatus = "NO_CANDIDATES"
             };
         }
 
@@ -68,7 +84,8 @@ public sealed class GetAssignmentRecommendationsCommandHandler(
         }
 
         // 5. Compute semantic scores via HuggingFace
-        var semanticScores = await ComputeSemanticScoresAsync(task, taskSkillRequirements, userProfiles, ct);
+        var semanticResult = await ComputeSemanticScoresAsync(task, taskSkillRequirements, userProfiles, ct);
+        var semanticScores = semanticResult.Scores;
 
         // 6. Score all profiles
         var scoredProfiles = new List<ScoredProfile>();
@@ -79,24 +96,22 @@ public sealed class GetAssignmentRecommendationsCommandHandler(
             var workload = ComputeWorkloadScore(profile, task.EstimatedTime ?? 4);
             var performance = ComputePerformanceScore(profile);
             var semantic = i < semanticScores.Count ? semanticScores[i] : 0.5;
-            var final = SkillMatchWeight * skillMatch
-                      + SemanticSimilarityWeight * semantic
-                      + WorkloadWeight * workload
-                      + PerformanceWeight * performance;
+            var score = scoringEngine.Calculate(new AssignmentScoreInput(skillMatch, semantic, workload, performance));
 
-            scoredProfiles.Add(new ScoredProfile(profile, skillMatch, semantic, workload, performance, final));
+            scoredProfiles.Add(new ScoredProfile(profile, score.SkillMatch, score.SemanticSimilarity, score.Workload, score.Performance, score.Total));
         }
 
         scoredProfiles = scoredProfiles.OrderByDescending(sp => sp.FinalScore).ToList();
 
         // 7. Build comparative reasons and suggestion list
         var suggestions = new List<AiSuggestionResultDto>();
-        for (int rank = 0; rank < scoredProfiles.Count; rank++)
+        for (int rank = 0; rank < Math.Min(3, scoredProfiles.Count); rank++)
         {
             var sp = scoredProfiles[rank];
             var reason = BuildComparativeReason(task, sp, scoredProfiles, taskSkillRequirements, rank + 1);
             suggestions.Add(new AiSuggestionResultDto
             {
+                Rank = rank + 1,
                 UserId = sp.Profile.UserId,
                 UserName = sp.Profile.UserName,
                 Score = Math.Round(sp.FinalScore * 100, 2),
@@ -109,21 +124,58 @@ public sealed class GetAssignmentRecommendationsCommandHandler(
         }
 
         // 8. Persist recommendations
-        await recommendationRepo.DeleteByTaskIdAsync(cmd.TaskId, ct);
         var entities = suggestions.Select(s => AiRecommendation.Create(
             taskId: cmd.TaskId,
             suggestedUserId: s.UserId,
             score: s.Score,
-            reason: s.Reason
+            reason: s.Reason,
+            runId: runId,
+            rank: s.Rank,
+            skillMatchScore: s.SkillMatchScore,
+            semanticSimilarityScore: s.SemanticSimilarityScore,
+            workloadScore: s.WorkloadScore,
+            performanceScore: s.PerformanceScore
         )).ToList();
         await recommendationRepo.AddRangeAsync(entities, ct);
 
+        stopwatch.Stop();
+        var executionLog = AiExecutionLog.Create(
+            runId,
+            task.TaskId,
+            "ASSIGNMENT_RECOMMENDATION",
+            semanticResult.UsedFallback ? "RULE_ENGINE_WITH_SEMANTIC_FALLBACK" : "RULE_ENGINE+HUGGINGFACE",
+            AssignmentScoringEngine.ModelVersion,
+            JsonSerializer.Serialize(new
+            {
+                cmd.TaskId,
+                cmd.ProjectId,
+                RequiredSkills = taskSkillRequirements,
+                CandidateCount = userProfiles.Count
+            }),
+            JsonSerializer.Serialize(suggestions.Select(suggestion => new
+            {
+                suggestion.Rank,
+                suggestion.UserId,
+                suggestion.Score,
+                suggestion.SkillMatchScore,
+                suggestion.SemanticSimilarityScore,
+                suggestion.WorkloadScore,
+                suggestion.PerformanceScore
+            })),
+            semanticResult.UsedFallback ? "FALLBACK" : "SUCCEEDED",
+            (int)stopwatch.ElapsedMilliseconds,
+            semanticResult.Error);
+        await riskRepository.AddExecutionLogAsync(executionLog, ct);
+
         return new TaskAssignmentResponseDto
         {
+            RunId = runId,
             TaskId = cmd.TaskId,
             TaskTitle = task.Title,
             RequiredSkills = taskSkillRequirements,
-            Suggestions = suggestions
+            Suggestions = suggestions,
+            ModelVersion = AssignmentScoringEngine.ModelVersion,
+            ProviderStatus = semanticResult.UsedFallback ? "SEMANTIC_FALLBACK" : "SUCCEEDED"
         };
     }
 
@@ -161,7 +213,7 @@ public sealed class GetAssignmentRecommendationsCommandHandler(
         );
     }
 
-    private async Task<List<double>> ComputeSemanticScoresAsync(
+    private async Task<SemanticScoreResult> ComputeSemanticScoresAsync(
         TaskEntity task,
         List<TaskSkillRequirementDto> requirements,
         List<UserSkillProfileInternal> profiles,
@@ -171,11 +223,14 @@ public sealed class GetAssignmentRecommendationsCommandHandler(
         {
             var taskDescription = BuildTaskDescription(task, requirements);
             var userDescriptions = profiles.Select(BuildUserSkillDescription).ToList();
-            return await huggingFaceService.ComputeSimilarityBatchAsync(taskDescription, userDescriptions);
+            var scores = await huggingFaceService.ComputeSimilarityBatchAsync(taskDescription, userDescriptions);
+            if (scores.Count != profiles.Count)
+                throw new InvalidOperationException("Semantic provider returned an unexpected number of scores.");
+            return new SemanticScoreResult(scores, false, null);
         }
-        catch
+        catch (Exception exception)
         {
-            return profiles.Select(_ => 0.5).ToList();
+            return new SemanticScoreResult(profiles.Select(_ => 0.5).ToList(), true, exception.Message);
         }
     }
 
@@ -389,4 +444,6 @@ public sealed class GetAssignmentRecommendationsCommandHandler(
         double PerformanceScore,
         double FinalScore
     );
+
+    private sealed record SemanticScoreResult(List<double> Scores, bool UsedFallback, string? Error);
 }

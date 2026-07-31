@@ -5,7 +5,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell
 } from "recharts";
 import { Sparkles } from "lucide-react";
-import { useProject } from "../../context/ProjectContext";
+import { tasks, teamMembers } from "../data/tmaiData";
 
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "./ui/accordion";
 
@@ -38,6 +38,13 @@ const riskTrend = [
   { time: "Sun", score: 52 },
 ];
 
+const riskDistribution = [
+  { name: "Safe", value: tasks.filter(t => t.risk === "safe").length, color: "#10B981" },
+  { name: "Medium", value: tasks.filter(t => t.risk === "medium").length, color: "#F59E0B" },
+  { name: "High", value: tasks.filter(t => t.risk === "high").length, color: "#EF4444" },
+  { name: "Critical", value: tasks.filter(t => t.risk === "critical").length, color: "#DC2626" },
+];
+
 const RADIAN = Math.PI / 180;
 const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
   const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
@@ -52,53 +59,6 @@ const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, per
 };
 
 export const ReportsDashboard = () => {
-  const { tasks, teamMembers } = useProject();
-
-  const completedTasks = tasks.filter((task) => task.status === "done");
-  const pendingTasks = tasks.filter((task) => task.status !== "done");
-  const totalStoryPoints = tasks.reduce((sum, task) => sum + task.storyPoints, 0);
-  const completedStoryPoints = completedTasks.reduce((sum, task) => sum + task.storyPoints, 0);
-  const avgVelocity = completedStoryPoints;
-  const onTimeTasks = completedTasks.filter((task) => {
-    if (!task.deadline) return true;
-    return new Date(task.deadline).getTime() >= Date.now();
-  });
-  const onTimeRate = completedTasks.length > 0
-    ? Math.round((onTimeTasks.length / completedTasks.length) * 100)
-    : 0;
-  const activeMembers = teamMembers.filter((member) =>
-    pendingTasks.some((task) => task.assignee.id === member.id)
-  );
-  const teamUtilization = teamMembers.length > 0
-    ? Math.round((activeMembers.length / teamMembers.length) * 100)
-    : 0;
-  const aiAccuracy = tasks.length > 0
-    ? Math.round(tasks.reduce((sum, task) => sum + (100 - task.riskScore), 0) / tasks.length)
-    : 0;
-  const currentSprintData = sprintData.map((item) =>
-    item.sprint === "S6 (Current)"
-      ? {
-          ...item,
-          planned: Math.max(totalStoryPoints, tasks.length),
-          completed: Math.max(completedStoryPoints, completedTasks.length),
-          risk: tasks.length > 0
-            ? Math.round(tasks.reduce((sum, task) => sum + task.riskScore, 0) / tasks.length)
-            : 0,
-        }
-      : item
-  );
-  const currentBurndownData = burndownData.map((item, index) =>
-    index === burndownData.length - 1
-      ? { ...item, remaining: pendingTasks.reduce((sum, task) => sum + task.storyPoints, 0) }
-      : item
-  );
-  const riskDistribution = [
-    { name: "Safe", value: tasks.filter(t => t.risk === "safe").length, color: "#10B981" },
-    { name: "Medium", value: tasks.filter(t => t.risk === "medium").length, color: "#F59E0B" },
-    { name: "High", value: tasks.filter(t => t.risk === "high").length, color: "#EF4444" },
-    { name: "Critical", value: tasks.filter(t => t.risk === "critical").length, color: "#DC2626" },
-  ];
-
   return (
     <div className="h-full overflow-y-auto p-4 space-y-4 bg-[#F8FAFC]">
       {/* Title */}
@@ -116,10 +76,10 @@ export const ReportsDashboard = () => {
       {/* Top metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: "AVG VELOCITY", value: `${avgVelocity} pts`, change: `${completedTasks.length}/${tasks.length}`, trendUp: true },
-          { label: "ON-TIME RATE", value: `${onTimeRate}%`, change: `${onTimeTasks.length}/${completedTasks.length}`, trendUp: onTimeRate >= 70 },
-          { label: "TEAM UTILIZATION", value: `${teamUtilization}%`, change: `${activeMembers.length}/${teamMembers.length}`, trendUp: teamUtilization >= 50 },
-          { label: "AI ACCURACY", value: `${aiAccuracy}%`, change: "live", trendUp: aiAccuracy >= 70 },
+          { label: "AVG VELOCITY", value: "84 pts", change: "+12%", trendUp: true },
+          { label: "ON-TIME RATE", value: "76%", change: "-4%", trendUp: false },
+          { label: "TEAM UTILIZATION", value: "89%", change: "+3%", trendUp: true },
+          { label: "AI ACCURACY", value: "91%", change: "+7%", trendUp: true },
         ].map((metric, i) => (
           <motion.div
             key={`metric-card-id-${metric.label}`}
@@ -152,7 +112,7 @@ export const ReportsDashboard = () => {
             </div>
           </div>
           <ResponsiveContainer width="100%" height={180}>
-            <BarChart id="tmai-velocity-bar-chart-stable" data={currentSprintData} barGap={4}>
+            <BarChart id="tmai-velocity-bar-chart-stable" data={sprintData} barGap={4}>
               <CartesianGrid key="grid-velocity" strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
               <XAxis key="xaxis-velocity" dataKey="sprint" tick={{ fontSize: 11, fill: "#000000", fontWeight: "bold", fontFamily: "monospace" }} axisLine={false} tickLine={false} />
               <YAxis key="yaxis-velocity" tick={{ fontSize: 11, fill: "#000000", fontWeight: "bold", fontFamily: "monospace" }} axisLine={false} tickLine={false} />
@@ -228,7 +188,7 @@ export const ReportsDashboard = () => {
             <p className="text-[10px] text-gray-400 mt-0.5">Story points remaining</p>
           </div>
           <ResponsiveContainer width="100%" height={150}>
-            <LineChart id="tmai-burndown-line-chart-stable" data={currentBurndownData}>
+            <LineChart id="tmai-burndown-line-chart-stable" data={burndownData}>
               <CartesianGrid key="grid-burndown" strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
               <XAxis key="xaxis-burndown" dataKey="day" tick={{ fontSize: 11, fill: "#000000", fontWeight: "bold", fontFamily: "monospace" }} axisLine={false} tickLine={false} />
               <YAxis key="yaxis-burndown" tick={{ fontSize: 11, fill: "#000000", fontWeight: "bold", fontFamily: "monospace" }} axisLine={false} tickLine={false} />

@@ -13,13 +13,7 @@ interface SidebarProps {
   setActivePage: (page: string) => void;
   collapsed: boolean;
   onSelectProject?: (p: Project) => void;
-  onOpenProject?: (p: Project) => void;
   onLogout?: () => void;
-  projects?: Project[];
-  userName?: string;
-  userRole?: string;
-  unreadCount?: number;
-  onCreateProject?: () => void;
 }
 
 const getRiskDot = (score: number) => {
@@ -35,14 +29,12 @@ const ProjectItem = ({
   activeProject,
   setActiveProject,
   collapsed,
-  onOpenProject,
 }: {
   project: Project;
   depth?: number;
   activeProject: string;
   setActiveProject: (id: string) => void;
   collapsed: boolean;
-  onOpenProject?: (project: Project) => void;
 }) => {
   const [expanded, setExpanded] = useState(depth === 0);
   const hasChildren = project.children && project.children.length > 0;
@@ -56,8 +48,8 @@ const ProjectItem = ({
         }`}
         style={{ paddingLeft: collapsed ? "12px" : `${12 + depth * 12}px` }}
         onClick={() => {
+          // Bấm vào đây sẽ kích hoạt gán ID dự án đang chọn lên hệ thống chính
           setActiveProject(project.id);
-          onOpenProject?.(project);
           if (hasChildren) setExpanded(!expanded);
         }}
         whileHover={{ x: collapsed ? 0 : 2 }}
@@ -95,7 +87,6 @@ const ProjectItem = ({
               activeProject={activeProject}
               setActiveProject={setActiveProject}
               collapsed={collapsed}
-              onOpenProject={onOpenProject}
             />
           ))}
         </div>
@@ -104,29 +95,15 @@ const ProjectItem = ({
   );
 };
 
-const navItems = (unreadCount: number) => [
+const navItems = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "reports", label: "Reports", icon: BarChart2 },
   { id: "team", label: "Team", icon: Users },
-  { id: "notifications", label: "Notifications", icon: Bell, badge: unreadCount > 0 ? unreadCount : undefined },
+  { id: "notifications", label: "Notifications", icon: Bell, badge: 5 },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
-export const Sidebar = ({
-  activeProject,
-  setActiveProject,
-  activePage,
-  setActivePage,
-  collapsed,
-  onSelectProject,
-  onOpenProject,
-  onLogout,
-  projects: projectList = projects,
-  userName = "User",
-  userRole = "Project Leader",
-  unreadCount = 0,
-  onCreateProject,
-}: SidebarProps) => {
+export const Sidebar = ({ activeProject, setActiveProject, activePage, setActivePage, collapsed, onSelectProject, onLogout }: SidebarProps) => {
   return (
     <div
       className="h-full flex flex-col relative overflow-hidden"
@@ -147,7 +124,7 @@ export const Sidebar = ({
 
       {/* Navigation */}
       <div className="px-2 mt-3 space-y-0.5">
-        {navItems(unreadCount).map(({ id, label, icon: Icon, badge }) => (
+        {navItems.map(({ id, label, icon: Icon, badge }) => (
           <motion.button
             key={id}
             className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md transition-all relative group ${
@@ -193,7 +170,6 @@ export const Sidebar = ({
             <motion.button
               className="w-4 h-4 rounded flex items-center justify-center text-blue-400 hover:text-white hover:bg-white/10"
               whileTap={{ scale: 0.9 }}
-              onClick={onCreateProject}
             >
               <Plus size={11} />
             </motion.button>
@@ -202,14 +178,13 @@ export const Sidebar = ({
         {collapsed && <div className="w-5 h-px bg-white/15 mx-auto mb-2" />}
 
         <div className="overflow-y-auto flex-1 space-y-0.5 pr-1">
-          {projectList.map((project) => (
+          {projects.map((project) => (
             <ProjectItem
               key={project.id}
               project={project}
               activeProject={activeProject}
               setActiveProject={setActiveProject}
               collapsed={collapsed}
-              onOpenProject={onOpenProject}
             />
           ))}
         </div>
@@ -225,8 +200,8 @@ export const Sidebar = ({
               className="w-7 h-7 rounded-md object-cover ring-1 ring-blue-400/40"
             />
             <div className="flex-1 min-w-0">
-              <div className="text-white text-xs font-semibold truncate">{userName}</div>
-              <div className="text-blue-400 text-[10px] truncate">{userRole}</div>
+              <div className="text-white text-xs font-semibold truncate">Huy Pham</div>
+              <div className="text-blue-400 text-[10px] truncate">Admin</div>
             </div>
             <motion.button className="text-blue-400 hover:text-white" whileTap={{ scale: 0.9 }} onClick={onLogout}>
               <LogOut size={14} />

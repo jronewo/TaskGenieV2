@@ -8,20 +8,9 @@ import {
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip
 } from "recharts";
-import type { Task, Project } from "../data/tmaiData";
-import type { NotificationItem } from "../../mappers";
+import { tasks, projects, teamMembers } from "../data/tmaiData";
 
-interface MobileDashboardProps {
-  tasks: Task[];
-  projects?: Project[];
-  notifications: NotificationItem[];
-  unreadCount?: number;
-  userName: string;
-  onTaskPress: (task: Task) => void;
-  onLogout?: () => void;
-}
-
-const CircularHealthChart = ({ tasks }: { tasks: Task[] }) => {
+const CircularHealthChart = () => {
   const safe = tasks.filter(t => t.risk === "safe").length;
   const medium = tasks.filter(t => t.risk === "medium").length;
   const high = tasks.filter(t => t.risk === "high").length;
@@ -35,9 +24,7 @@ const CircularHealthChart = ({ tasks }: { tasks: Task[] }) => {
   ];
 
   const total = tasks.length;
-  const healthScore = total > 0
-    ? Math.round(((safe * 100 + medium * 60 + high * 30 + critical * 0) / total) / 100 * 100)
-    : 100;
+  const healthScore = Math.round(((safe * 100 + medium * 60 + high * 30 + critical * 0) / total) / 100 * 100);
 
   return (
     <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
@@ -102,7 +89,7 @@ const CircularHealthChart = ({ tasks }: { tasks: Task[] }) => {
   );
 };
 
-const QuickStats = ({ tasks }: { tasks: Task[] }) => {
+const QuickStats = () => {
   const stats = [
     { label: "Active", value: tasks.filter(t => t.status === "in_progress").length, icon: Zap, color: "#7C4DFF" },
     { label: "Done", value: tasks.filter(t => t.status === "done").length, icon: CheckCircle, color: "#10B981" },
@@ -133,13 +120,7 @@ const QuickStats = ({ tasks }: { tasks: Task[] }) => {
   );
 };
 
-const ActiveTasksList = ({
-  tasks,
-  onTaskPress,
-}: {
-  tasks: Task[];
-  onTaskPress: (task: Task) => void;
-}) => {
+const ActiveTasksList = ({ onTaskPress }: { onTaskPress: () => void }) => {
   const activeTasks = tasks.filter(t => t.status === "in_progress" || t.risk === "critical");
 
   return (
@@ -165,7 +146,7 @@ const ActiveTasksList = ({
               initial={{ opacity: 0, x: -15 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.07 }}
-              onTap={() => onTaskPress(task)}
+              onTap={onTaskPress}
             >
               <div className="w-1 h-10 rounded-full shrink-0" style={{ background: riskColors[task.risk] }} />
               <div className="flex-1 min-w-0">
@@ -207,7 +188,7 @@ const ActiveTasksList = ({
   );
 };
 
-const AIInsightCard = ({ tasks }: { tasks: Task[] }) => {
+const AIInsightCard = () => {
   const criticalTask = tasks.find(t => t.risk === "critical");
 
   return (
@@ -250,7 +231,7 @@ const AIInsightCard = ({ tasks }: { tasks: Task[] }) => {
   );
 };
 
-const ProjectsOverview = ({ projects }: { projects: Project[] }) => (
+const ProjectsOverview = () => (
   <div className="bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-sm">
     <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
       <h3 className="font-bold text-gray-900">Projects</h3>
@@ -295,21 +276,13 @@ const ProjectsOverview = ({ projects }: { projects: Project[] }) => (
 
 type MobileTab = "board" | "reports" | "notifications";
 
-export const MobileDashboard = ({
-  tasks,
-  projects = [],
-  notifications,
-  unreadCount = 0,
-  userName,
-  onTaskPress,
-  onLogout,
-}: MobileDashboardProps) => {
+export const MobileDashboard = ({ onTaskPress }: { onTaskPress: () => void }) => {
   const [activeTab, setActiveTab] = useState<MobileTab>("board");
 
   const navItems = [
-    { id: "board" as MobileTab, label: "My Tasks", icon: LayoutDashboard },
-    { id: "reports" as MobileTab, label: "Progress", icon: BarChart2 },
-    { id: "notifications" as MobileTab, label: "Alerts", icon: Bell, badge: unreadCount > 0 ? unreadCount : undefined },
+    { id: "board" as MobileTab, label: "Board", icon: LayoutDashboard },
+    { id: "reports" as MobileTab, label: "Reports", icon: BarChart2 },
+    { id: "notifications" as MobileTab, label: "Alerts", icon: Bell, badge: 3 },
   ];
 
   return (
@@ -322,28 +295,21 @@ export const MobileDashboard = ({
         <div className="flex items-center justify-between mb-4">
           <div>
             <div className="text-white/70 text-xs font-medium mb-0.5">Good morning,</div>
-            <div className="text-white font-bold text-xl">{userName} 👋</div>
+            <div className="text-white font-bold text-xl">Huy Pham 👋</div>
           </div>
           <div className="flex items-center gap-2">
-            {onLogout && (
-              <motion.button
-                className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white text-xs font-bold"
-                whileTap={{ scale: 0.9 }}
-                onClick={onLogout}
-              >
-                Exit
-              </motion.button>
-            )}
             <motion.button
               className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center relative"
               whileTap={{ scale: 0.9 }}
-              onClick={() => setActiveTab("notifications")}
             >
               <Bell size={18} className="text-white" />
-              {unreadCount > 0 && (
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-400 rounded-full ring-1 ring-blue-900" />
-              )}
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-400 rounded-full ring-1 ring-blue-900" />
             </motion.button>
+            <img
+              src="https://images.unsplash.com/photo-1601513043334-36a0088140d4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100"
+              alt="User"
+              className="w-9 h-9 rounded-xl object-cover ring-2 ring-white/30"
+            />
           </div>
         </div>
 
@@ -365,11 +331,11 @@ export const MobileDashboard = ({
               exit={{ opacity: 0 }}
               className="p-4 space-y-4 pb-24"
             >
-              <QuickStats tasks={tasks} />
-              <AIInsightCard tasks={tasks} />
-              <CircularHealthChart tasks={tasks} />
-              <ActiveTasksList tasks={tasks} onTaskPress={onTaskPress} />
-              {projects.length > 0 && <ProjectsOverview projects={projects} />}
+              <QuickStats />
+              <AIInsightCard />
+              <CircularHealthChart />
+              <ActiveTasksList onTaskPress={onTaskPress} />
+              <ProjectsOverview />
             </motion.div>
           )}
 
@@ -381,7 +347,7 @@ export const MobileDashboard = ({
               exit={{ opacity: 0 }}
               className="p-4 space-y-4 pb-24"
             >
-              <CircularHealthChart tasks={tasks} />
+              <CircularHealthChart />
               <div className="bg-white rounded-3xl p-4 border border-gray-100 shadow-sm">
                 <h3 className="font-bold text-gray-900 mb-3">Sprint Progress</h3>
                 {["Frontend", "Backend API", "AI Engine"].map((sprint, i) => {
@@ -434,24 +400,24 @@ export const MobileDashboard = ({
               className="p-4 space-y-3 pb-24"
             >
               <h3 className="font-bold text-gray-900">Notifications</h3>
-              {notifications.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-8">No notifications yet</p>
-              ) : (
-                notifications.map((notif, i) => (
+              {[
+                { type: "critical", icon: "🔥", title: "Critical: Risk Engine", body: "Deadline in 2 days. Model accuracy at 78%", time: "2m ago", color: "#EF4444" },
+                { type: "ai", icon: "🤖", title: "AI Alert: API Integration", body: "3 blockers detected. Suggest reassignment", time: "15m ago", color: "#7C4DFF" },
+                { type: "team", icon: "👤", title: "New Assignment", body: "You were added to Analytics Dashboard", time: "1h ago", color: "#1E88E5" },
+                { type: "done", icon: "✅", title: "Task Completed", body: "Notification Service passed review", time: "3h ago", color: "#10B981" },
+                { type: "comment", icon: "💬", title: "New Comment", body: "An Le: Need to fix accuracy on edge cases", time: "5h ago", color: "#F59E0B" },
+              ].map((notif, i) => (
                 <motion.div
-                  key={notif.id}
-                  className={`bg-white rounded-2xl p-4 border shadow-sm flex items-start gap-3 ${
-                    notif.urgent ? "border-red-100" : "border-gray-100"
-                  }`}
+                  key={i}
+                  className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm flex items-start gap-3"
                   initial={{ opacity: 0, x: -15 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.08 }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xl shrink-0 ${
-                    notif.urgent ? "bg-red-50" : "bg-blue-50"
-                  }`}>
-                    {notif.urgent ? "🔥" : "📬"}
+                  <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-xl shrink-0"
+                    style={{ background: `${notif.color}15` }}>
+                    {notif.icon}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
@@ -461,7 +427,7 @@ export const MobileDashboard = ({
                     <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{notif.body}</p>
                   </div>
                 </motion.div>
-              )))}
+              ))}
             </motion.div>
           )}
         </AnimatePresence>
@@ -498,6 +464,15 @@ export const MobileDashboard = ({
           </motion.button>
         ))}
 
+        {/* FAB */}
+        <motion.button
+          className="w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-lg"
+          style={{ background: "linear-gradient(135deg, #7C4DFF, #1E88E5)" }}
+          whileHover={{ scale: 1.08 }}
+          whileTap={{ scale: 0.92 }}
+        >
+          <Plus size={24} />
+        </motion.button>
       </div>
     </div>
   );

@@ -13,8 +13,7 @@ import {
   AccordionTrigger,
   AccordionContent,
 } from "./ui/accordion";
-import { Project, Task, RiskLevel } from "../data/tmaiData";
-import { useProject } from "../../context/ProjectContext";
+import { Project, teamMembers, tasks, Task, RiskLevel } from "../data/tmaiData";
 
 interface ProjectDetailSheetProps {
   project: Project | null;
@@ -97,8 +96,6 @@ function TaskRow({ task }: { task: Task }) {
 }
 
 export function ProjectDetailSheet({ project, onClose }: ProjectDetailSheetProps) {
-  const { tasks, teamMembers } = useProject();
-  const projectTasks = project ? tasks.filter((t) => t.projectId === project.id) : [];
   const isOpen = !!project;
 
   return (
@@ -164,7 +161,7 @@ export function ProjectDetailSheet({ project, onClose }: ProjectDetailSheetProps
 
               <Accordion type="multiple" className="divide-y divide-gray-100">
                 {teamMembers.map((member) => {
-                  const memberTasks = projectTasks.filter(
+                  const memberTasks = tasks.filter(
                     (t) => t.assignee.id === member.id
                   );
                   const hasCritical = memberTasks.some(

@@ -1,4 +1,5 @@
 using MediatR;
+using TaskGenie.Application.Common;
 using TaskGenie.Application.Events;
 using TaskGenie.Domain.Interfaces.Repositories;
 using TaskEntity = TaskGenie.Domain.Entities.Task;
@@ -27,7 +28,7 @@ public sealed class UpdateTaskCommandHandler(
         var task = await taskRepo.GetByIdAsync(cmd.TaskId, ct);
         if (task is null || task.ProjectId is null) return false;
 
-        var deadline = !string.IsNullOrEmpty(cmd.Deadline) && DateOnly.TryParse(cmd.Deadline, out var dl) ? dl : (DateOnly?)null;
+        var deadline = DateOnlyParser.TryParseFlexible(cmd.Deadline);
 
         task.Update(
             title: cmd.Title,

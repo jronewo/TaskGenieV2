@@ -1,22 +1,16 @@
 import React, { useRef, useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  Animated, StyleSheet, Switch,
+  Animated, StyleSheet, Switch, Alert,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   User, Mail, Bell, Shield, Palette, HelpCircle,
   LogOut, ChevronRight, Settings, Sparkles, Globe, Lock,
 } from 'lucide-react-native';
 import { colors } from '../theme';
-
-const user = {
-  name: 'Sarah Chen',
-  email: 'sarah@company.com',
-  role: 'Senior Engineer · Project Phoenix',
-  initials: 'SC',
-  since: 'Jan 2024',
-};
+import { useAuth } from '../context/AuthContext';
 
 const stats = [
   { label: 'Completed', value: '127' },
@@ -28,31 +22,31 @@ const settingsSections = [
   {
     title: 'Account',
     items: [
-      { icon: User,     label: 'Profile Settings',    desc: 'Name, photo, and personal info' },
-      { icon: Mail,     label: 'Email Preferences',   desc: 'Digest frequency and routing' },
-      { icon: Lock,     label: 'Security',             desc: 'Password, 2FA, active sessions' },
+      { icon: User,     label: 'Profile Settings',    desc: 'Name, photo, and personal info', action: 'editProfile' as const },
+      { icon: Mail,     label: 'Email Preferences',   desc: 'Digest frequency and routing', action: null },
+      { icon: Lock,     label: 'Security',             desc: 'Password, 2FA, active sessions', action: 'changePassword' as const },
     ],
   },
   {
     title: 'Preferences',
     items: [
-      { icon: Bell,     label: 'Notifications',       desc: 'Channels, timing, and filters' },
-      { icon: Palette,  label: 'Appearance',           desc: 'Theme, density, and color' },
-      { icon: Globe,    label: 'Language & Region',    desc: 'Locale and timezone' },
+      { icon: Bell,     label: 'Notifications',       desc: 'Channels, timing, and filters', action: null },
+      { icon: Palette,  label: 'Appearance',           desc: 'Theme, density, and color', action: null },
+      { icon: Globe,    label: 'Language & Region',    desc: 'Locale and timezone', action: null },
     ],
   },
   {
     title: 'AI Features',
     items: [
-      { icon: Sparkles, label: 'AI Assistant',        desc: 'Suggestions and automation level' },
-      { icon: Shield,   label: 'AI Privacy',           desc: 'What data the AI can access' },
+      { icon: Sparkles, label: 'AI Assistant',        desc: 'Suggestions and automation level', action: null },
+      { icon: Shield,   label: 'AI Privacy',           desc: 'What data the AI can access', action: null },
     ],
   },
   {
     title: 'Support',
     items: [
-      { icon: HelpCircle, label: 'Help & Documentation', desc: 'Guides, FAQs, and contact' },
-      { icon: Settings,   label: 'Advanced Settings',    desc: 'Developer tools and admin' },
+      { icon: HelpCircle, label: 'Help & Documentation', desc: 'Guides, FAQs, and contact', action: null },
+      { icon: Settings,   label: 'Advanced Settings',    desc: 'Developer tools and admin', action: null },
     ],
   },
 ];
@@ -66,7 +60,15 @@ function FadeIn({ children, delay }: { children: React.ReactNode; delay: number 
 }
 
 export default function ProfileScreen() {
+  const navigation = useNavigation<any>();
+  const { user, logout } = useAuth();
   const [darkMode, setDarkMode] = useState(true);
+
+  const handleSettingPress = (action: 'editProfile' | 'changePassword' | null) => {
+    if (action === 'editProfile') navigation.navigate('EditProfile');
+    else if (action === 'changePassword') navigation.navigate('ChangePassword');
+    else Alert.alert('Sắp ra mắt', 'Tính năng này sẽ sớm được cập nhật.');
+  };
 
   return (
     <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
@@ -79,14 +81,14 @@ export default function ProfileScreen() {
         <View style={s.profileRow}>
           <View style={{ position: 'relative' }}>
             <LinearGradient colors={['#2962FF', '#00BCD4']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.bigAvatar}>
-              <Text style={s.bigAvatarText}>{user.initials}</Text>
+              <Text style={s.bigAvatarText}>{user?.initials ?? '?'}</Text>
             </LinearGradient>
             <View style={s.onlineDot} />
           </View>
           <View style={{ flex: 1, marginLeft: 16 }}>
-            <Text style={s.profileName}>{user.name}</Text>
-            <Text style={[s.mutedXs, { marginTop: 2 }]}>{user.role}</Text>
-            <Text style={[s.mutedXs, { marginTop: 2, opacity: 0.7 }]}>{user.email}</Text>
+            <Text style={s.profileName}>{user?.name}</Text>
+            <Text style={[s.mutedXs, { marginTop: 2 }]}>{user?.role}</Text>
+            <Text style={[s.mutedXs, { marginTop: 2, opacity: 0.7 }]}>{user?.email}</Text>
           </View>
           <TouchableOpacity style={s.iconBtn}>
             <Settings size={16} color={colors.muted} strokeWidth={1.75} />
@@ -130,6 +132,7 @@ export default function ProfileScreen() {
                   <TouchableOpacity
                     style={[s.settingItem, ii < section.items.length - 1 ? { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' } : {}]}
                     activeOpacity={0.7}
+                    onPress={() => handleSettingPress(item.action)}
                   >
                     <View style={s.settingIcon}>
                       <Icon size={16} color={colors.muted} strokeWidth={1.75} />
@@ -148,13 +151,13 @@ export default function ProfileScreen() {
       ))}
 
       {/* Sign out */}
-      <TouchableOpacity style={s.signOutBtn}>
+      <TouchableOpacity style={s.signOutBtn} onPress={logout}>
         <LogOut size={16} color={colors.red} strokeWidth={1.75} />
         <Text style={[s.itemLabel, { color: colors.red, marginLeft: 8 }]}>Sign Out</Text>
       </TouchableOpacity>
 
       <Text style={[s.mutedXs, { textAlign: 'center', opacity: 0.4, marginTop: 8, marginBottom: 20 }]}>
-        Apex v1.0.0 · Member since {user.since}
+        TaskGenie v1.0.0
       </Text>
     </ScrollView>
   );

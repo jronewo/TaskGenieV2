@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  Animated, StyleSheet, TextInput,
+  Animated, StyleSheet, TextInput, Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -9,6 +9,7 @@ import {
   CheckCircle2, Clock, AlertTriangle, Plus, Sparkles,
 } from 'lucide-react-native';
 import { colors, AVATAR_GRADIENTS } from '../theme';
+import InviteMemberSheet from '../components/InviteMemberSheet';
 
 const STATUS_CONFIG = {
   online:  { dot: colors.green,  label: 'Online',     labelColor: colors.green,  labelBg: 'rgba(16,185,129,0.12)' },
@@ -50,6 +51,7 @@ function FadeSlide({ children, delay }: { children: React.ReactNode; delay: numb
 
 export default function TeamScreen() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const filtered = teamMembers.filter(m =>
     m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -64,7 +66,7 @@ export default function TeamScreen() {
           <Text style={s.subtitle}>Project Phoenix</Text>
           <Text style={s.title}>Team</Text>
         </View>
-        <TouchableOpacity style={s.addBtn}>
+        <TouchableOpacity style={s.addBtn} onPress={() => setInviteOpen(true)}>
           <Plus size={20} color="#fff" />
         </TouchableOpacity>
       </View>
@@ -164,12 +166,12 @@ export default function TeamScreen() {
               {/* Actions */}
               <View style={s.actionsRow}>
                 {[
-                  { icon: MessageCircle, label: 'Message' },
-                  { icon: Mail,          label: 'Email' },
+                  { icon: MessageCircle, label: 'Message', onPress: () => Alert.alert('Message', `Nhắn tin cho ${member.name} (sắp ra mắt).`) },
+                  { icon: Mail,          label: 'Email',   onPress: () => Alert.alert('Email', `Gửi email tới ${member.email}`) },
                 ].map(action => {
                   const Icon = action.icon;
                   return (
-                    <TouchableOpacity key={action.label} style={s.actionBtn}>
+                    <TouchableOpacity key={action.label} style={s.actionBtn} onPress={action.onPress}>
                       <Icon size={14} color={colors.foreground} strokeWidth={1.75} />
                       <Text style={[s.mutedXs, { color: colors.foreground, marginLeft: 6 }]}>{action.label}</Text>
                     </TouchableOpacity>
@@ -181,6 +183,13 @@ export default function TeamScreen() {
         );
       })}
       <View style={{ height: 20 }} />
+
+      {inviteOpen && (
+        <InviteMemberSheet
+          onClose={() => setInviteOpen(false)}
+          onInvite={email => Alert.alert('Đã gửi lời mời', `Lời mời đã được gửi tới ${email}.`)}
+        />
+      )}
     </ScrollView>
   );
 }

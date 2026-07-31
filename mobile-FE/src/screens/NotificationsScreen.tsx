@@ -1,25 +1,39 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  Animated, StyleSheet,
+  Animated, StyleSheet, RefreshControl, Alert,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import {
   Bell, CheckCircle2, AlertTriangle, MessageSquare,
-  UserPlus, Calendar, Sparkles, Settings, X,
+  UserPlus, Calendar, Sparkles, X,
 } from 'lucide-react-native';
 import { colors } from '../theme';
+import { ApiError, notificationsApi, type AppNotification } from '../api';
+import { useApiQuery, useRefetchOnFocus } from '../hooks/useApi';
+import { useAuth } from '../contexts/AuthContext';
+import { LoadingState, ErrorState, EmptyState } from '../components/StateViews';
+import { timeAgo } from '../utils/task';
 
-type FilterId = 'all' | 'unread' | 'ai';
+type FilterId = 'all' | 'unread';
 
-const initialNotifications = [
-  { id: 1, type: 'ai',       icon: Sparkles,       title: 'High Risk Detected',       message: '"API Migration" — 85% probability of missing deadline based on current velocity', time: '5 min ago', read: false, accentColor: colors.purpleLight, accentBg: 'rgba(124,77,255,0.12)' },
-  { id: 2, type: 'task',     icon: CheckCircle2,   title: 'Task Completed',            message: 'Sarah Chen completed "Auth Flow & Session Management" — 2 days ahead of schedule', time: '1 hr ago', read: false, accentColor: colors.green, accentBg: 'rgba(16,185,129,0.12)' },
-  { id: 3, type: 'comment',  icon: MessageSquare,  title: 'New Comment',               message: 'Mike Johnson left feedback on "User Dashboard Redesign" — 3 comments', time: '2 hr ago', read: false, accentColor: '#60A5FA', accentBg: 'rgba(41,98,255,0.12)' },
-  { id: 4, type: 'team',     icon: UserPlus,       title: 'Team Update',               message: 'Alex Rivera joined Project Phoenix — now 6 members on the team', time: '3 hr ago', read: true, accentColor: '#818CF8', accentBg: 'rgba(99,102,241,0.12)' },
-  { id: 5, type: 'deadline', icon: AlertTriangle,  title: 'Deadline Approaching',      message: '"Database Query Optimization" is due in 2 days with only 15% complete', time: '5 hr ago', read: true, accentColor: colors.yellow, accentBg: 'rgba(245,158,11,0.12)' },
-  { id: 6, type: 'meeting',  icon: Calendar,       title: 'Meeting in 30 min',         message: 'Sprint planning with the full team — Zoom link in calendar', time: '6 hr ago', read: true, accentColor: '#34D399', accentBg: 'rgba(52,211,153,0.12)' },
-  { id: 7, type: 'ai',       icon: Sparkles,       title: 'Workflow Insight',          message: 'Grouping 4 similar backend tasks could save an estimated 3 hours this week', time: 'Yesterday', read: true, accentColor: colors.purpleLight, accentBg: 'rgba(124,77,255,0.12)' },
-];
+interface Appearance {
+  icon: typeof Bell;
+  color: string;
+  bg: string;
+}
+
+/** Types the backend emits today are COMMENT-based; the rest are future-proofing. */
+function appearanceFor(type: string | null): Appearance {
+  const key = (type ?? '').toUpperCase();
+  if (key.includes('COMMENT')) return { icon: MessageSquare, color: '#60A5FA', bg: 'rgba(41,98,255,0.12)' };
+  if (key.includes('RISK') || key.includes('AI')) return { icon: Sparkles, color: colors.purpleLight, bg: 'rgba(124,77,255,0.12)' };
+  if (key.includes('COMPLET') || key.includes('DONE')) return { icon: CheckCircle2, color: colors.green, bg: 'rgba(16,185,129,0.12)' };
+  if (key.includes('DEADLINE') || key.includes('LATE')) return { icon: AlertTriangle, color: colors.yellow, bg: 'rgba(245,158,11,0.12)' };
+  if (key.includes('TEAM') || key.includes('INVIT')) return { icon: UserPlus, color: '#818CF8', bg: 'rgba(99,102,241,0.12)' };
+  if (key.includes('MEETING')) return { icon: Calendar, color: '#34D399', bg: 'rgba(52,211,153,0.12)' };
+  return { icon: Bell, color: colors.muted, bg: 'rgba(93,126,166,0.12)' };
+}
 
 function FadeSlide({ children, delay }: { children: React.ReactNode; delay: number }) {
   const opacity = useRef(new Animated.Value(0)).current;
@@ -34,31 +48,146 @@ function FadeSlide({ children, delay }: { children: React.ReactNode; delay: numb
 }
 
 export default function NotificationsScreen() {
-  const [filter, setFilter] = useState<FilterId>('all');
-  const [items, setItems] = useState(initialNotifications);
+  const navigation = useNavigation<any>();
+  const { session } = useAuth();
+  const userId = session?.userId;
 
-  const filters = [
-    { id: 'all' as FilterId,    label: 'All',      count: items.length },
-    { id: 'unread' as FilterId, label: 'Unread',   count: items.filter(n => !n.read).length },
-    { id: 'ai' as FilterId,     label: 'AI Alerts', count: items.filter(n => n.type === 'ai').length },
+  const [filter, setFilter] = useState<FilterId>('all');
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+
+  const { data, error, isLoading, isRefreshing, refetch } = useApiQuery(
+    signal => notificationsApi.getForUser(userId!, signal),
+    [userId],
+    { enabled: userId !== undefined },
+  );
+  useRefetchOnFocus(refetch, userId !== undefined);
+
+  // Local overlay so a tap feels instant; the server list wins on the next fetch.
+  const [readOverride, setReadOverride] = useState<Record<number, true>>({});
+  const [dismissed, setDismissed] = useState<Record<number, true>>({});
+
+  const items = useMemo(
+    () =>
+      (data ?? [])
+        .filter(n => !dismissed[n.notificationId])
+        .map(n => (readOverride[n.notificationId] ? { ...n, isRead: true } : n)),
+    [data, readOverride, dismissed],
+  );
+
+  const unreadCount = items.filter(n => !n.isRead).length;
+  const filtered = filter === 'unread' ? items.filter(n => !n.isRead) : items;
+
+  const markRead = useCallback(async (notification: AppNotification) => {
+    if (notification.isRead) return;
+    setReadOverride(prev => ({ ...prev, [notification.notificationId]: true }));
+    try {
+      await notificationsApi.markAsRead(notification.notificationId);
+    } catch {
+      // Roll back so the badge stays truthful.
+      setReadOverride(prev => {
+        const next = { ...prev };
+        delete next[notification.notificationId];
+        return next;
+      });
+    }
+  }, []);
+
+  const openNotification = useCallback(
+    (notification: AppNotification) => {
+      void markRead(notification);
+      if (notification.referenceType === 'TASK' && notification.referenceId != null) {
+        navigation.navigate('TaskDetail', { taskId: notification.referenceId });
+      }
+    },
+    [markRead, navigation],
+  );
+
+  const dismiss = useCallback(async (notification: AppNotification) => {
+    setDismissed(prev => ({ ...prev, [notification.notificationId]: true }));
+    try {
+      await notificationsApi.remove(notification.notificationId);
+    } catch (err) {
+      setDismissed(prev => {
+        const next = { ...prev };
+        delete next[notification.notificationId];
+        return next;
+      });
+      Alert.alert('Không xoá được', err instanceof ApiError ? err.message : 'Đã xảy ra lỗi.');
+    }
+  }, []);
+
+  const markAllRead = useCallback(async () => {
+    if (userId === undefined || unreadCount === 0) return;
+    setIsBulkUpdating(true);
+    try {
+      await notificationsApi.markAllAsRead(userId);
+      refetch();
+    } catch (err) {
+      Alert.alert('Thất bại', err instanceof ApiError ? err.message : 'Đã xảy ra lỗi.');
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  }, [userId, unreadCount, refetch]);
+
+  const clearAll = useCallback(() => {
+    if (items.length === 0) return;
+    Alert.alert('Xoá tất cả', `Xoá ${items.length} thông báo?`, [
+      { text: 'Huỷ', style: 'cancel' },
+      {
+        text: 'Xoá',
+        style: 'destructive',
+        onPress: async () => {
+          setIsBulkUpdating(true);
+          // The API only deletes one at a time, so fan out and refetch once.
+          const results = await Promise.allSettled(
+            items.map(n => notificationsApi.remove(n.notificationId)),
+          );
+          const failed = results.filter(r => r.status === 'rejected').length;
+          if (failed > 0) Alert.alert('Chưa xoá hết', `${failed} thông báo không xoá được.`);
+          setDismissed({});
+          setIsBulkUpdating(false);
+          refetch();
+        },
+      },
+    ]);
+  }, [items, refetch]);
+
+  const filters: { id: FilterId; label: string; count: number }[] = [
+    { id: 'all', label: 'Tất cả', count: items.length },
+    { id: 'unread', label: 'Chưa đọc', count: unreadCount },
   ];
 
-  const filtered = items.filter(n => {
-    if (filter === 'unread') return !n.read;
-    if (filter === 'ai') return n.type === 'ai';
-    return true;
-  });
-
-  const unreadCount = items.filter(n => !n.read).length;
+  const renderBody = () => {
+    if (isLoading) return <LoadingState label="Đang tải thông báo…" />;
+    if (error) return <ErrorState error={error} onRetry={refetch} />;
+    if (filtered.length === 0) {
+      return (
+        <View style={s.emptyCard}>
+          <Bell size={40} color={colors.muted} strokeWidth={1.5} />
+          <Text style={[s.mutedSm, { marginTop: 12 }]}>
+            {filter === 'unread' ? 'Không có thông báo chưa đọc' : 'Chưa có thông báo nào'}
+          </Text>
+        </View>
+      );
+    }
+    return null;
+  };
 
   return (
-    <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={s.scroll}
+      contentContainerStyle={s.content}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl refreshing={isRefreshing} onRefresh={refetch} tintColor={colors.blue} />
+      }
+    >
       {/* Header */}
       <View style={s.headerRow}>
         <View>
-          <Text style={s.subtitle}>Today</Text>
+          <Text style={s.subtitle}>Hộp thư</Text>
           <View style={s.row}>
-            <Text style={s.title}>Notifications</Text>
+            <Text style={s.title}>Thông báo</Text>
             {unreadCount > 0 && (
               <View style={s.unreadBadge}>
                 <Text style={s.unreadText}>{unreadCount}</Text>
@@ -66,9 +195,6 @@ export default function NotificationsScreen() {
             )}
           </View>
         </View>
-        <TouchableOpacity style={s.iconBtn}>
-          <Settings size={20} color={colors.muted} strokeWidth={1.75} />
-        </TouchableOpacity>
       </View>
 
       {/* Filter pills */}
@@ -92,52 +218,60 @@ export default function NotificationsScreen() {
 
       {/* Action buttons */}
       <View style={[s.row, { gap: 8, marginBottom: 16 }]}>
-        <TouchableOpacity style={[s.actionBtn, { flex: 1 }]} onPress={() => setItems(prev => prev.map(n => ({ ...n, read: true })))}>
-          <Text style={s.actionText}>Mark all read</Text>
+        <TouchableOpacity
+          style={[s.actionBtn, { flex: 1, opacity: unreadCount && !isBulkUpdating ? 1 : 0.5 }]}
+          onPress={markAllRead}
+          disabled={!unreadCount || isBulkUpdating}
+        >
+          <Text style={s.actionText}>Đánh dấu đã đọc</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[s.actionBtn, { flex: 1 }]} onPress={() => setItems([])}>
-          <Text style={[s.actionText, { color: colors.muted }]}>Clear all</Text>
+        <TouchableOpacity
+          style={[s.actionBtn, { flex: 1, opacity: items.length && !isBulkUpdating ? 1 : 0.5 }]}
+          onPress={clearAll}
+          disabled={!items.length || isBulkUpdating}
+        >
+          <Text style={[s.actionText, { color: colors.muted }]}>Xoá tất cả</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Notification list */}
-      {filtered.length === 0 ? (
-        <View style={[s.emptyCard]}>
-          <Bell size={40} color={colors.muted} strokeWidth={1.5} />
-          <Text style={[s.mutedSm, { marginTop: 12 }]}>No notifications</Text>
-        </View>
-      ) : (
-        filtered.map((n, i) => {
-          const Icon = n.icon;
-          return (
-            <FadeSlide key={n.id} delay={i * 40}>
-              <View style={[s.notifCard, { borderColor: n.read ? colors.border : 'rgba(41,98,255,0.25)' }]}>
-                {!n.read && <View style={s.unreadStripe} />}
-                <View style={{ flex: 1, padding: 16 }}>
-                  <View style={s.rowStart}>
-                    <View style={[s.iconBox, { backgroundColor: n.accentBg }]}>
-                      <Icon size={16} color={n.accentColor} strokeWidth={1.75} />
-                    </View>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                      <View style={[s.row, { marginBottom: 4 }]}>
-                        <View style={s.row}>
-                          <Text style={s.notifTitle}>{n.title}</Text>
-                          {!n.read && <View style={s.dot} />}
-                        </View>
-                        <TouchableOpacity onPress={() => setItems(prev => prev.filter(x => x.id !== n.id))}>
-                          <X size={14} color={colors.muted} />
-                        </TouchableOpacity>
+      {renderBody()}
+
+      {filtered.map((n, i) => {
+        const { icon: Icon, color, bg } = appearanceFor(n.type);
+        return (
+          <FadeSlide key={n.notificationId} delay={i * 40}>
+            <TouchableOpacity
+              style={[s.notifCard, { borderColor: n.isRead ? colors.border : 'rgba(41,98,255,0.25)' }]}
+              onPress={() => openNotification(n)}
+              activeOpacity={0.8}
+            >
+              {!n.isRead && <View style={s.unreadStripe} />}
+              <View style={{ flex: 1, padding: 16 }}>
+                <View style={s.rowStart}>
+                  <View style={[s.iconBox, { backgroundColor: bg }]}>
+                    <Icon size={16} color={color} strokeWidth={1.75} />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <View style={[s.row, { marginBottom: 4 }]}>
+                      <View style={[s.row, { flex: 1 }]}>
+                        <Text style={s.notifTitle} numberOfLines={1}>{n.title}</Text>
+                        {!n.isRead && <View style={s.dot} />}
                       </View>
-                      <Text style={[s.mutedXs, { lineHeight: 18, marginBottom: 8 }]}>{n.message}</Text>
-                      <Text style={[s.mutedXs, { opacity: 0.7 }]}>{n.time}</Text>
+                      <TouchableOpacity onPress={() => dismiss(n)} hitSlop={8}>
+                        <X size={14} color={colors.muted} />
+                      </TouchableOpacity>
                     </View>
+                    {!!n.message && (
+                      <Text style={[s.mutedXs, { lineHeight: 18, marginBottom: 8 }]}>{n.message}</Text>
+                    )}
+                    <Text style={[s.mutedXs, { opacity: 0.7 }]}>{timeAgo(n.createdAt)}</Text>
                   </View>
                 </View>
               </View>
-            </FadeSlide>
-          );
-        })
-      )}
+            </TouchableOpacity>
+          </FadeSlide>
+        );
+      })}
       <View style={{ height: 20 }} />
     </ScrollView>
   );
@@ -151,19 +285,18 @@ const s = StyleSheet.create({
   title:         { fontSize: 26, fontWeight: '700', color: colors.foreground },
   row:           { flexDirection: 'row', alignItems: 'center', gap: 8 },
   rowStart:      { flexDirection: 'row', alignItems: 'flex-start' },
-  iconBtn:       { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(17,30,53,0.8)', borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   iconBox:       { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   filterPill:    { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, gap: 6 },
   filterText:    { fontSize: 12, fontWeight: '600' },
-  filterCount:   { width: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  filterCount:   { minWidth: 16, height: 16, paddingHorizontal: 4, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   filterCountText: { fontSize: 10, fontWeight: '600' },
   actionBtn:     { backgroundColor: 'rgba(17,30,53,0.8)', borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
   actionText:    { fontSize: 12, fontWeight: '600', color: colors.foreground },
   notifCard:     { backgroundColor: colors.card, borderWidth: 1, borderRadius: 16, flexDirection: 'row', overflow: 'hidden', marginBottom: 10 },
   unreadStripe:  { width: 3, backgroundColor: colors.blue },
-  notifTitle:    { fontSize: 13, fontWeight: '600', color: colors.foreground },
-  dot:           { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.blue, marginLeft: 6 },
-  unreadBadge:   { backgroundColor: colors.blue, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20, marginLeft: 8 },
+  notifTitle:    { fontSize: 13, fontWeight: '600', color: colors.foreground, flexShrink: 1 },
+  dot:           { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.blue },
+  unreadBadge:   { backgroundColor: colors.blue, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20 },
   unreadText:    { fontSize: 11, fontWeight: '600', color: '#fff' },
   emptyCard:     { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: 48, alignItems: 'center' },
   mutedSm:       { fontSize: 13, color: colors.muted },

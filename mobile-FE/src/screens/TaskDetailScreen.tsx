@@ -8,40 +8,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import {
   ArrowLeft, MoreVertical, Calendar, AlertTriangle,
   MessageSquare, Paperclip, ChevronDown, ChevronUp,
-  Clock, TrendingUp, Sparkles,
+  Clock, TrendingUp, Sparkles, Check,
 } from 'lucide-react-native';
 import { colors, AVATAR_GRADIENTS } from '../theme';
-
-const tasks: Record<string, any> = {
-  '1': {
-    title: 'API Migration to GraphQL',
-    status: 'In Progress', priority: 'High',
-    description: 'Migrate the legacy REST API endpoints to GraphQL. Includes schema design, resolver implementation, auth layer, and backward-compatibility shims for mobile clients on v2.3 and below.',
-    assignee: { name: 'Sarah Chen', initials: 'SC', email: 'sarah@company.com' },
-    dueDate: '2026-05-27', progress: 45, risk: 85,
-    tags: ['Backend', 'Critical', 'API'],
-    subtasks: [
-      { id: 1, title: 'Design GraphQL schema', done: true },
-      { id: 2, title: 'Implement core resolvers', done: true },
-      { id: 3, title: 'Add authentication layer', done: false },
-      { id: 4, title: 'Write integration tests', done: false },
-      { id: 5, title: 'Deploy to staging', done: false },
-    ],
-  },
-  '2': {
-    title: 'User Dashboard Redesign',
-    status: 'In Review', priority: 'Medium',
-    description: 'Redesign the analytics dashboard with a focus on data density and mobile readability. Follows the new design system tokens.',
-    assignee: { name: 'Mike Johnson', initials: 'MJ', email: 'mike@company.com' },
-    dueDate: '2026-05-28', progress: 80, risk: 20,
-    tags: ['Frontend', 'Design'],
-    subtasks: [
-      { id: 1, title: 'Wireframes approved', done: true },
-      { id: 2, title: 'Component build', done: true },
-      { id: 3, title: 'QA sign-off', done: false },
-    ],
-  },
-};
+import { useTasks } from '../context/TasksContext';
+import { useComments } from '../context/CommentsContext';
+import { MOCK_USERS } from '../data/mockUsers';
 
 const PRIORITY_CONFIG = {
   High:   { stripe: colors.red,    badgeBg: 'rgba(239,68,68,0.12)',   badgeColor: colors.red },
@@ -49,11 +21,34 @@ const PRIORITY_CONFIG = {
   Low:    { stripe: colors.green,  badgeBg: 'rgba(16,185,129,0.12)',  badgeColor: colors.green },
 } as const;
 
+// Deterministic pseudo-score so the same task+user always shows the same numbers.
+function seededPercent(seedA: number, seedB: number, min = 55, max = 97) {
+  const x = Math.sin(seedA * 12.9898 + seedB * 78.233) * 43758.5453;
+  const frac = x - Math.floor(x);
+  return Math.round(min + frac * (max - min));
+}
+
+function buildRecommendations(taskId: string, currentAssigneeEmail: string) {
+  const idSeed = Number(taskId) || 1;
+  return MOCK_USERS
+    .filter(u => u.email !== currentAssigneeEmail)
+    .map(u => {
+      const skillMatch  = seededPercent(idSeed, u.id * 3 + 1);
+      const semantic    = seededPercent(idSeed, u.id * 3 + 2);
+      const workload    = seededPercent(idSeed, u.id * 3 + 3);
+      const performance = seededPercent(idSeed, u.id * 3 + 4);
+      const score = skillMatch * 0.4 + semantic * 0.25 + workload * 0.2 + performance * 0.15;
+      return { user: u, skillMatch, semantic, workload, performance, score: Math.round(score) };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+}
+
 function AnimatedBar({ progress, color }: { progress: number; color: string }) {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.timing(anim, { toValue: progress, duration: 1000, useNativeDriver: false }).start();
-  }, []);
+  }, [progress]);
   return (
     <View style={s.barTrack}>
       <Animated.View style={[s.barFill, { backgroundColor: color, width: anim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }) }]} />
@@ -80,10 +75,19 @@ export default function TaskDetailScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const id = route.params?.id ?? '1';
-  const task = tasks[id] ?? tasks['1'];
-  const pCfg = PRIORITY_CONFIG[task.priority as keyof typeof PRIORITY_CONFIG] ?? PRIORITY_CONFIG.Medium;
-  const completedSubtasks = task.subtasks.filter((s: any) => s.done).length;
+  const { getTask, updateAssignee } = useTasks();
+  const { getComments } = useComments();
+
+  const task = getTask(id) ?? getTask('1')!;
+  const pCfg = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.Medium;
+  const completedSubtasks = task.subtasks.filter(st => st.done).length;
   const dueShort = new Date(task.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const commentCount = getComments(task.id).length;
+  const recommendations = buildRecommendations(task.id, task.assignee.email);
+
+  const handleAccept = (candidate: typeof MOCK_USERS[number]) => {
+    updateAssignee(task.id, { name: candidate.name, initials: candidate.initials, email: candidate.email });
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -143,7 +147,7 @@ export default function TaskDetailScreen() {
           <View style={[s.card, { flex: 1, marginRight: 6 }]}>
             <Text style={[s.mutedXs, { marginBottom: 8 }]}>ASSIGNEE</Text>
             <View style={s.rowStart}>
-              <LinearGradient colors={AVATAR_GRADIENTS[task.assignee.initials]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatarSm}>
+              <LinearGradient colors={AVATAR_GRADIENTS[task.assignee.initials] ?? [colors.blue, colors.purple]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatarSm}>
                 <Text style={s.avatarSmText}>{task.assignee.initials}</Text>
               </LinearGradient>
               <Text style={[s.cardTitle, { fontSize: 13, marginLeft: 8 }]} numberOfLines={1}>{task.assignee.name}</Text>
@@ -160,7 +164,7 @@ export default function TaskDetailScreen() {
 
         {/* Tags */}
         <View style={[s.wrap, { marginBottom: 12 }]}>
-          {task.tags.map((tag: string) => (
+          {task.tags.map(tag => (
             <View key={tag} style={s.tagPill}>
               <Text style={s.tagText}>{tag}</Text>
             </View>
@@ -197,6 +201,40 @@ export default function TaskDetailScreen() {
           })}
         </Accordion>
 
+        {/* AI Assignment Suggestions */}
+        <Accordion accent defaultOpen={false} title={
+          <View style={s.rowStart}>
+            <Sparkles size={16} color={colors.purpleLight} />
+            <Text style={[s.cardTitle, { marginLeft: 8 }]}>Gợi ý người phụ trách (AI)</Text>
+          </View>
+        }>
+          {recommendations.map((rec, i) => (
+            <View key={rec.user.id} style={[s.recCard, { marginBottom: i < recommendations.length - 1 ? 10 : 0 }]}>
+              <View style={[s.row, { marginBottom: 8 }]}>
+                <View style={s.rowStart}>
+                  <LinearGradient colors={AVATAR_GRADIENTS[rec.user.initials] ?? [colors.blue, colors.purple]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatarSm}>
+                    <Text style={s.avatarSmText}>{rec.user.initials}</Text>
+                  </LinearGradient>
+                  <View style={{ marginLeft: 8 }}>
+                    <Text style={s.cardTitle}>{rec.user.name}</Text>
+                    <Text style={s.mutedXs}>{rec.user.role}</Text>
+                  </View>
+                </View>
+                <View style={[s.badge, { backgroundColor: 'rgba(16,185,129,0.12)' }]}>
+                  <Text style={[s.badgeText, { color: colors.green }]}>{rec.score}% phù hợp</Text>
+                </View>
+              </View>
+              <Text style={[s.mutedXs, { marginBottom: 10 }]}>
+                Kỹ năng {rec.skillMatch}% · Tương đồng {rec.semantic}% · Khối lượng {rec.workload}% · Hiệu suất {rec.performance}%
+              </Text>
+              <TouchableOpacity style={s.acceptBtn} onPress={() => handleAccept(rec.user)} activeOpacity={0.85}>
+                <Check size={14} color="#fff" />
+                <Text style={s.acceptBtnText}>Gán công việc</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </Accordion>
+
         {/* Subtasks */}
         <Accordion
           title="Subtasks"
@@ -206,8 +244,8 @@ export default function TaskDetailScreen() {
             </View>
           }
         >
-          {task.subtasks.map((st: any) => (
-            <View key={st.id} style={[s.rowStart, { paddingVertical: 10, borderBottomWidth: st.id < task.subtasks.length ? 1 : 0, borderBottomColor: 'rgba(255,255,255,0.04)' }]}>
+          {task.subtasks.map((st, i) => (
+            <View key={st.id} style={[s.rowStart, { paddingVertical: 10, borderBottomWidth: i < task.subtasks.length - 1 ? 1 : 0, borderBottomColor: 'rgba(255,255,255,0.04)' }]}>
               <View style={[s.check, { backgroundColor: st.done ? colors.green : 'transparent', borderColor: st.done ? colors.green : 'rgba(93,126,166,0.5)' }]}>
                 {st.done && <Text style={{ color: '#fff', fontSize: 10 }}>✓</Text>}
               </View>
@@ -220,21 +258,23 @@ export default function TaskDetailScreen() {
 
         {/* Action buttons */}
         <View style={s.grid2}>
-          {[
-            { icon: MessageSquare, label: 'Comments',    count: 5 },
-            { icon: Paperclip,     label: 'Attachments', count: 3 },
-          ].map(btn => {
-            const Icon = btn.icon;
-            return (
-              <TouchableOpacity key={btn.label} style={[s.actionBtn, { flex: 1, marginHorizontal: 4 }]}>
-                <Icon size={16} color={colors.foreground} strokeWidth={1.75} />
-                <Text style={[s.cardTitle, { marginLeft: 8, fontSize: 13 }]}>{btn.label}</Text>
-                <View style={[s.badge, { backgroundColor: 'rgba(255,255,255,0.08)', marginLeft: 8 }]}>
-                  <Text style={[s.badgeText, { color: colors.muted }]}>{btn.count}</Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
+          <TouchableOpacity
+            style={[s.actionBtn, { flex: 1, marginHorizontal: 4 }]}
+            onPress={() => navigation.navigate('TaskComments', { taskId: task.id, taskTitle: task.title })}
+          >
+            <MessageSquare size={16} color={colors.foreground} strokeWidth={1.75} />
+            <Text style={[s.cardTitle, { marginLeft: 8, fontSize: 13 }]}>Comments</Text>
+            <View style={[s.badge, { backgroundColor: 'rgba(255,255,255,0.08)', marginLeft: 8 }]}>
+              <Text style={[s.badgeText, { color: colors.muted }]}>{commentCount}</Text>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity style={[s.actionBtn, { flex: 1, marginHorizontal: 4 }]}>
+            <Paperclip size={16} color={colors.foreground} strokeWidth={1.75} />
+            <Text style={[s.cardTitle, { marginLeft: 8, fontSize: 13 }]}>Attachments</Text>
+            <View style={[s.badge, { backgroundColor: 'rgba(255,255,255,0.08)', marginLeft: 8 }]}>
+              <Text style={[s.badgeText, { color: colors.muted }]}>0</Text>
+            </View>
+          </TouchableOpacity>
         </View>
         <View style={{ height: 20 }} />
       </ScrollView>
@@ -246,6 +286,7 @@ const s = StyleSheet.create({
   stickyHeader: { paddingHorizontal: 20, paddingTop: 60, paddingBottom: 16, backgroundColor: 'rgba(3,12,26,0.95)' },
   content:      { paddingHorizontal: 20, paddingTop: 12 },
   card:         { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: 16, marginBottom: 12 },
+  recCard:      { backgroundColor: 'rgba(255,255,255,0.03)', borderWidth: 1, borderColor: colors.border, borderRadius: 14, padding: 12 },
   accordionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   accordionBody:   { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)' },
   mainTitle:    { fontSize: 22, fontWeight: '700', color: colors.foreground, lineHeight: 28 },
@@ -265,6 +306,8 @@ const s = StyleSheet.create({
   avatarSm:     { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   avatarSmText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   actionBtn:    { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center' },
+  acceptBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: colors.blue, borderRadius: 10, paddingVertical: 8 },
+  acceptBtnText:{ color: '#fff', fontSize: 12, fontWeight: '600' },
   check:        { width: 20, height: 20, borderRadius: 10, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   barTrack:     { height: 3, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 4, overflow: 'hidden' },
   barFill:      { height: '100%', borderRadius: 4 },

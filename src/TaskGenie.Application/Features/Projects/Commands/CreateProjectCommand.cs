@@ -10,7 +10,8 @@ public sealed record CreateProjectCommand(
     string? Description,
     int CreatedBy,
     int? OrganizationId,
-    DateOnly? Deadline
+    DateOnly? Deadline,
+    string ProjectType = "Team"
 ) : IRequest<ProjectDto>;
 
 public sealed class CreateProjectCommandHandler(
@@ -21,25 +22,31 @@ public sealed class CreateProjectCommandHandler(
 {
     public async Task<ProjectDto> Handle(CreateProjectCommand cmd, CancellationToken ct)
     {
+        var projectType = cmd.ProjectType is "Personal" or "Team" ? cmd.ProjectType : "Team";
+
         // Create a 1:1 mapped Team for this Project
         var team = Team.Create(
-            name: $"Team Project: {cmd.Name}",
-            description: $"Team for project {cmd.Name}",
+            name: projectType == "Personal"
+                ? $"Personal: {cmd.Name}"
+                : $"Team Project: {cmd.Name}",
+            description: projectType == "Personal"
+                ? $"Personal workspace for {cmd.Name}"
+                : $"Team for project {cmd.Name}",
             createdBy: cmd.CreatedBy
         );
         await teamRepo.AddAsync(team, ct);
 
-        // Add creator as LEADER
+        // Creator is always LEADER (owner of personal or team project)
         var leaderMember = TeamMember.Create(team.TeamId, cmd.CreatedBy, "LEADER");
         await teamMemberRepo.AddAsync(leaderMember, ct);
 
-        // Create the project
         var project = Project.Create(
             name: cmd.Name,
             description: cmd.Description,
             createdBy: cmd.CreatedBy,
             organizationId: cmd.OrganizationId,
-            deadline: cmd.Deadline
+            deadline: cmd.Deadline,
+            projectType: projectType
         );
         project.SetTeamId(team.TeamId);
 

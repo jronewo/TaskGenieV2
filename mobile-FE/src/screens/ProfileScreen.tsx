@@ -1,20 +1,54 @@
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, TextInput, Modal,
-  Animated, StyleSheet, RefreshControl, ActivityIndicator, Alert,
-  KeyboardAvoidingView, Platform,
+  View, Text, ScrollView, TouchableOpacity,
+  Animated, StyleSheet, Switch, Alert,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   User, Lock, LogOut, ChevronRight, Award, X,
 } from 'lucide-react-native';
 import { colors } from '../theme';
-import { ApiError, scoresApi, tasksApi, usersApi, type TaskDetail, type UserProfile } from '../api';
-import { useApiQuery, useRefetchOnFocus } from '../hooks/useApi';
-import { useAuth } from '../contexts/AuthContext';
-import { useProjects } from '../contexts/ProjectContext';
-import { ErrorState } from '../components/StateViews';
-import { gradientFor, getInitials } from '../utils/avatar';
+import { useAuth } from '../context/AuthContext';
+
+const stats = [
+  { label: 'Completed', value: '127' },
+  { label: 'Projects',  value: '5' },
+  { label: 'Teammates', value: '12' },
+];
+
+const settingsSections = [
+  {
+    title: 'Account',
+    items: [
+      { icon: User,     label: 'Profile Settings',    desc: 'Name, photo, and personal info', action: 'editProfile' as const },
+      { icon: Mail,     label: 'Email Preferences',   desc: 'Digest frequency and routing', action: null },
+      { icon: Lock,     label: 'Security',             desc: 'Password, 2FA, active sessions', action: 'changePassword' as const },
+    ],
+  },
+  {
+    title: 'Preferences',
+    items: [
+      { icon: Bell,     label: 'Notifications',       desc: 'Channels, timing, and filters', action: null },
+      { icon: Palette,  label: 'Appearance',           desc: 'Theme, density, and color', action: null },
+      { icon: Globe,    label: 'Language & Region',    desc: 'Locale and timezone', action: null },
+    ],
+  },
+  {
+    title: 'AI Features',
+    items: [
+      { icon: Sparkles, label: 'AI Assistant',        desc: 'Suggestions and automation level', action: null },
+      { icon: Shield,   label: 'AI Privacy',           desc: 'What data the AI can access', action: null },
+    ],
+  },
+  {
+    title: 'Support',
+    items: [
+      { icon: HelpCircle, label: 'Help & Documentation', desc: 'Guides, FAQs, and contact', action: null },
+      { icon: Settings,   label: 'Advanced Settings',    desc: 'Developer tools and admin', action: null },
+    ],
+  },
+];
 
 function FadeIn({ children, delay }: { children: React.ReactNode; delay: number }) {
   const opacity = useRef(new Animated.Value(0)).current;
@@ -25,73 +59,15 @@ function FadeIn({ children, delay }: { children: React.ReactNode; delay: number 
 }
 
 export default function ProfileScreen() {
-  const { session, signOut } = useAuth();
-  const { projects } = useProjects();
-  const userId = session?.userId;
+  const navigation = useNavigation<any>();
+  const { user, logout } = useAuth();
+  const [darkMode, setDarkMode] = useState(true);
 
-  const [editingName, setEditingName] = useState<string | null>(null);
-  const [isChangingPassword, setIsChangingPassword] = useState(false);
-  const [isSavingName, setIsSavingName] = useState(false);
-
-  const profileQuery = useApiQuery<UserProfile>(
-    signal => usersApi.getById(userId!, signal),
-    [userId],
-    { enabled: userId !== undefined },
-  );
-  useRefetchOnFocus(profileQuery.refetch, userId !== undefined);
-
-  const tasksQuery = useApiQuery<TaskDetail[]>(signal => tasksApi.getMine(signal), []);
-
-  const scoreQuery = useApiQuery(
-    signal => scoresApi.getUserSummary(userId!, signal),
-    [userId],
-    { enabled: userId !== undefined },
-  );
-
-  const profile = profileQuery.data;
-  const displayName = profile?.name ?? session?.name ?? '';
-  const email = profile?.email ?? session?.email ?? '';
-
-  const completedCount = useMemo(
-    () => (tasksQuery.data ?? []).filter(t => t.status === 'Done').length,
-    [tasksQuery.data],
-  );
-
-  const memberSince = useMemo(() => {
-    if (!profile?.createdAt) return null;
-    const date = new Date(profile.createdAt);
-    return Number.isNaN(date.getTime())
-      ? null
-      : date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-  }, [profile?.createdAt]);
-
-  const saveName = useCallback(async () => {
-    const next = (editingName ?? '').trim();
-    if (!userId || next.length === 0) return;
-    setIsSavingName(true);
-    try {
-      await usersApi.updateProfile(userId, { name: next, avatar: profile?.avatar ?? null });
-      setEditingName(null);
-      profileQuery.refetch();
-    } catch (err) {
-      Alert.alert('Không lưu được', err instanceof ApiError ? err.message : 'Đã xảy ra lỗi.');
-    } finally {
-      setIsSavingName(false);
-    }
-  }, [editingName, userId, profile?.avatar, profileQuery]);
-
-  const confirmSignOut = useCallback(() => {
-    Alert.alert('Đăng xuất', 'Bạn có chắc muốn đăng xuất?', [
-      { text: 'Huỷ', style: 'cancel' },
-      { text: 'Đăng xuất', style: 'destructive', onPress: () => void signOut() },
-    ]);
-  }, [signOut]);
-
-  const stats = [
-    { label: 'Task đã xong', value: String(completedCount) },
-    { label: 'Dự án', value: String(projects.length) },
-    { label: 'Điểm', value: String(scoreQuery.data?.totalScore ?? 0) },
-  ];
+  const handleSettingPress = (action: 'editProfile' | 'changePassword' | null) => {
+    if (action === 'editProfile') navigation.navigate('EditProfile');
+    else if (action === 'changePassword') navigation.navigate('ChangePassword');
+    else Alert.alert('Sắp ra mắt', 'Tính năng này sẽ sớm được cập nhật.');
+  };
 
   return (
     <ScrollView
@@ -121,16 +97,16 @@ export default function ProfileScreen() {
       <View style={[s.card, { borderColor: 'rgba(41,98,255,0.2)', backgroundColor: 'rgba(41,98,255,0.08)' }]}>
         <LinearGradient colors={[colors.blue, colors.purple]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.accentLine} />
         <View style={s.profileRow}>
-          <LinearGradient colors={gradientFor(displayName)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.bigAvatar}>
-            <Text style={s.bigAvatarText}>{getInitials(displayName)}</Text>
-          </LinearGradient>
+          <View style={{ position: 'relative' }}>
+            <LinearGradient colors={['#2962FF', '#00BCD4']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.bigAvatar}>
+              <Text style={s.bigAvatarText}>{user?.initials ?? '?'}</Text>
+            </LinearGradient>
+            <View style={s.onlineDot} />
+          </View>
           <View style={{ flex: 1, marginLeft: 16 }}>
-            <Text style={s.profileName}>{displayName || 'Không rõ'}</Text>
-            <Text style={[s.mutedXs, { marginTop: 2 }]}>
-              {profile?.role ?? session?.role ?? 'MEMBER'}
-              {scoreQuery.data ? ` · ${scoreQuery.data.level}` : ''}
-            </Text>
-            <Text style={[s.mutedXs, { marginTop: 2, opacity: 0.7 }]}>{email}</Text>
+            <Text style={s.profileName}>{user?.name}</Text>
+            <Text style={[s.mutedXs, { marginTop: 2 }]}>{user?.role}</Text>
+            <Text style={[s.mutedXs, { marginTop: 2, opacity: 0.7 }]}>{user?.email}</Text>
           </View>
         </View>
 
@@ -205,14 +181,46 @@ export default function ProfileScreen() {
         </FadeIn>
       </View>
 
+      {/* Settings sections */}
+      {settingsSections.map((section, si) => (
+        <View key={si}>
+          <Text style={[s.mutedXs, { textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8, marginTop: 4, paddingHorizontal: 4 }]}>
+            {section.title}
+          </Text>
+          <View style={[s.card, { padding: 0, overflow: 'hidden' }]}>
+            {section.items.map((item, ii) => {
+              const Icon = item.icon;
+              return (
+                <FadeIn key={ii} delay={si * 50 + ii * 30}>
+                  <TouchableOpacity
+                    style={[s.settingItem, ii < section.items.length - 1 ? { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' } : {}]}
+                    activeOpacity={0.7}
+                    onPress={() => handleSettingPress(item.action)}
+                  >
+                    <View style={s.settingIcon}>
+                      <Icon size={16} color={colors.muted} strokeWidth={1.75} />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={s.itemLabel}>{item.label}</Text>
+                      <Text style={s.mutedXs}>{item.desc}</Text>
+                    </View>
+                    <ChevronRight size={16} color={colors.muted} style={{ opacity: 0.4 }} />
+                  </TouchableOpacity>
+                </FadeIn>
+              );
+            })}
+          </View>
+        </View>
+      ))}
+
       {/* Sign out */}
-      <TouchableOpacity style={s.signOutBtn} onPress={confirmSignOut}>
+      <TouchableOpacity style={s.signOutBtn} onPress={logout}>
         <LogOut size={16} color={colors.red} strokeWidth={1.75} />
         <Text style={[s.itemLabel, { color: colors.red, marginLeft: 8 }]}>Đăng xuất</Text>
       </TouchableOpacity>
 
       <Text style={[s.mutedXs, { textAlign: 'center', opacity: 0.4, marginTop: 8, marginBottom: 20 }]}>
-        TaskGenie v1.0.0{memberSince ? ` · Tham gia ${memberSince}` : ''}
+        TaskGenie v1.0.0
       </Text>
 
       <EditNameModal

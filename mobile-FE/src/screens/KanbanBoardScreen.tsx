@@ -5,24 +5,21 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Plus, MoreVertical, Clock, AlertTriangle, Trash2 } from 'lucide-react-native';
-import { colors } from '../theme';
-import { ApiError, tasksApi, type TaskDetail } from '../api';
-import { useApiQuery, useRefetchOnFocus } from '../hooks/useApi';
-import { useProjects } from '../contexts/ProjectContext';
-import { LoadingState, ErrorState, EmptyState } from '../components/StateViews';
-import ProjectPicker from '../components/ProjectPicker';
-import CreateTaskModal from '../components/CreateTaskModal';
-import { gradientFor, getInitials } from '../utils/avatar';
-import {
-  priorityStyle, statusLabel, formatDeadline, primaryAssignee, riskPercent,
-  TASK_STATUSES, type KnownStatus,
-} from '../utils/task';
+import { Plus, MoreVertical, Clock, AlertTriangle } from 'lucide-react-native';
+import { colors, AVATAR_GRADIENTS } from '../theme';
+import { useTasks, ColumnId } from '../context/TasksContext';
 
-const COLUMNS: { id: KnownStatus; title: string }[] = [
-  { id: 'Todo', title: 'To Do' },
-  { id: 'InProgress', title: 'In Progress' },
-  { id: 'Done', title: 'Done' },
+const PRIORITY_CONFIG = {
+  High:   { stripe: colors.red,    badgeBg: 'rgba(239,68,68,0.12)',   badgeColor: colors.red },
+  Medium: { stripe: colors.yellow, badgeBg: 'rgba(245,158,11,0.12)',  badgeColor: colors.yellow },
+  Low:    { stripe: colors.green,  badgeBg: 'rgba(16,185,129,0.12)',  badgeColor: colors.green },
+} as const;
+
+const COLUMN_DEFS: { id: ColumnId; title: string }[] = [
+  { id: 'todo',       title: 'To Do' },
+  { id: 'inprogress', title: 'In Progress' },
+  { id: 'review',     title: 'Review' },
+  { id: 'done',       title: 'Done' },
 ];
 
 function FadeSlide({ children, delay }: { children: React.ReactNode; delay: number }) {
@@ -39,104 +36,20 @@ function FadeSlide({ children, delay }: { children: React.ReactNode; delay: numb
 
 export default function KanbanBoardScreen() {
   const navigation = useNavigation<any>();
-  const { activeProjectId, isLoading: isLoadingProjects } = useProjects();
-
+  const { tasksByColumn } = useTasks();
   const [activeColumn, setActiveColumn] = useState(0);
-  const [isCreating, setIsCreating] = useState(false);
-  const [menuTask, setMenuTask] = useState<TaskDetail | null>(null);
 
-  const { data, error, isLoading, isRefreshing, refetch } = useApiQuery(
-    signal => tasksApi.getByProject(activeProjectId!, signal),
-    [activeProjectId],
-    { enabled: activeProjectId !== null },
-  );
-  useRefetchOnFocus(refetch, activeProjectId !== null);
-
-  const tasks = useMemo(() => data ?? [], [data]);
-
-  const byStatus = useMemo(() => {
-    const groups: Record<KnownStatus, TaskDetail[]> = { Todo: [], InProgress: [], Done: [] };
-    for (const task of tasks) {
-      const status = (TASK_STATUSES as readonly string[]).includes(task.status ?? '')
-        ? (task.status as KnownStatus)
-        : 'Todo';
-      groups[status].push(task);
-    }
-    return groups;
-  }, [tasks]);
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > Math.abs(g.dy) && Math.abs(g.dx) > 10,
-        onPanResponderRelease: (_, g) => {
-          if (g.dx < -50) setActiveColumn(c => Math.min(c + 1, COLUMNS.length - 1));
-          if (g.dx > 50) setActiveColumn(c => Math.max(c - 1, 0));
-        },
-      }),
-    [],
-  );
-
-  const moveTo = useCallback(
-    async (task: TaskDetail, status: KnownStatus) => {
-      setMenuTask(null);
-      try {
-        // Done implies full progress; the backend keeps the two fields independent.
-        await tasksApi.updateProgress(task.taskId, {
-          status,
-          progress: status === 'Done' ? 100 : task.progress,
-        });
-      } catch (err) {
-        // The API rejects completing a task whose dependencies are unfinished.
-        Alert.alert(
-          'Không thể đổi trạng thái',
-          err instanceof ApiError ? err.message : 'Đã xảy ra lỗi.',
-        );
-        return;
-      }
-      refetch();
+  const panResponder = PanResponder.create({
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > Math.abs(g.dy) && Math.abs(g.dx) > 10,
+    onPanResponderRelease: (_, g) => {
+      if (g.dx < -50 && activeColumn < COLUMN_DEFS.length - 1) setActiveColumn(c => c + 1);
+      if (g.dx > 50  && activeColumn > 0)                      setActiveColumn(c => c - 1);
     },
     [refetch],
   );
 
-  const confirmDelete = useCallback(
-    (task: TaskDetail) => {
-      setMenuTask(null);
-      Alert.alert('Xoá task', `Xoá "${task.title}"? Hành động này không thể hoàn tác.`, [
-        { text: 'Huỷ', style: 'cancel' },
-        {
-          text: 'Xoá',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await tasksApi.remove(task.taskId);
-            } catch (err) {
-              Alert.alert('Không xoá được', err instanceof ApiError ? err.message : 'Đã xảy ra lỗi.');
-              return;
-            }
-            refetch();
-          },
-        },
-      ]);
-    },
-    [refetch],
-  );
-
-  const currentTasks = byStatus[COLUMNS[activeColumn].id];
-
-  const renderBody = () => {
-    if (isLoadingProjects || (isLoading && activeProjectId !== null)) {
-      return <LoadingState label="Đang tải bảng công việc…" />;
-    }
-    if (activeProjectId === null) {
-      return <EmptyState message="Bạn chưa thuộc dự án nào." />;
-    }
-    if (error) return <ErrorState error={error} onRetry={refetch} />;
-    if (currentTasks.length === 0) {
-      return <EmptyState message={`Không có task nào ở "${COLUMNS[activeColumn].title}".`} />;
-    }
-    return null;
-  };
+  const columns = COLUMN_DEFS.map(col => ({ ...col, tasks: tasksByColumn(col.id) }));
+  const currentTasks = columns[activeColumn].tasks;
 
   return (
     <View style={s.container}>
@@ -158,7 +71,7 @@ export default function KanbanBoardScreen() {
             >
               <Text style={[s.pillText, { color: isActive ? '#fff' : colors.muted }]}>{col.title}</Text>
               <View style={[s.pillCount, { backgroundColor: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.06)' }]}>
-                <Text style={[s.pillCountText, { color: isActive ? '#fff' : colors.muted }]}>{byStatus[col.id].length}</Text>
+                <Text style={[s.pillCountText, { color: isActive ? '#fff' : colors.muted }]}>{col.tasks.length}</Text>
               </View>
             </TouchableOpacity>
           );
@@ -175,14 +88,11 @@ export default function KanbanBoardScreen() {
         {...panResponder.panHandlers}
       >
         <View style={s.taskList}>
-          {activeProjectId !== null && (
-            <TouchableOpacity style={s.addBtn} onPress={() => setIsCreating(true)}>
-              <Plus size={16} color={colors.muted} />
-              <Text style={[s.mutedSm, { marginLeft: 8 }]}>Thêm task</Text>
-            </TouchableOpacity>
-          )}
-
-          {renderBody()}
+          {/* Add task button */}
+          <TouchableOpacity style={s.addBtn} onPress={() => navigation.navigate('CreateTask')}>
+            <Plus size={16} color={colors.muted} />
+            <Text style={[s.mutedSm, { marginLeft: 8 }]}>Add Task</Text>
+          </TouchableOpacity>
 
           {currentTasks.map((task, index) => {
             const pCfg = priorityStyle(task.priority);
@@ -230,16 +140,12 @@ export default function KanbanBoardScreen() {
 
                     {/* Footer */}
                     <View style={[s.row, { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)', paddingTop: 12, marginBottom: 0 }]}>
-                      {assignee ? (
-                        <View style={s.row}>
-                          <LinearGradient colors={gradientFor(assignee.userName)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatarXs}>
-                            <Text style={s.avatarXsText}>{getInitials(assignee.userName)}</Text>
-                          </LinearGradient>
-                          <Text style={[s.mutedXs, { marginLeft: 6 }]}>{assignee.userName}</Text>
-                        </View>
-                      ) : (
-                        <Text style={s.mutedXs}>Chưa giao</Text>
-                      )}
+                      <View style={s.row}>
+                        <LinearGradient colors={AVATAR_GRADIENTS[task.assignee.initials] ?? [colors.blue, colors.purple]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatarXs}>
+                          <Text style={s.avatarXsText}>{task.assignee.initials}</Text>
+                        </LinearGradient>
+                        <Text style={[s.mutedXs, { marginLeft: 6 }]}>{task.assignee.name}</Text>
+                      </View>
                       <View style={s.row}>
                         <Clock size={12} color={colors.muted} strokeWidth={1.75} />
                         <Text style={[s.mutedXs, { marginLeft: 4 }]}>{formatDeadline(task.deadline)}</Text>

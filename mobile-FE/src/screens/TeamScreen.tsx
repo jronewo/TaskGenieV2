@@ -1,19 +1,14 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  Animated, StyleSheet, TextInput, RefreshControl, Linking,
+  Animated, StyleSheet, TextInput, Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Search, Mail, CheckCircle2, Clock, AlertTriangle, Sparkles, Award,
 } from 'lucide-react-native';
-import { colors } from '../theme';
-import { scoresApi, tasksApi, teamsApi, type TaskDetail, type Team } from '../api';
-import { useApiQuery, useRefetchOnFocus } from '../hooks/useApi';
-import { useProjects } from '../contexts/ProjectContext';
-import { LoadingState, ErrorState, EmptyState } from '../components/StateViews';
-import ProjectPicker from '../components/ProjectPicker';
-import { gradientFor, getInitials } from '../utils/avatar';
+import { colors, AVATAR_GRADIENTS } from '../theme';
+import InviteMemberSheet from '../components/InviteMemberSheet';
 
 interface MemberStats {
   active: number;
@@ -64,6 +59,7 @@ function FadeSlide({ children, delay }: { children: React.ReactNode; delay: numb
 export default function TeamScreen() {
   const { activeProject, activeProjectId } = useProjects();
   const [searchQuery, setSearchQuery] = useState('');
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const teamId = activeProject?.teamId ?? null;
 
@@ -168,6 +164,9 @@ export default function TeamScreen() {
           <ProjectPicker />
           <Text style={s.title}>{teamQuery.data?.name ?? 'Team'}</Text>
         </View>
+        <TouchableOpacity style={s.addBtn} onPress={() => setInviteOpen(true)}>
+          <Plus size={20} color="#fff" />
+        </TouchableOpacity>
       </View>
 
       {/* Search */}
@@ -279,22 +278,32 @@ export default function TeamScreen() {
               )}
 
               {/* Actions */}
-              {!!member.userEmail && (
-                <View style={s.actionsRow}>
-                  <TouchableOpacity
-                    style={s.actionBtn}
-                    onPress={() => Linking.openURL(`mailto:${member.userEmail}`)}
-                  >
-                    <Mail size={14} color={colors.foreground} strokeWidth={1.75} />
-                    <Text style={[s.mutedXs, { color: colors.foreground, marginLeft: 6 }]}>Gửi email</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+              <View style={s.actionsRow}>
+                {[
+                  { icon: MessageCircle, label: 'Message', onPress: () => Alert.alert('Message', `Nhắn tin cho ${member.name} (sắp ra mắt).`) },
+                  { icon: Mail,          label: 'Email',   onPress: () => Alert.alert('Email', `Gửi email tới ${member.email}`) },
+                ].map(action => {
+                  const Icon = action.icon;
+                  return (
+                    <TouchableOpacity key={action.label} style={s.actionBtn} onPress={action.onPress}>
+                      <Icon size={14} color={colors.foreground} strokeWidth={1.75} />
+                      <Text style={[s.mutedXs, { color: colors.foreground, marginLeft: 6 }]}>{action.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
           </FadeSlide>
         );
       })}
       <View style={{ height: 20 }} />
+
+      {inviteOpen && (
+        <InviteMemberSheet
+          onClose={() => setInviteOpen(false)}
+          onInvite={email => Alert.alert('Đã gửi lời mời', `Lời mời đã được gửi tới ${email}.`)}
+        />
+      )}
     </ScrollView>
   );
 }

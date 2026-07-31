@@ -6,22 +6,43 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  ArrowLeft, Calendar, AlertTriangle, MessageSquare, Send,
-  ChevronDown, ChevronUp, Clock, TrendingUp, Sparkles, Link2, RefreshCw,
+  ArrowLeft, MoreVertical, Calendar, AlertTriangle,
+  MessageSquare, Paperclip, ChevronDown, ChevronUp,
+  Clock, TrendingUp, Sparkles, Check,
 } from 'lucide-react-native';
-import { colors } from '../theme';
-import {
-  ApiError, aiApi, commentsApi, tasksApi,
-  type RiskAssessment, type TaskComment, type TaskDetail,
-} from '../api';
-import { useApiQuery, useRefetchOnFocus } from '../hooks/useApi';
-import { useAuth } from '../contexts/AuthContext';
-import { LoadingState, ErrorState } from '../components/StateViews';
-import { gradientFor, getInitials } from '../utils/avatar';
-import {
-  priorityStyle, statusLabel, riskPercent, formatDeadline, primaryAssignee, timeAgo,
-  TASK_STATUSES, type KnownStatus,
-} from '../utils/task';
+import { colors, AVATAR_GRADIENTS } from '../theme';
+import { useTasks } from '../context/TasksContext';
+import { useComments } from '../context/CommentsContext';
+import { MOCK_USERS } from '../data/mockUsers';
+
+const PRIORITY_CONFIG = {
+  High:   { stripe: colors.red,    badgeBg: 'rgba(239,68,68,0.12)',   badgeColor: colors.red },
+  Medium: { stripe: colors.yellow, badgeBg: 'rgba(245,158,11,0.12)',  badgeColor: colors.yellow },
+  Low:    { stripe: colors.green,  badgeBg: 'rgba(16,185,129,0.12)',  badgeColor: colors.green },
+} as const;
+
+// Deterministic pseudo-score so the same task+user always shows the same numbers.
+function seededPercent(seedA: number, seedB: number, min = 55, max = 97) {
+  const x = Math.sin(seedA * 12.9898 + seedB * 78.233) * 43758.5453;
+  const frac = x - Math.floor(x);
+  return Math.round(min + frac * (max - min));
+}
+
+function buildRecommendations(taskId: string, currentAssigneeEmail: string) {
+  const idSeed = Number(taskId) || 1;
+  return MOCK_USERS
+    .filter(u => u.email !== currentAssigneeEmail)
+    .map(u => {
+      const skillMatch  = seededPercent(idSeed, u.id * 3 + 1);
+      const semantic    = seededPercent(idSeed, u.id * 3 + 2);
+      const workload    = seededPercent(idSeed, u.id * 3 + 3);
+      const performance = seededPercent(idSeed, u.id * 3 + 4);
+      const score = skillMatch * 0.4 + semantic * 0.25 + workload * 0.2 + performance * 0.15;
+      return { user: u, skillMatch, semantic, workload, performance, score: Math.round(score) };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+}
 
 function AnimatedBar({ progress, color }: { progress: number; color: string }) {
   const anim = useRef(new Animated.Value(0)).current;
@@ -53,128 +74,20 @@ function Accordion({ title, children, defaultOpen = true, accent = false, badge 
 export default function TaskDetailScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { session } = useAuth();
-  const taskId: number | undefined = route.params?.taskId;
+  const id = route.params?.id ?? '1';
+  const { getTask, updateAssignee } = useTasks();
+  const { getComments } = useComments();
 
-  const [draftComment, setDraftComment] = useState('');
-  const [isPostingComment, setIsPostingComment] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isChangingStatus, setIsChangingStatus] = useState(false);
+  const task = getTask(id) ?? getTask('1')!;
+  const pCfg = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.Medium;
+  const completedSubtasks = task.subtasks.filter(st => st.done).length;
+  const dueShort = new Date(task.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const commentCount = getComments(task.id).length;
+  const recommendations = buildRecommendations(task.id, task.assignee.email);
 
-  const taskQuery = useApiQuery<TaskDetail>(
-    signal => tasksApi.getById(taskId!, signal),
-    [taskId],
-    { enabled: taskId !== undefined },
-  );
-  useRefetchOnFocus(taskQuery.refetch, taskId !== undefined);
-
-  const commentsQuery = useApiQuery<TaskComment[]>(
-    signal => commentsApi.getByTask(taskId!, signal),
-    [taskId],
-    { enabled: taskId !== undefined },
-  );
-
-  const riskQuery = useApiQuery<RiskAssessment[]>(
-    signal => aiApi.getRiskHistory(taskId!, signal),
-    [taskId],
-    { enabled: taskId !== undefined },
-  );
-
-  const task = taskQuery.data;
-  const comments = useMemo(() => commentsQuery.data ?? [], [commentsQuery.data]);
-  // The history endpoint returns every run; the most recent one is the current view.
-  const latestRisk = useMemo(() => {
-    const history = riskQuery.data ?? [];
-    return [...history].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
-  }, [riskQuery.data]);
-
-  const runAnalysis = useCallback(async () => {
-    if (!taskId) return;
-    setIsAnalyzing(true);
-    try {
-      await aiApi.analyzeTaskRisk(taskId);
-      riskQuery.refetch();
-      taskQuery.refetch();
-    } catch (err) {
-      Alert.alert('Phân tích thất bại', err instanceof ApiError ? err.message : 'Đã xảy ra lỗi.');
-    } finally {
-      setIsAnalyzing(false);
-    }
-  }, [taskId, riskQuery, taskQuery]);
-
-  const changeStatus = useCallback(
-    async (status: KnownStatus) => {
-      if (!taskId || !task) return;
-      setIsChangingStatus(true);
-      try {
-        await tasksApi.updateProgress(taskId, {
-          status,
-          progress: status === 'Done' ? 100 : task.progress,
-        });
-        taskQuery.refetch();
-      } catch (err) {
-        Alert.alert(
-          'Không thể đổi trạng thái',
-          err instanceof ApiError ? err.message : 'Đã xảy ra lỗi.',
-        );
-      } finally {
-        setIsChangingStatus(false);
-      }
-    },
-    [taskId, task, taskQuery],
-  );
-
-  const postComment = useCallback(async () => {
-    const content = draftComment.trim();
-    if (!taskId || !session || content.length === 0) return;
-    setIsPostingComment(true);
-    try {
-      await commentsApi.create(taskId, session.userId, content);
-      setDraftComment('');
-      commentsQuery.refetch();
-    } catch (err) {
-      Alert.alert('Không gửi được bình luận', err instanceof ApiError ? err.message : 'Đã xảy ra lỗi.');
-    } finally {
-      setIsPostingComment(false);
-    }
-  }, [draftComment, taskId, session, commentsQuery]);
-
-  if (taskId === undefined) {
-    return (
-      <View style={s.centered}>
-        <Text style={s.mutedXs}>Không xác định được task.</Text>
-      </View>
-    );
-  }
-
-  if (taskQuery.isLoading) {
-    return (
-      <View style={s.centered}>
-        <LoadingState label="Đang tải chi tiết task…" />
-      </View>
-    );
-  }
-
-  if (taskQuery.error || !task) {
-    return (
-      <View style={s.centered}>
-        <ErrorState
-          error={taskQuery.error ?? new ApiError('Không tìm thấy task.', 404)}
-          onRetry={taskQuery.refetch}
-        />
-        <TouchableOpacity style={s.iconBtn} onPress={() => navigation.goBack()}>
-          <ArrowLeft size={16} color={colors.foreground} />
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  const pCfg = priorityStyle(task.priority);
-  const assignee = primaryAssignee(task);
-  const progress = task.progress ?? 0;
-  const doneDependencies = task.dependencies.filter(d => d.status === 'Done').length;
-  const risk = latestRisk ? Math.round(latestRisk.totalScore) : riskPercent(task.riskLevel);
-  const riskBand = latestRisk?.riskLevel ?? task.riskLevel ?? 'LOW';
+  const handleAccept = (candidate: typeof MOCK_USERS[number]) => {
+    updateAssignee(task.id, { name: candidate.name, initials: candidate.initials, email: candidate.email });
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -276,17 +189,13 @@ export default function TaskDetailScreen() {
         {/* Quick meta */}
         <View style={s.grid2}>
           <View style={[s.card, { flex: 1, marginRight: 6 }]}>
-            <Text style={[s.mutedXs, { marginBottom: 8 }]}>NGƯỜI PHỤ TRÁCH</Text>
-            {assignee ? (
-              <View style={s.rowStart}>
-                <LinearGradient colors={gradientFor(assignee.userName)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatarSm}>
-                  <Text style={s.avatarSmText}>{getInitials(assignee.userName)}</Text>
-                </LinearGradient>
-                <Text style={[s.cardTitle, { fontSize: 13, marginLeft: 8 }]} numberOfLines={1}>{assignee.userName}</Text>
-              </View>
-            ) : (
-              <Text style={s.mutedXs}>Chưa giao</Text>
-            )}
+            <Text style={[s.mutedXs, { marginBottom: 8 }]}>ASSIGNEE</Text>
+            <View style={s.rowStart}>
+              <LinearGradient colors={AVATAR_GRADIENTS[task.assignee.initials] ?? [colors.blue, colors.purple]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatarSm}>
+                <Text style={s.avatarSmText}>{task.assignee.initials}</Text>
+              </LinearGradient>
+              <Text style={[s.cardTitle, { fontSize: 13, marginLeft: 8 }]} numberOfLines={1}>{task.assignee.name}</Text>
+            </View>
           </View>
           <View style={[s.card, { flex: 1, marginLeft: 6 }]}>
             <View style={[s.row, { marginBottom: 8 }]}>
@@ -295,6 +204,15 @@ export default function TaskDetailScreen() {
             </View>
             <Text style={s.cardTitle}>{formatDeadline(task.deadline)}</Text>
           </View>
+        </View>
+
+        {/* Tags */}
+        <View style={[s.wrap, { marginBottom: 12 }]}>
+          {task.tags.map(tag => (
+            <View key={tag} style={s.tagPill}>
+              <Text style={s.tagText}>{tag}</Text>
+            </View>
+          ))}
         </View>
 
         {/* Description */}
@@ -370,7 +288,41 @@ export default function TaskDetailScreen() {
           )}
         </Accordion>
 
-        {/* Dependencies */}
+        {/* AI Assignment Suggestions */}
+        <Accordion accent defaultOpen={false} title={
+          <View style={s.rowStart}>
+            <Sparkles size={16} color={colors.purpleLight} />
+            <Text style={[s.cardTitle, { marginLeft: 8 }]}>Gợi ý người phụ trách (AI)</Text>
+          </View>
+        }>
+          {recommendations.map((rec, i) => (
+            <View key={rec.user.id} style={[s.recCard, { marginBottom: i < recommendations.length - 1 ? 10 : 0 }]}>
+              <View style={[s.row, { marginBottom: 8 }]}>
+                <View style={s.rowStart}>
+                  <LinearGradient colors={AVATAR_GRADIENTS[rec.user.initials] ?? [colors.blue, colors.purple]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatarSm}>
+                    <Text style={s.avatarSmText}>{rec.user.initials}</Text>
+                  </LinearGradient>
+                  <View style={{ marginLeft: 8 }}>
+                    <Text style={s.cardTitle}>{rec.user.name}</Text>
+                    <Text style={s.mutedXs}>{rec.user.role}</Text>
+                  </View>
+                </View>
+                <View style={[s.badge, { backgroundColor: 'rgba(16,185,129,0.12)' }]}>
+                  <Text style={[s.badgeText, { color: colors.green }]}>{rec.score}% phù hợp</Text>
+                </View>
+              </View>
+              <Text style={[s.mutedXs, { marginBottom: 10 }]}>
+                Kỹ năng {rec.skillMatch}% · Tương đồng {rec.semantic}% · Khối lượng {rec.workload}% · Hiệu suất {rec.performance}%
+              </Text>
+              <TouchableOpacity style={s.acceptBtn} onPress={() => handleAccept(rec.user)} activeOpacity={0.85}>
+                <Check size={14} color="#fff" />
+                <Text style={s.acceptBtnText}>Gán công việc</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </Accordion>
+
+        {/* Subtasks */}
         <Accordion
           title="Phụ thuộc"
           defaultOpen={task.dependencies.length > 0}
@@ -380,104 +332,35 @@ export default function TaskDetailScreen() {
             </View>
           }
         >
-          {task.dependencies.length === 0 ? (
-            <Text style={s.mutedXs}>Task này không chờ task nào khác.</Text>
-          ) : (
-            task.dependencies.map((dep, i) => (
-              <View
-                key={dep.dependencyId}
-                style={[s.rowStart, {
-                  paddingVertical: 10,
-                  borderBottomWidth: i < task.dependencies.length - 1 ? 1 : 0,
-                  borderBottomColor: 'rgba(255,255,255,0.04)',
-                  alignItems: 'center',
-                }]}
-              >
-                <View style={[s.check, {
-                  backgroundColor: dep.status === 'Done' ? colors.green : 'transparent',
-                  borderColor: dep.status === 'Done' ? colors.green : 'rgba(93,126,166,0.5)',
-                }]}>
-                  {dep.status === 'Done' && <Text style={{ color: '#fff', fontSize: 10 }}>✓</Text>}
-                </View>
-                <TouchableOpacity
-                  style={{ flex: 1, marginLeft: 12 }}
-                  onPress={() => navigation.push('TaskDetail', { taskId: dep.dependsOnTaskId })}
-                >
-                  <Text style={[s.mutedXs, {
-                    color: dep.status === 'Done' ? colors.muted : colors.foreground,
-                    textDecorationLine: dep.status === 'Done' ? 'line-through' : 'none',
-                  }]}>
-                    {dep.dependsOnTaskTitle ?? `Task #${dep.dependsOnTaskId}`}
-                  </Text>
-                </TouchableOpacity>
-                <Link2 size={12} color={colors.muted} />
+          {task.subtasks.map((st, i) => (
+            <View key={st.id} style={[s.rowStart, { paddingVertical: 10, borderBottomWidth: i < task.subtasks.length - 1 ? 1 : 0, borderBottomColor: 'rgba(255,255,255,0.04)' }]}>
+              <View style={[s.check, { backgroundColor: st.done ? colors.green : 'transparent', borderColor: st.done ? colors.green : 'rgba(93,126,166,0.5)' }]}>
+                {st.done && <Text style={{ color: '#fff', fontSize: 10 }}>✓</Text>}
               </View>
             ))
           )}
         </Accordion>
 
-        {/* Comments */}
-        <Accordion
-          title={
-            <View style={s.rowStart}>
-              <MessageSquare size={16} color={colors.foreground} strokeWidth={1.75} />
-              <Text style={[s.cardTitle, { marginLeft: 8 }]}>Bình luận</Text>
-            </View>
-          }
-          badge={
+        {/* Action buttons */}
+        <View style={s.grid2}>
+          <TouchableOpacity
+            style={[s.actionBtn, { flex: 1, marginHorizontal: 4 }]}
+            onPress={() => navigation.navigate('TaskComments', { taskId: task.id, taskTitle: task.title })}
+          >
+            <MessageSquare size={16} color={colors.foreground} strokeWidth={1.75} />
+            <Text style={[s.cardTitle, { marginLeft: 8, fontSize: 13 }]}>Comments</Text>
             <View style={[s.badge, { backgroundColor: 'rgba(255,255,255,0.08)', marginLeft: 8 }]}>
-              <Text style={[s.badgeText, { color: colors.muted }]}>{comments.length}</Text>
+              <Text style={[s.badgeText, { color: colors.muted }]}>{commentCount}</Text>
             </View>
-          }
-        >
-          {commentsQuery.isLoading ? (
-            <ActivityIndicator color={colors.blue} />
-          ) : comments.length === 0 ? (
-            <Text style={s.mutedXs}>Chưa có bình luận nào.</Text>
-          ) : (
-            comments.map(comment => (
-              <View key={comment.commentId} style={s.commentRow}>
-                <LinearGradient
-                  colors={gradientFor(comment.userName)}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={s.avatarSm}
-                >
-                  <Text style={s.avatarSmText}>{getInitials(comment.userName)}</Text>
-                </LinearGradient>
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <View style={s.row}>
-                    <Text style={[s.cardTitle, { fontSize: 12 }]}>{comment.userName ?? 'Ẩn danh'}</Text>
-                    <Text style={s.mutedXs}>{timeAgo(comment.createdAt)}</Text>
-                  </View>
-                  <Text style={[s.mutedXs, { marginTop: 2, lineHeight: 18 }]}>{comment.content}</Text>
-                </View>
-              </View>
-            ))
-          )}
-
-          <View style={s.commentInputRow}>
-            <TextInput
-              style={s.commentInput}
-              placeholder="Viết bình luận…"
-              placeholderTextColor={colors.muted}
-              value={draftComment}
-              onChangeText={setDraftComment}
-              multiline
-              editable={!isPostingComment}
-            />
-            <TouchableOpacity
-              style={[s.sendBtn, { opacity: draftComment.trim() && !isPostingComment ? 1 : 0.4 }]}
-              onPress={postComment}
-              disabled={!draftComment.trim() || isPostingComment}
-            >
-              {isPostingComment
-                ? <ActivityIndicator size="small" color="#fff" />
-                : <Send size={16} color="#fff" />}
-            </TouchableOpacity>
-          </View>
-        </Accordion>
-
+          </TouchableOpacity>
+          <TouchableOpacity style={[s.actionBtn, { flex: 1, marginHorizontal: 4 }]}>
+            <Paperclip size={16} color={colors.foreground} strokeWidth={1.75} />
+            <Text style={[s.cardTitle, { marginLeft: 8, fontSize: 13 }]}>Attachments</Text>
+            <View style={[s.badge, { backgroundColor: 'rgba(255,255,255,0.08)', marginLeft: 8 }]}>
+              <Text style={[s.badgeText, { color: colors.muted }]}>0</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
         <View style={{ height: 20 }} />
       </ScrollView>
     </View>
@@ -489,6 +372,7 @@ const s = StyleSheet.create({
   stickyHeader: { paddingHorizontal: 20, paddingTop: 60, paddingBottom: 16, backgroundColor: 'rgba(3,12,26,0.95)' },
   content:      { paddingHorizontal: 20, paddingTop: 12 },
   card:         { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: 16, marginBottom: 12 },
+  recCard:      { backgroundColor: 'rgba(255,255,255,0.03)', borderWidth: 1, borderColor: colors.border, borderRadius: 14, padding: 12 },
   accordionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   accordionBody:   { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)' },
   mainTitle:    { fontSize: 22, fontWeight: '700', color: colors.foreground, lineHeight: 28 },
@@ -504,11 +388,9 @@ const s = StyleSheet.create({
   iconBox:      { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   avatarSm:     { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   avatarSmText: { color: '#fff', fontSize: 10, fontWeight: '700' },
-  statusRow:    { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  statusBtn:    { flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
-  statusText:   { fontSize: 12, fontWeight: '600' },
-  analyzeBtn:   { marginTop: 16, borderRadius: 12, paddingVertical: 10, alignItems: 'center', backgroundColor: 'rgba(124,77,255,0.15)', borderWidth: 1, borderColor: 'rgba(124,77,255,0.3)' },
-  analyzeText:  { fontSize: 12, fontWeight: '600', color: colors.purpleLight },
+  actionBtn:    { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center' },
+  acceptBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: colors.blue, borderRadius: 10, paddingVertical: 8 },
+  acceptBtnText:{ color: '#fff', fontSize: 12, fontWeight: '600' },
   check:        { width: 20, height: 20, borderRadius: 10, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   commentRow:   { flexDirection: 'row', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.04)' },
   commentInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 12 },

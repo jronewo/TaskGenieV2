@@ -1,5 +1,6 @@
 using MediatR;
 using TaskGenie.Application.Events;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
 using TaskEntity = TaskGenie.Domain.Entities.Task;
 
@@ -14,6 +15,7 @@ public sealed record UpdateTaskProgressCommand(
 ) : IRequest<bool>;
 
 public sealed class UpdateTaskProgressCommandHandler(
+    IResourceAuthorizationService authz,
     ITaskRepository taskRepo,
     ITaskDependencyRepository dependencyRepo,
     IMediator mediator
@@ -21,8 +23,7 @@ public sealed class UpdateTaskProgressCommandHandler(
 {
     public async Task<bool> Handle(UpdateTaskProgressCommand cmd, CancellationToken ct)
     {
-        var task = await taskRepo.GetByIdAsync(cmd.TaskId, ct);
-        if (task is null) return false;
+        var task = await authz.EnsureCanManageTaskAsync(cmd.TaskId, ct);
 
         // Dependency check: if marking Done, all prerequisite tasks must be Done
         if (cmd.Status == "Done")

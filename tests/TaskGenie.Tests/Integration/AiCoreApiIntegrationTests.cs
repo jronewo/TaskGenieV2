@@ -24,7 +24,7 @@ public sealed class AiCoreApiIntegrationTests
     {
         await using var factory = new AiCoreApiFactory();
         using var client = factory.CreateClient();
-        var taskId = await factory.SeedTaskAsync(projectId: 1);
+        var (taskId, _) = await factory.SeedTaskAsync();
         await factory.AuthenticateAsync(client);
 
         var response = await client.PostAsync($"/api/ai-analysis/{taskId}/risk", null);
@@ -45,10 +45,10 @@ public sealed class AiCoreApiIntegrationTests
     {
         await using var factory = new AiCoreApiFactory();
         using var client = factory.CreateClient();
-        var taskId = await factory.SeedTaskAsync(projectId: 2, userCount: 3);
+        var (taskId, projectId) = await factory.SeedTaskAsync(userCount: 3);
         await factory.AuthenticateAsync(client);
 
-        var response = await client.PostAsJsonAsync("/api/task-assignment/recommend", new { taskId, projectId = 2 });
+        var response = await client.PostAsJsonAsync("/api/task-assignment/recommend", new { taskId, projectId });
         var payload = await response.Content.ReadFromJsonAsync<TaskAssignmentResponseDto>();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -67,7 +67,7 @@ public sealed class AiCoreApiIntegrationTests
     {
         await using var factory = new AiCoreApiFactory();
         using var client = factory.CreateClient();
-        var taskId = await factory.SeedTaskAsync(projectId: 3);
+        var (taskId, _) = await factory.SeedTaskAsync();
         await factory.AuthenticateAsync(client);
 
         var response = await client.PostAsJsonAsync($"/api/tasks/{taskId}/evidence", new
@@ -112,7 +112,7 @@ public sealed class AiCoreApiFactory : WebApplicationFactory<Program>
         });
     }
 
-    public async Task<int> SeedTaskAsync(int projectId, int userCount = 1)
+    public async Task<(int TaskId, int ProjectId)> SeedTaskAsync(int userCount = 1, int ownerUserId = 1)
     {
         _ = Services;
         using var scope = Services.CreateScope();
@@ -122,15 +122,23 @@ public sealed class AiCoreApiFactory : WebApplicationFactory<Program>
         {
             for (var index = 1; index <= userCount; index++)
                 context.Users.Add(User.Create($"User {index}", $"user{index}@api.test", "hash"));
+            await context.SaveChangesAsync();
         }
+
+        // The task's actor (via ownerUserId, matching AuthenticateAsync's default) must be the
+        // project's creator so IResourceAuthorizationService grants manage access.
+        var project = Project.Create("API integration project", null, ownerUserId);
+        context.Projects.Add(project);
+        await context.SaveChangesAsync();
+
         var task = TaskEntity.Create(
-            projectId,
+            project.ProjectId,
             "API integration task",
             "Exercise the real HTTP pipeline",
             deadline: DateOnly.FromDateTime(DateTime.UtcNow).AddDays(3));
         context.Tasks.Add(task);
         await context.SaveChangesAsync();
-        return task.TaskId;
+        return (task.TaskId, project.ProjectId);
     }
 
     public async Task AuthenticateAsync(HttpClient client, int userId = 1)

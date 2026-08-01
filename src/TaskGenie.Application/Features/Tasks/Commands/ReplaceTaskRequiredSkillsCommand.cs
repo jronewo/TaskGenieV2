@@ -1,4 +1,5 @@
 using MediatR;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
 
 namespace TaskGenie.Application.Features.Tasks.Commands;
@@ -9,14 +10,13 @@ public sealed record ReplaceTaskRequiredSkillsCommand(
 ) : IRequest<bool>;
 
 public sealed class ReplaceTaskRequiredSkillsCommandHandler(
-    ITaskRepository taskRepo,
+    IResourceAuthorizationService authz,
     ITaskRequiredSkillRepository skillRepo
 ) : IRequestHandler<ReplaceTaskRequiredSkillsCommand, bool>
 {
     public async Task<bool> Handle(ReplaceTaskRequiredSkillsCommand cmd, CancellationToken ct)
     {
-        var task = await taskRepo.GetByIdAsync(cmd.TaskId, ct);
-        if (task is null) return false;
+        await authz.EnsureCanManageTaskAsync(cmd.TaskId, ct);
 
         await skillRepo.ReplaceTaskSkillsAsync(cmd.TaskId, cmd.SkillIds, ct);
         return true;

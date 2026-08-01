@@ -5,14 +5,17 @@ using TaskGenie.Application;
 using TaskGenie.Application.Common.Behaviors;
 using TaskGenie.Application.Features.Tasks.Commands;
 using TaskGenie.Infrastructure;
-using TaskGenie.Infrastructure.Persistence;
 using TaskGenie.API.Extensions;
 using TaskGenie.API.Middleware;
+using TaskGenie.API.Services;
+using TaskGenie.Application.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApplication();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 
 builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssembly(typeof(CreateTaskCommand).Assembly));
@@ -56,13 +59,6 @@ app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-
-if (app.Environment.IsDevelopment())
-{
-    using var scope = app.Services.CreateScope();
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await DataSeeder.SeedAsync(db);
-}
 
 app.Run();
 

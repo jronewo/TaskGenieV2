@@ -7,7 +7,6 @@ public sealed class CreateTaskEvidenceCommandValidator : AbstractValidator<Creat
     public CreateTaskEvidenceCommandValidator()
     {
         RuleFor(command => command.TaskId).GreaterThan(0);
-        RuleFor(command => command.SubmittedBy).GreaterThan(0).WithMessage("X-User-Id header is required.");
         RuleFor(command => command.EvidenceType).NotEmpty().MaximumLength(50);
         RuleFor(command => command.Description).MaximumLength(1000);
         RuleFor(command => command.ExternalUrl)

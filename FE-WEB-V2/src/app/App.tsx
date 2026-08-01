@@ -9,6 +9,7 @@ import { AuthModule } from "./components/AuthModule";
 import { TeamManagement } from "./components/TeamManagement";
 import { EvaluationCenter } from "./components/EvaluationCenter";
 import { AdministrationCenter } from "./components/AdministrationCenter";
+import { SubscriptionCenter } from "./components/SubscriptionCenter";
 import { ProjectManagement } from "./components/ProjectManagement";
 import { KanbanBoard } from "./components/KanbanBoard";
 import { TaskDetailModal } from "./components/TaskDetailModal";
@@ -19,6 +20,8 @@ import {
   AlertTriangle, CheckCircle, TrendingUp, Layers, ChevronRight, LogOut
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
+import { useAuth } from "./auth/AuthContext";
+import { isPlatformAdmin } from "./auth/types";
 
 const useIsMobile = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -473,7 +476,7 @@ const LogoutModal = ({
 
 export default function App() {
   const isMobile = useIsMobile();
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const { user, isAuthenticated, isReady, logout } = useAuth();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [activeProject, setActiveProject] = useState("p1");
@@ -490,6 +493,14 @@ export default function App() {
   const [taskList, setTaskList] = useState<Task[]>(tasks);
   const selectedTask = taskList.find((t) => t.id === selectedTaskId) ?? null;
 
+  const canAccessAdministration = isPlatformAdmin(user);
+
+  useEffect(() => {
+    if (activePage === "administration" && !canAccessAdministration) {
+      setActivePage("dashboard");
+    }
+  }, [activePage, canAccessAdministration]);
+
   const handleCreateTask = (task: Task) => {
     setTaskList((prev) => [task, ...prev]);
     toast.success(`Task "${task.title}" created.`);
@@ -504,17 +515,19 @@ export default function App() {
     setShowNewTaskModal(true);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setShowLogoutModal(false);
-    setIsAuthenticated(false);
+    await logout();
     toast.success("You have been signed out.");
   };
+
+  if (!isReady) return null;
 
   if (!isAuthenticated) {
     return (
       <>
         <Toaster position="top-right" richColors />
-        <AuthModule onLogin={() => setIsAuthenticated(true)} />
+        <AuthModule />
       </>
     );
   }
@@ -540,6 +553,8 @@ export default function App() {
               collapsed={collapsed}
               onSelectProject={setSelectedProject}
               onLogout={() => setShowLogoutModal(true)}
+              user={user}
+              canAccessAdministration={canAccessAdministration}
             />
           </motion.div>
 
@@ -661,7 +676,20 @@ export default function App() {
                     </motion.div>
                   )}
 
-                  {activePage === "administration" && (
+                  {activePage === "subscription" && (
+                    <motion.div
+                      key="subscription"
+                      className="flex-1 overflow-y-auto"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                    >
+                      <SubscriptionCenter />
+                    </motion.div>
+                  )}
+
+                  {activePage === "administration" && canAccessAdministration && (
                     <motion.div
                       key="administration"
                       className="flex-1 overflow-y-auto"

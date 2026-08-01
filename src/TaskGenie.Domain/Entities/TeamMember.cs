@@ -20,4 +20,6 @@ public class TeamMember
     public virtual User? User { get; internal set; }
 
     public static TeamMember Create(int teamId, int userId, string role = "MEMBER") => new() { TeamId = teamId, UserId = userId, Role = role };
+
+    public void SetRole(string role) => Role = role;
 }

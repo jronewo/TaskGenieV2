@@ -1,5 +1,6 @@
 using MediatR;
 using TaskGenie.Application.Events;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
 using TaskEntity = TaskGenie.Domain.Entities.Task;
 
@@ -18,14 +19,15 @@ public sealed record UpdateTaskCommand(
 ) : IRequest<bool>;
 
 public sealed class UpdateTaskCommandHandler(
+    IResourceAuthorizationService authz,
     ITaskRepository taskRepo,
     IMediator mediator
 ) : IRequestHandler<UpdateTaskCommand, bool>
 {
     public async Task<bool> Handle(UpdateTaskCommand cmd, CancellationToken ct)
     {
-        var task = await taskRepo.GetByIdAsync(cmd.TaskId, ct);
-        if (task is null || task.ProjectId is null) return false;
+        var task = await authz.EnsureCanManageTaskAsync(cmd.TaskId, ct);
+        if (task.ProjectId is null) return false;
 
         var deadline = !string.IsNullOrEmpty(cmd.Deadline) && DateOnly.TryParse(cmd.Deadline, out var dl) ? dl : (DateOnly?)null;
 

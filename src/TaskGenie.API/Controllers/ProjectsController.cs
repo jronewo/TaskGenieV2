@@ -25,7 +25,6 @@ public class ProjectsController(IMediator mediator) : ControllerBase
         var project = await mediator.Send(new CreateProjectCommand(
             request.Name,
             request.Description,
-            request.CreatedBy,
             request.OrganizationId,
             request.Deadline));
         return CreatedAtAction(nameof(GetById), new { id = project.ProjectId }, project);
@@ -72,7 +71,6 @@ public class ProjectsController(IMediator mediator) : ControllerBase
 public record CreateProjectRequest(
     string Name,
     string? Description,
-    int CreatedBy,
     int? OrganizationId,
     DateOnly? Deadline);
 

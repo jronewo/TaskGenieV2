@@ -1,6 +1,5 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
-using TaskGenie.API.Extensions;
 using TaskGenie.Application.Features.Evidence;
 
 namespace TaskGenie.API.Controllers;
@@ -18,7 +17,6 @@ public sealed class TaskEvidenceController(IMediator mediator) : ControllerBase
     {
         var evidence = await mediator.Send(new CreateTaskEvidenceCommand(
             taskId,
-            HttpContext.GetCurrentUserId(),
             request.EvidenceType,
             request.Description,
             request.TaskLogId,

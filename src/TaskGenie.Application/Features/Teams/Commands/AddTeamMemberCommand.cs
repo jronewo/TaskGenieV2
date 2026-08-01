@@ -1,4 +1,6 @@
 using MediatR;
+using TaskGenie.Application.Common.Exceptions;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Entities;
 using TaskGenie.Domain.Interfaces.Repositories;
 
@@ -11,16 +13,23 @@ public sealed record AddTeamMemberCommand(
 ) : IRequest<bool>;
 
 public sealed class AddTeamMemberCommandHandler(
+    IResourceAuthorizationService authz,
+    IUserRepository userRepo,
     ITeamMemberRepository memberRepo
 ) : IRequestHandler<AddTeamMemberCommand, bool>
 {
     public async Task<bool> Handle(AddTeamMemberCommand cmd, CancellationToken ct)
     {
-        // Check if already a member
-        var existing = await memberRepo.GetByTeamIdAsync(cmd.TeamId, ct);
-        if (existing.Any(m => m.UserId == cmd.UserId)) return false;
+        await authz.EnsureCanManageTeamAsync(cmd.TeamId, ct);
 
-        var member = TeamMember.Create(cmd.TeamId, cmd.UserId, cmd.Role);
+        _ = await userRepo.GetByIdAsync(cmd.UserId, ct)
+            ?? throw new NotFoundException("User", cmd.UserId);
+
+        var existing = await memberRepo.GetByTeamIdAsync(cmd.TeamId, ct);
+        if (existing.Any(m => m.UserId == cmd.UserId))
+            throw new InvalidOperationException("This user is already a member of the team.");
+
+        var member = TeamMember.Create(cmd.TeamId, cmd.UserId, cmd.Role.ToUpperInvariant());
         await memberRepo.AddAsync(member, ct);
         return true;
     }

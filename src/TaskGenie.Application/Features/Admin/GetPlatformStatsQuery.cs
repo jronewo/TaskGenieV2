@@ -1,12 +1,16 @@
 using MediatR;
+using TaskGenie.Domain.Entities;
 using TaskGenie.Domain.Interfaces.Repositories;
 
 namespace TaskGenie.Application.Features.Admin;
 
 public sealed record PlatformStatsDto(
     int Users,
+    int ActiveUsers,
     int Organizations,
     int Projects,
+    int ActiveSubscriptions,
+    long RevenueCents,
     int Tasks,
     int TasksDone
 );
@@ -26,7 +30,9 @@ public sealed class GetPlatformStatsQueryHandler(
     IUserRepository userRepo,
     IOrganizationRepository orgRepo,
     IProjectRepository projectRepo,
-    ITaskStatsRepository taskStatsRepo
+    ITaskStatsRepository taskStatsRepo,
+    ISubscriptionRepository subscriptionRepo,
+    IPaymentTransactionRepository paymentRepo
 ) : IRequestHandler<GetPlatformStatsQuery, PlatformStatsDto>
 {
     public async Task<PlatformStatsDto> Handle(GetPlatformStatsQuery query, CancellationToken ct)
@@ -35,11 +41,21 @@ public sealed class GetPlatformStatsQueryHandler(
         var orgs = await orgRepo.GetAllAsync(ct);
         var projects = await projectRepo.GetAllAsync(ct);
         var (total, done) = await taskStatsRepo.GetTotalAndDoneCountAsync(ct);
+        var subscriptions = await subscriptionRepo.GetAllAsync(ct);
+        var payments = await paymentRepo.GetAllAsync(ct);
+
+        var activeSubscriptions = subscriptions.Count(s => s.IsCurrentlyActive);
+        var revenueCents = payments
+            .Where(p => p.Status == PaymentTransactionStatus.Succeeded)
+            .Sum(p => (long)p.AmountCents);
 
         return new PlatformStatsDto(
             Users: users.Count,
+            ActiveUsers: users.Count(u => (u.Status ?? UserStatus.Active) == UserStatus.Active && u.DeletedAt is null),
             Organizations: orgs.Count,
             Projects: projects.Count,
+            ActiveSubscriptions: activeSubscriptions,
+            RevenueCents: revenueCents,
             Tasks: total,
             TasksDone: done
         );

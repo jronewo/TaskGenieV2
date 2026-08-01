@@ -2,9 +2,10 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   LayoutDashboard, ChevronRight, Zap, BarChart2, Kanban,
-  Bell, Settings, Users, Plus, LogOut, HelpCircle, Sparkles, Briefcase, ClipboardCheck, Shield, BrainCircuit
+  Bell, Settings, Users, Plus, LogOut, HelpCircle, Sparkles, Briefcase, ClipboardCheck, Shield, BrainCircuit, CreditCard
 } from "lucide-react";
 import { projects, Project } from "../data/tmaiData";
+import { AuthUser } from "../auth/types";
 
 interface SidebarProps {
   activeProject: string;
@@ -14,6 +15,8 @@ interface SidebarProps {
   collapsed: boolean;
   onSelectProject?: (p: Project) => void;
   onLogout?: () => void;
+  user?: AuthUser | null;
+  canAccessAdministration?: boolean;
 }
 
 const getRiskDot = (score: number) => {
@@ -105,12 +108,20 @@ const navItems = [
   { id: "ai-core", label: "AI Core Demo", icon: BrainCircuit },
   { id: "team", label: "Team", icon: Users },
   { id: "evaluations", label: "Evaluations", icon: ClipboardCheck },
+  { id: "subscription", label: "Plans & Billing", icon: CreditCard },
   { id: "administration", label: "Administration", icon: Shield },
   { id: "notifications", label: "Notifications", icon: Bell, badge: 5 },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
-export const Sidebar = ({ activeProject, setActiveProject, activePage, setActivePage, collapsed, onSelectProject, onLogout }: SidebarProps) => {
+export const Sidebar = ({
+  activeProject, setActiveProject, activePage, setActivePage, collapsed,
+  onSelectProject, onLogout, user, canAccessAdministration,
+}: SidebarProps) => {
+  const visibleNavItems = navItems.filter(
+    (item) => item.id !== "administration" || canAccessAdministration
+  );
+
   return (
     <div
       className="h-full flex flex-col relative overflow-hidden"
@@ -131,7 +142,7 @@ export const Sidebar = ({ activeProject, setActiveProject, activePage, setActive
 
       {/* Navigation */}
       <div className="px-2 mt-3 space-y-0.5">
-        {navItems.map(({ id, label, icon: Icon, badge }) => (
+        {visibleNavItems.map(({ id, label, icon: Icon, badge }) => (
           <motion.button
             key={id}
             className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md transition-all relative group ${
@@ -209,8 +220,10 @@ export const Sidebar = ({ activeProject, setActiveProject, activePage, setActive
               className="w-7 h-7 rounded-md object-cover ring-1 ring-slate-400/40"
             />
             <div className="flex-1 min-w-0">
-              <div className="text-white text-xs font-semibold truncate">Huy Pham</div>
-              <div className="text-slate-400 text-[10px] truncate">Project Lead</div>
+              <div className="text-white text-xs font-semibold truncate">
+                {user?.name ?? user?.email ?? "Unknown user"}
+              </div>
+              <div className="text-slate-400 text-[10px] truncate">{user?.role ?? ""}</div>
             </div>
             <motion.button className="text-blue-400 hover:text-white" whileTap={{ scale: 0.9 }} onClick={onLogout}>
               <LogOut size={14} />

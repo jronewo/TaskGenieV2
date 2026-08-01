@@ -22,13 +22,12 @@ public sealed class CoreCommandValidatorTests
     }
 
     [Fact]
-    public void EvidenceValidator_RequiresAuthenticatedSubmitterAndSource()
+    public void EvidenceValidator_RequiresSource()
     {
-        var command = new CreateTaskEvidenceCommand(1, 0, "URL", null, null, null, null, null, null, null, null);
+        var command = new CreateTaskEvidenceCommand(1, "URL", null, null, null, null, null, null, null, null);
         var result = new CreateTaskEvidenceCommandValidator().Validate(command);
 
         Assert.False(result.IsValid);
-        Assert.Contains(result.Errors, error => error.PropertyName == nameof(command.SubmittedBy));
         Assert.Contains(result.Errors, error => error.ErrorMessage.Contains("Either ExternalUrl"));
     }
 
@@ -36,7 +35,7 @@ public sealed class CoreCommandValidatorTests
     public void EvidenceValidator_AcceptsHttpsEvidence()
     {
         var command = new CreateTaskEvidenceCommand(
-            1, 2, "URL", "CI run", null, "https://ci.example.com/run/1", null, null, null, null, null);
+            1, "URL", "CI run", null, "https://ci.example.com/run/1", null, null, null, null, null);
 
         Assert.True(new CreateTaskEvidenceCommandValidator().Validate(command).IsValid);
     }

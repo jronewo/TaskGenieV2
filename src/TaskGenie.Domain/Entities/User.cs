@@ -3,6 +3,12 @@ using System.Collections.Generic;
 
 namespace TaskGenie.Domain.Entities;
 
+public static class UserStatus
+{
+    public const int Active = 1;
+    public const int Inactive = 0;
+}
+
 public class User
 {
     protected User() { }
@@ -66,4 +72,25 @@ public class User
         Password = hashedPassword;
         UpdatedAt = DateTime.UtcNow;
     }
+
+    public void SetRole(string role)
+    {
+        Role = role;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void SetStatus(int status)
+    {
+        Status = status;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void SoftDelete()
+    {
+        Status = UserStatus.Inactive;
+        DeletedAt = DateTime.UtcNow;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public bool IsPlatformAdmin => Role == "PLATFORM_ADMIN";
 }

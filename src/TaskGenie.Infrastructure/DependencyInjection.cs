@@ -9,6 +9,7 @@ using TaskGenie.Infrastructure.Export;
 using TaskGenie.Infrastructure.ExternalServices;
 using TaskGenie.Infrastructure.Persistence;
 using TaskGenie.Infrastructure.Persistence.Repositories;
+using TaskGenie.Infrastructure.Persistence.Services;
 
 namespace TaskGenie.Infrastructure;
 
@@ -52,6 +53,15 @@ public static class DependencyInjection
         services.AddScoped<IMeetingRepository, MeetingRepository>();
         services.AddScoped<IRiskRepository, RiskRepository>();
         services.AddScoped<IEvidenceRepository, EvidenceRepository>();
+        services.AddScoped<IPlanRepository, PlanRepository>();
+        services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
+        services.AddScoped<IPaymentTransactionRepository, PaymentTransactionRepository>();
+        services.AddScoped<IOrganizationMemberRepository, OrganizationMemberRepository>();
+        services.AddScoped<TaskGenie.Application.Interfaces.ISubscriptionEntitlementService, TaskGenie.Application.Common.Services.SubscriptionEntitlementService>();
+        services.AddScoped<TaskGenie.Application.Interfaces.IOrganizationLifecycleService, OrganizationLifecycleService>();
+        services.AddScoped<IProjectLifecycleService, ProjectLifecycleService>();
+        services.AddScoped<ITeamLifecycleService, TeamLifecycleService>();
+        services.AddScoped<ITaskLifecycleService, TaskLifecycleService>();
 
         // External Services
         services.AddHttpClient<IHuggingFaceService, HuggingFaceService>();

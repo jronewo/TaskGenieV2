@@ -43,8 +43,7 @@ public class TasksController(IMediator mediator) : ControllerBase
             request.Description,
             request.Priority,
             request.Deadline,
-            request.Difficulty,
-            HttpContext.GetCurrentUserId()));
+            request.Difficulty));
         return CreatedAtAction(nameof(GetById), new { id = task.TaskId }, task);
     }
 

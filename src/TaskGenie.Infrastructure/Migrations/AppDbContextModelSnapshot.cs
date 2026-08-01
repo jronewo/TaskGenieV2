@@ -608,6 +608,229 @@ namespace TaskGenie.Infrastructure.Migrations
                     b.ToTable("organizations", (string)null);
                 });
 
+            modelBuilder.Entity("TaskGenie.Domain.Entities.OrganizationMember", b =>
+                {
+                    b.Property<int>("OrganizationMemberId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("organization_member_id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("OrganizationMemberId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("(getdate())");
+
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("int")
+                        .HasColumnName("organization_id");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("role");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("OrganizationMemberId")
+                        .HasName("PK_organization_members");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex(new[] { "OrganizationId", "UserId" }, "UQ_organization_members")
+                        .IsUnique();
+
+                    b.ToTable("organization_members", (string)null);
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.PaymentTransaction", b =>
+                {
+                    b.Property<int>("PaymentTransactionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("payment_transaction_id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("PaymentTransactionId"));
+
+                    b.Property<int>("AmountCents")
+                        .HasColumnType("int")
+                        .HasColumnName("amount_cents");
+
+                    b.Property<DateTime?>("ConfirmedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("confirmed_at");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("(getdate())");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasColumnName("currency");
+
+                    b.Property<string>("GatewayReference")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("gateway_reference");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("status");
+
+                    b.Property<int>("SubscriptionId")
+                        .HasColumnType("int")
+                        .HasColumnName("subscription_id");
+
+                    b.HasKey("PaymentTransactionId")
+                        .HasName("PK_payment_transactions");
+
+                    b.HasIndex("SubscriptionId");
+
+                    b.ToTable("payment_transactions", (string)null);
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.Plan", b =>
+                {
+                    b.Property<int>("PlanId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("plan_id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("PlanId"));
+
+                    b.Property<int>("BillingPeriodDays")
+                        .HasColumnType("int")
+                        .HasColumnName("billing_period_days");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("(getdate())");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasColumnName("currency");
+
+                    b.Property<string>("Features")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("features");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("PriceCents")
+                        .HasColumnType("int")
+                        .HasColumnName("price_cents");
+
+                    b.Property<int?>("ProjectLimit")
+                        .HasColumnType("int")
+                        .HasColumnName("project_limit");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("scope");
+
+                    b.HasKey("PlanId")
+                        .HasName("PK_plans");
+
+                    b.HasIndex(new[] { "Code" }, "UQ_plans_code")
+                        .IsUnique();
+
+                    b.ToTable("plans", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            PlanId = 1,
+                            BillingPeriodDays = 36500,
+                            Code = "FREE_PERSONAL",
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Currency = "USD",
+                            Features = "Up to 2 projects,Core task management,AI risk analysis",
+                            IsActive = true,
+                            Name = "Free",
+                            PriceCents = 0,
+                            ProjectLimit = 2,
+                            Scope = "Personal"
+                        },
+                        new
+                        {
+                            PlanId = 2,
+                            BillingPeriodDays = 30,
+                            Code = "PRO_PERSONAL",
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Currency = "USD",
+                            Features = "Unlimited projects,Priority AI analysis,Assignment recommendations",
+                            IsActive = true,
+                            Name = "Pro",
+                            PriceCents = 999,
+                            Scope = "Personal"
+                        },
+                        new
+                        {
+                            PlanId = 3,
+                            BillingPeriodDays = 36500,
+                            Code = "FREE_ORGANIZATION",
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Currency = "USD",
+                            Features = "Up to 2 projects",
+                            IsActive = true,
+                            Name = "Organization Free",
+                            PriceCents = 0,
+                            ProjectLimit = 2,
+                            Scope = "Organization"
+                        },
+                        new
+                        {
+                            PlanId = 4,
+                            BillingPeriodDays = 30,
+                            Code = "PRO_ORGANIZATION",
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Currency = "USD",
+                            Features = "Unlimited projects,Team-wide premium entitlement,Priority support",
+                            IsActive = true,
+                            Name = "Organization Pro",
+                            PriceCents = 4999,
+                            Scope = "Organization"
+                        });
+                });
+
             modelBuilder.Entity("TaskGenie.Domain.Entities.Project", b =>
                 {
                     b.Property<int>("ProjectId")
@@ -995,6 +1218,12 @@ namespace TaskGenie.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("SkillId"));
 
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
                     b.Property<string>("SkillName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -1008,6 +1237,67 @@ namespace TaskGenie.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("skills", (string)null);
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.Subscription", b =>
+                {
+                    b.Property<int>("SubscriptionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("subscription_id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("SubscriptionId"));
+
+                    b.Property<DateTime?>("CanceledAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("canceled_at");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("(getdate())");
+
+                    b.Property<DateTime?>("CurrentPeriodEnd")
+                        .HasColumnType("datetime")
+                        .HasColumnName("current_period_end");
+
+                    b.Property<int>("PlanId")
+                        .HasColumnType("int")
+                        .HasColumnName("plan_id");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("status");
+
+                    b.Property<int?>("SubscriberOrganizationId")
+                        .HasColumnType("int")
+                        .HasColumnName("subscriber_organization_id");
+
+                    b.Property<int?>("SubscriberUserId")
+                        .HasColumnType("int")
+                        .HasColumnName("subscriber_user_id");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("SubscriptionId")
+                        .HasName("PK_subscriptions");
+
+                    b.HasIndex("PlanId");
+
+                    b.HasIndex("SubscriberOrganizationId");
+
+                    b.HasIndex("SubscriberUserId");
+
+                    b.ToTable("subscriptions", (string)null);
                 });
 
             modelBuilder.Entity("TaskGenie.Domain.Entities.Task", b =>
@@ -1370,6 +1660,12 @@ namespace TaskGenie.Infrastructure.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("description");
+
+                    b.Property<bool>("IsProjectManaged")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_project_managed");
 
                     b.Property<string>("Name")
                         .HasMaxLength(255)
@@ -1752,6 +2048,38 @@ namespace TaskGenie.Infrastructure.Migrations
                     b.Navigation("Owner");
                 });
 
+            modelBuilder.Entity("TaskGenie.Domain.Entities.OrganizationMember", b =>
+                {
+                    b.HasOne("TaskGenie.Domain.Entities.Organization", "Organization")
+                        .WithMany("Members")
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_organization_members_organizations");
+
+                    b.HasOne("TaskGenie.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .IsRequired()
+                        .HasConstraintName("FK_organization_members_users");
+
+                    b.Navigation("Organization");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.PaymentTransaction", b =>
+                {
+                    b.HasOne("TaskGenie.Domain.Entities.Subscription", "Subscription")
+                        .WithMany("Payments")
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_payment_transactions_subscriptions");
+
+                    b.Navigation("Subscription");
+                });
+
             modelBuilder.Entity("TaskGenie.Domain.Entities.Project", b =>
                 {
                     b.HasOne("TaskGenie.Domain.Entities.User", "CreatedByNavigation")
@@ -1832,6 +2160,32 @@ namespace TaskGenie.Infrastructure.Migrations
                     b.Navigation("Project");
 
                     b.Navigation("Task");
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.Subscription", b =>
+                {
+                    b.HasOne("TaskGenie.Domain.Entities.Plan", "Plan")
+                        .WithMany("Subscriptions")
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_subscriptions_plans");
+
+                    b.HasOne("TaskGenie.Domain.Entities.Organization", "SubscriberOrganization")
+                        .WithMany()
+                        .HasForeignKey("SubscriberOrganizationId")
+                        .HasConstraintName("FK_subscriptions_organizations");
+
+                    b.HasOne("TaskGenie.Domain.Entities.User", "SubscriberUser")
+                        .WithMany()
+                        .HasForeignKey("SubscriberUserId")
+                        .HasConstraintName("FK_subscriptions_users");
+
+                    b.Navigation("Plan");
+
+                    b.Navigation("SubscriberOrganization");
+
+                    b.Navigation("SubscriberUser");
                 });
 
             modelBuilder.Entity("TaskGenie.Domain.Entities.Task", b =>
@@ -2071,7 +2425,14 @@ namespace TaskGenie.Infrastructure.Migrations
 
             modelBuilder.Entity("TaskGenie.Domain.Entities.Organization", b =>
                 {
+                    b.Navigation("Members");
+
                     b.Navigation("Projects");
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.Plan", b =>
+                {
+                    b.Navigation("Subscriptions");
                 });
 
             modelBuilder.Entity("TaskGenie.Domain.Entities.Project", b =>
@@ -2091,6 +2452,11 @@ namespace TaskGenie.Infrastructure.Migrations
                     b.Navigation("TaskRequiredSkills");
 
                     b.Navigation("UserSkills");
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.Subscription", b =>
+                {
+                    b.Navigation("Payments");
                 });
 
             modelBuilder.Entity("TaskGenie.Domain.Entities.Task", b =>

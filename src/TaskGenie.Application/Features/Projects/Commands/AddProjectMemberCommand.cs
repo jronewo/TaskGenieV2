@@ -1,4 +1,6 @@
 using MediatR;
+using TaskGenie.Application.Common.Exceptions;
+using TaskGenie.Domain.Entities;
 using TaskGenie.Domain.Interfaces.Repositories;
 
 namespace TaskGenie.Application.Features.Projects.Commands;
@@ -19,7 +21,7 @@ public sealed class AddProjectMemberCommandHandler(
     public async Task<bool> Handle(AddProjectMemberCommand cmd, CancellationToken ct)
     {
         var project = await projectRepo.GetByIdAsync(cmd.ProjectId, ct)
-            ?? throw new InvalidOperationException("Project not found.");
+            ?? throw new NotFoundException(nameof(Project), cmd.ProjectId);
 
         if (project.ProjectType == "Personal")
             throw new InvalidOperationException("Cannot add members to a personal project.");
@@ -33,12 +35,12 @@ public sealed class AddProjectMemberCommandHandler(
             throw new UnauthorizedAccessException("Only project leaders can add members.");
 
         var user = await userRepo.GetByEmailAsync(cmd.Email, ct)
-            ?? throw new InvalidOperationException("User with this email was not found.");
+            ?? throw new NotFoundException("User with email", cmd.Email);
 
         if (members.Any(m => m.UserId == user.UserId))
             return true;
 
-        var member = Domain.Entities.TeamMember.Create(
+        var member = TeamMember.Create(
             project.TeamId.Value,
             user.UserId,
             cmd.Role ?? "MEMBER");

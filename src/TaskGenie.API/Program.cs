@@ -8,6 +8,7 @@ using TaskGenie.Infrastructure;
 using TaskGenie.Infrastructure.Persistence;
 using TaskGenie.API.Extensions;
 using TaskGenie.API.Middleware;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -62,6 +63,11 @@ if (app.Environment.IsDevelopment())
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    // Dev-only convenience: auto-apply any pending EF Core migrations on startup so a forgotten
+    // "dotnet ef database update" never blocks the app with "invalid column name" errors again.
+    // Do NOT do this in Production — migrations there should run as a reviewed, separate step
+    // (deploy pipeline), not implicitly on every app start.
+    await db.Database.MigrateAsync();
     await DataSeeder.SeedAsync(db);
 }
 

@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using TaskGenie.API.Extensions;
 using TaskGenie.Application.Features.Users.Commands;
 using TaskGenie.Application.Features.Users.Queries;
 
@@ -19,11 +20,19 @@ public class UsersController(IMediator mediator) : ControllerBase
 
     [HttpPut("{id}/profile")]
     public async Task<IActionResult> UpdateProfile(int id, [FromBody] UpdateProfileRequest request)
-        => Ok(await mediator.Send(new UpdateUserProfileCommand(id, request.Name, request.Avatar)));
+    {
+        if (id != HttpContext.GetCurrentUserId())
+            return Forbid();
+
+        return Ok(await mediator.Send(new UpdateUserProfileCommand(id, request.Name, request.Avatar)));
+    }
 
     [HttpPost("{id}/avatar")]
     public async Task<IActionResult> UploadAvatar(int id, IFormFile file)
     {
+        if (id != HttpContext.GetCurrentUserId())
+            return Forbid();
+
         var url = await mediator.Send(new UploadAvatarCommand(id, file.OpenReadStream(), file.FileName));
         return Ok(new { avatarUrl = url });
     }
@@ -38,6 +47,9 @@ public class UsersController(IMediator mediator) : ControllerBase
     [HttpPut("{id}/change-password")]
     public async Task<IActionResult> ChangePassword(int id, [FromBody] ChangePasswordRequest request)
     {
+        if (id != HttpContext.GetCurrentUserId())
+            return Forbid();
+
         await mediator.Send(new ChangePasswordCommand(id, request.CurrentPassword, request.NewPassword));
         return Ok(new { message = "Password changed successfully." });
     }

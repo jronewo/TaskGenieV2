@@ -62,6 +62,10 @@ public class ProjectsController(IMediator mediator) : ControllerBase
         return NoContent();
     }
 
+    [HttpGet("{id}/members")]
+    public async Task<IActionResult> GetMembers(int id)
+        => Ok(await mediator.Send(new GetProjectMembersQuery(id)));
+
     [HttpPost("{id}/members")]
     public async Task<IActionResult> AddMember(int id, [FromBody] AddProjectMemberRequest request)
     {

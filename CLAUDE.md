@@ -34,11 +34,11 @@ TaskGenie.API  →  TaskGenie.Application  →  TaskGenie.Domain
 - **Domain** (`src/TaskGenie.Domain/`): Pure C# entities, repository interfaces, domain events. No NuGet dependencies. Entities use `internal set` + `protected Entity() {}` for EF hydration, and static `Create(...)` factory methods.
 - **Application** (`src/TaskGenie.Application/`): MediatR Commands/Queries/Handlers, FluentValidation validators, pipeline behaviors (`ValidationBehavior`, `LoggingBehavior`), application-layer interfaces (`IPasswordHasher`, `IHuggingFaceService`, `IClassificationService`, `ITextGenerationService`, `ICloudinaryService`, `IGoogleAuthService`), domain event records (`INotification`).
 - **Infrastructure** (`src/TaskGenie.Infrastructure/`): EF Core 10 + SQL Server, 19 repository implementations, external services (HuggingFace, Cloudinary, Google OAuth, BCrypt). `DependencyInjection.cs` has the `AddInfrastructure()` extension.
-- **API** (`src/TaskGenie.API/`): Thin controllers (only `IMediator` injected), `CurrentUserMiddleware`, `ExceptionHandlingMiddleware`, `Program.cs`.
+- **API** (`src/TaskGenie.API/`): Thin controllers (only `IMediator` injected), `ExceptionHandlingMiddleware`, `Program.cs`.
 
 ## Key Patterns
 
-**Authentication**: No JWT. User identity is passed via `X-User-Id` HTTP header. `CurrentUserMiddleware` reads it into `HttpContext.Items["CurrentUserId"]`. Controllers use `HttpContext.GetCurrentUserId()` extension.
+**Authentication**: JWT Bearer, not header-based. `AuthController` (`api/auth/register|login|google|logout`) issues tokens via `IAuthTokenIssuer`/`JwtTokenService` (`TaskGenie.Infrastructure/ExternalServices/JwtTokenService.cs`), configured in `AuthenticationExtensions.AddJwtAuthentication` (`TaskGenie.API/Extensions/`). All other endpoints require `[Authorize]` by default (fallback policy in `AddJwtAuthentication`); mark endpoints `[AllowAnonymous]` explicitly to skip it. Controllers read the caller's id via `HttpContext.GetCurrentUserId()` (`HttpContextExtensions.cs`), which reads `ClaimTypes.NameIdentifier` from the JWT principal — this is NOT the same as an `X-User-Id` header. Logout revokes the token's `jti` via `ITokenRevocationService` (`InMemoryTokenRevocationService`, in-memory/per-instance only — does not survive app restarts or multi-instance deployments). Endpoints that mutate a specific user's data (profile, avatar, password) must check `id == HttpContext.GetCurrentUserId()` themselves — MediatR handlers do not enforce this.
 
 **CQRS**: Every use case is a `IRequest<T>` (Command or Query) + `IRequestHandler`. Handlers live in `src/TaskGenie.Application/Features/<Domain>/Commands/` or `Queries/`.
 
@@ -58,6 +58,7 @@ TaskGenie.API  →  TaskGenie.Application  →  TaskGenie.Domain
 
 `src/TaskGenie.API/appsettings.json` requires:
 - `ConnectionStrings:DefaultConnection` — SQL Server (defaults to LocalDB `ai_task_management`)
+- `Jwt:Secret/Issuer/Audience/ExpirationMinutes` — `Secret` must be ≥32 chars; currently checked into `appsettings.json` in plaintext along with the Cloudinary/PayOS secrets — move these to user-secrets/env vars/Key Vault before this repo or any fork of it goes further, since the JWT secret alone lets anyone forge a valid token for any user/role
 - `HuggingFace:ApiKey` — required for AI features
 - `Cloudinary:CloudName/ApiKey/ApiSecret` — for image uploads
 - `GoogleAuth:ClientId` — for Google OAuth

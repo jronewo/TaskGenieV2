@@ -4,6 +4,7 @@ public class SkillDto
 {
     public int SkillId { get; set; }
     public string SkillName { get; set; } = null!;
+    public bool IsActive { get; set; } = true;
 }
 
 public class UserSkillDto

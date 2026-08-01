@@ -11,6 +11,6 @@ public class GetSkillByIdQueryHandler(ISkillRepository skillRepository)
     {
         var skill = await skillRepository.GetByIdAsync(request.SkillId, ct);
         if (skill == null) return null;
-        return new SkillDto { SkillId = skill.SkillId, SkillName = skill.SkillName ?? "Unknown Skill" };
+        return new SkillDto { SkillId = skill.SkillId, SkillName = skill.SkillName ?? "Unknown Skill", IsActive = skill.IsActive };
     }
 }

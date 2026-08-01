@@ -81,6 +81,14 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<Payment> Payments { get; set; }
 
+    public virtual DbSet<Plan> Plans { get; set; }
+
+    public virtual DbSet<Subscription> Subscriptions { get; set; }
+
+    public virtual DbSet<PaymentTransaction> PaymentTransactions { get; set; }
+
+    public virtual DbSet<OrganizationMember> OrganizationMembers { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ActivityLog>(entity =>
@@ -533,6 +541,9 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.SkillName)
                 .HasMaxLength(100)
                 .HasColumnName("skill_name");
+            entity.Property(e => e.IsActive)
+                .HasDefaultValue(true)
+                .HasColumnName("is_active");
         });
 
         modelBuilder.Entity<TaskEntity>(entity =>
@@ -723,6 +734,9 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.Name)
                 .HasMaxLength(255)
                 .HasColumnName("name");
+            entity.Property(e => e.IsProjectManaged)
+                .HasDefaultValue(false)
+                .HasColumnName("is_project_managed");
 
             entity.HasOne(d => d.CreatedByNavigation).WithMany(p => p.Teams)
                 .HasForeignKey(d => d.CreatedBy)
@@ -965,6 +979,120 @@ public partial class AppDbContext : DbContext
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_meeting_attendees_users");
+        });
+
+        modelBuilder.Entity<Plan>(entity =>
+        {
+            entity.HasKey(e => e.PlanId).HasName("PK_plans");
+
+            entity.ToTable("plans");
+
+            entity.HasIndex(e => e.Code, "UQ_plans_code").IsUnique();
+
+            entity.Property(e => e.PlanId).HasColumnName("plan_id");
+            entity.Property(e => e.Code).HasMaxLength(50).HasColumnName("code");
+            entity.Property(e => e.Name).HasMaxLength(150).HasColumnName("name");
+            entity.Property(e => e.Scope).HasMaxLength(20).HasColumnName("scope");
+            entity.Property(e => e.PriceCents).HasColumnName("price_cents");
+            entity.Property(e => e.Currency).HasMaxLength(10).HasColumnName("currency");
+            entity.Property(e => e.BillingPeriodDays).HasColumnName("billing_period_days");
+            entity.Property(e => e.ProjectLimit).HasColumnName("project_limit");
+            entity.Property(e => e.Features).HasColumnName("features");
+            entity.Property(e => e.IsActive).HasDefaultValue(true).HasColumnName("is_active");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("(getdate())")
+                .HasColumnType("datetime")
+                .HasColumnName("created_at");
+
+        });
+
+        modelBuilder.Entity<Subscription>(entity =>
+        {
+            entity.HasKey(e => e.SubscriptionId).HasName("PK_subscriptions");
+
+            entity.ToTable("subscriptions");
+
+            entity.Property(e => e.SubscriptionId).HasColumnName("subscription_id");
+            entity.Property(e => e.SubscriberUserId).HasColumnName("subscriber_user_id");
+            entity.Property(e => e.SubscriberOrganizationId).HasColumnName("subscriber_organization_id");
+            entity.Property(e => e.PlanId).HasColumnName("plan_id");
+            entity.Property(e => e.Status).HasMaxLength(20).HasColumnName("status");
+            entity.Property(e => e.StartedAt).HasColumnType("datetime").HasColumnName("started_at");
+            entity.Property(e => e.CurrentPeriodEnd).HasColumnType("datetime").HasColumnName("current_period_end");
+            entity.Property(e => e.CanceledAt).HasColumnType("datetime").HasColumnName("canceled_at");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("(getdate())")
+                .HasColumnType("datetime")
+                .HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime").HasColumnName("updated_at");
+
+            entity.HasOne(d => d.Plan).WithMany(p => p.Subscriptions)
+                .HasForeignKey(d => d.PlanId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_subscriptions_plans");
+
+            entity.HasOne(d => d.SubscriberUser).WithMany()
+                .HasForeignKey(d => d.SubscriberUserId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_subscriptions_users");
+
+            entity.HasOne(d => d.SubscriberOrganization).WithMany()
+                .HasForeignKey(d => d.SubscriberOrganizationId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_subscriptions_organizations");
+        });
+
+        modelBuilder.Entity<PaymentTransaction>(entity =>
+        {
+            entity.HasKey(e => e.PaymentTransactionId).HasName("PK_payment_transactions");
+
+            entity.ToTable("payment_transactions");
+
+            entity.Property(e => e.PaymentTransactionId).HasColumnName("payment_transaction_id");
+            entity.Property(e => e.SubscriptionId).HasColumnName("subscription_id");
+            entity.Property(e => e.AmountCents).HasColumnName("amount_cents");
+            entity.Property(e => e.Currency).HasMaxLength(10).HasColumnName("currency");
+            entity.Property(e => e.GatewayReference).HasMaxLength(100).HasColumnName("gateway_reference");
+            entity.Property(e => e.Status).HasMaxLength(20).HasColumnName("status");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("(getdate())")
+                .HasColumnType("datetime")
+                .HasColumnName("created_at");
+            entity.Property(e => e.ConfirmedAt).HasColumnType("datetime").HasColumnName("confirmed_at");
+
+            entity.HasOne(d => d.Subscription).WithMany(p => p.Payments)
+                .HasForeignKey(d => d.SubscriptionId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_payment_transactions_subscriptions");
+        });
+
+        modelBuilder.Entity<OrganizationMember>(entity =>
+        {
+            entity.HasKey(e => e.OrganizationMemberId).HasName("PK_organization_members");
+
+            entity.ToTable("organization_members");
+
+            entity.HasIndex(e => new { e.OrganizationId, e.UserId }, "UQ_organization_members").IsUnique();
+
+            entity.Property(e => e.OrganizationMemberId).HasColumnName("organization_member_id");
+            entity.Property(e => e.OrganizationId).HasColumnName("organization_id");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.Role).HasMaxLength(20).HasColumnName("role");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("(getdate())")
+                .HasColumnType("datetime")
+                .HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime").HasColumnName("updated_at");
+
+            entity.HasOne(d => d.Organization).WithMany(p => p.Members)
+                .HasForeignKey(d => d.OrganizationId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_organization_members_organizations");
+
+            entity.HasOne(d => d.User).WithMany()
+                .HasForeignKey(d => d.UserId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_organization_members_users");
         });
 
         OnModelCreatingPartial(modelBuilder);

@@ -40,8 +40,11 @@ public sealed class AnalyzeTaskRiskCommandHandlerTests
         var textService = new Mock<ITextGenerationService>();
         textService.Setup(service => service.GenerateTextAsync(It.IsAny<string>(), It.IsAny<int>()))
             .ThrowsAsync(new HttpRequestException("provider unavailable"));
+        var authz = new Mock<IResourceAuthorizationService>();
+        authz.Setup(a => a.EnsureCanManageTaskAsync(42, It.IsAny<CancellationToken>())).ReturnsAsync(task);
 
         var handler = new AnalyzeTaskRiskCommandHandler(
+            authz.Object,
             taskRepo.Object,
             logRepo.Object,
             dependencyRepo.Object,
@@ -65,12 +68,15 @@ public sealed class AnalyzeTaskRiskCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_UnknownTask_ReturnsNullWithoutCallingAi()
+    public async Task Handle_UnknownTask_ThrowsNotFoundWithoutCallingAi()
     {
         var taskRepo = new Mock<ITaskRepository>();
-        taskRepo.Setup(repo => repo.GetByIdAsync(404, It.IsAny<CancellationToken>())).ReturnsAsync((TaskEntity?)null);
         var textService = new Mock<ITextGenerationService>();
+        var authz = new Mock<IResourceAuthorizationService>();
+        authz.Setup(a => a.EnsureCanManageTaskAsync(404, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TaskGenie.Application.Common.Exceptions.NotFoundException("Task", 404));
         var handler = new AnalyzeTaskRiskCommandHandler(
+            authz.Object,
             taskRepo.Object,
             Mock.Of<ITaskLogRepository>(),
             Mock.Of<ITaskDependencyRepository>(),
@@ -79,9 +85,9 @@ public sealed class AnalyzeTaskRiskCommandHandlerTests
             new RiskScoringEngine(),
             textService.Object);
 
-        var result = await handler.Handle(new AnalyzeTaskRiskCommand(404), CancellationToken.None);
+        await Assert.ThrowsAsync<TaskGenie.Application.Common.Exceptions.NotFoundException>(
+            () => handler.Handle(new AnalyzeTaskRiskCommand(404), CancellationToken.None));
 
-        Assert.Null(result);
         textService.Verify(service => service.GenerateTextAsync(It.IsAny<string>(), It.IsAny<int>()), Times.Never);
     }
 }

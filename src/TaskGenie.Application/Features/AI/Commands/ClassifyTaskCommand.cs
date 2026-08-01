@@ -8,7 +8,7 @@ namespace TaskGenie.Application.Features.AI.Commands;
 public sealed record ClassifyTaskCommand(int TaskId) : IRequest<bool>;
 
 public sealed class ClassifyTaskCommandHandler(
-    ITaskRepository taskRepo,
+    IResourceAuthorizationService authz,
     IAiAnalysisRepository aiAnalysisRepo,
     IClassificationService classificationService
 ) : IRequestHandler<ClassifyTaskCommand, bool>
@@ -18,8 +18,7 @@ public sealed class ClassifyTaskCommandHandler(
 
     public async Task<bool> Handle(ClassifyTaskCommand cmd, CancellationToken ct)
     {
-        var task = await taskRepo.GetByIdAsync(cmd.TaskId, ct);
-        if (task is null) return false;
+        var task = await authz.EnsureCanManageTaskAsync(cmd.TaskId, ct);
 
         var text = $"Task: {task.Title}. Description: {task.Description}";
 

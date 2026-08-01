@@ -1,5 +1,6 @@
 using MediatR;
 using TaskGenie.Application.Features.Tasks.DTOs;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
 
 namespace TaskGenie.Application.Features.Tasks.Queries;
@@ -7,11 +8,14 @@ namespace TaskGenie.Application.Features.Tasks.Queries;
 public sealed record GetTaskByIdQuery(int TaskId) : IRequest<TaskDetailDto?>;
 
 public sealed class GetTaskByIdQueryHandler(
+    IResourceAuthorizationService authz,
     ITaskRepository taskRepo
 ) : IRequestHandler<GetTaskByIdQuery, TaskDetailDto?>
 {
     public async Task<TaskDetailDto?> Handle(GetTaskByIdQuery query, CancellationToken ct)
     {
+        await authz.EnsureCanAccessTaskAsync(query.TaskId, ct);
+
         var task = await taskRepo.GetByIdWithDetailsAsync(query.TaskId, ct);
         return task is not null ? TaskDetailDto.FromEntity(task) : null;
     }

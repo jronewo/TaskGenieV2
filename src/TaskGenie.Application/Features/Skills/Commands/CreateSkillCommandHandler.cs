@@ -10,12 +10,15 @@ public class CreateSkillCommandHandler(ISkillRepository skillRepository)
 {
     public async Task<SkillDto> Handle(CreateSkillCommand request, CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(request.SkillName))
+            throw new InvalidOperationException("Skill name is required.");
+
         var existing = await skillRepository.GetByNameAsync(request.SkillName, ct);
         if (existing != null)
-            return new SkillDto { SkillId = existing.SkillId, SkillName = existing.SkillName ?? "Unknown Skill" };
+            throw new InvalidOperationException($"A skill named '{request.SkillName}' already exists.");
 
-        var skill = Skill.Create(request.SkillName);
+        var skill = Skill.Create(request.SkillName.Trim());
         await skillRepository.AddAsync(skill, ct);
-        return new SkillDto { SkillId = skill.SkillId, SkillName = skill.SkillName ?? "Unknown Skill" };
+        return new SkillDto { SkillId = skill.SkillId, SkillName = skill.SkillName ?? "Unknown Skill", IsActive = skill.IsActive };
     }
 }

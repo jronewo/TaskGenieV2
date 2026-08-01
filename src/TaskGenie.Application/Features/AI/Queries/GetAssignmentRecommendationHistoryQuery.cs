@@ -1,16 +1,21 @@
 using MediatR;
 using TaskGenie.Application.Features.AI.DTOs;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
 
 namespace TaskGenie.Application.Features.AI.Queries;
 
 public sealed record GetAssignmentRecommendationHistoryQuery(int TaskId) : IRequest<List<AssignmentRecommendationHistoryDto>>;
 
-public sealed class GetAssignmentRecommendationHistoryQueryHandler(IAiRecommendationRepository repository)
+public sealed class GetAssignmentRecommendationHistoryQueryHandler(
+    IResourceAuthorizationService authz,
+    IAiRecommendationRepository repository)
     : IRequestHandler<GetAssignmentRecommendationHistoryQuery, List<AssignmentRecommendationHistoryDto>>
 {
     public async Task<List<AssignmentRecommendationHistoryDto>> Handle(GetAssignmentRecommendationHistoryQuery query, CancellationToken ct)
     {
+        await authz.EnsureCanAccessTaskAsync(query.TaskId, ct);
+
         var recommendations = await repository.GetByTaskIdAsync(query.TaskId, ct);
         return recommendations.Select(recommendation => new AssignmentRecommendationHistoryDto
         {

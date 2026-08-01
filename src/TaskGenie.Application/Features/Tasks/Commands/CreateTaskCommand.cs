@@ -2,6 +2,7 @@ using MediatR;
 using TaskGenie.Application.Common;
 using TaskGenie.Application.Events;
 using TaskGenie.Application.Features.Tasks.DTOs;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
 using TaskEntity = TaskGenie.Domain.Entities.Task;
 
@@ -13,17 +14,20 @@ public sealed record CreateTaskCommand(
     string? Description,
     string? Priority,
     string? Deadline,
-    int? Difficulty,
-    int CurrentUserId
+    int? Difficulty
 ) : IRequest<TaskDetailDto>;
 
 public sealed class CreateTaskCommandHandler(
+    ICurrentUser currentUser,
+    IResourceAuthorizationService authz,
     ITaskRepository taskRepo,
     IMediator mediator
 ) : IRequestHandler<CreateTaskCommand, TaskDetailDto>
 {
     public async Task<TaskDetailDto> Handle(CreateTaskCommand cmd, CancellationToken ct)
     {
+        await authz.EnsureCanManageTasksInProjectAsync(cmd.ProjectId, ct);
+
         var task = TaskEntity.Create(
             projectId: cmd.ProjectId,
             title: cmd.Title,
@@ -31,13 +35,13 @@ public sealed class CreateTaskCommandHandler(
             priority: cmd.Priority ?? "Medium",
             deadline: DateOnlyParser.TryParseFlexible(cmd.Deadline),
             difficulty: cmd.Difficulty,
-            createdBy: cmd.CurrentUserId
+            createdBy: currentUser.UserId
         );
 
         await taskRepo.AddAsync(task, ct);
 
         await mediator.Publish(
-            new TaskCreatedEvent(task.TaskId, cmd.ProjectId, task.Title, cmd.CurrentUserId),
+            new TaskCreatedEvent(task.TaskId, cmd.ProjectId, task.Title, currentUser.UserId),
             ct);
 
         var full = await taskRepo.GetByIdWithDetailsAsync(task.TaskId, ct);

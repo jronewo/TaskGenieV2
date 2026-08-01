@@ -32,6 +32,6 @@ public sealed class RejectAssignmentRecommendationCommandValidator : AbstractVal
     {
         RuleFor(command => command.TaskId).GreaterThan(0);
         RuleFor(command => command.UserId).GreaterThan(0);
-        RuleFor(command => command.Outcome).MaximumLength(1000);
+        RuleFor(command => command.Reason).MaximumLength(1000);
     }
 }

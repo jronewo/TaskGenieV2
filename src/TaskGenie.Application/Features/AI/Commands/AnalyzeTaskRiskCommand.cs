@@ -12,6 +12,7 @@ namespace TaskGenie.Application.Features.AI.Commands;
 public sealed record AnalyzeTaskRiskCommand(int TaskId) : IRequest<RiskAssessmentDto?>;
 
 public sealed class AnalyzeTaskRiskCommandHandler(
+    IResourceAuthorizationService authz,
     ITaskRepository taskRepo,
     ITaskLogRepository taskLogRepo,
     ITaskDependencyRepository dependencyRepo,
@@ -23,8 +24,7 @@ public sealed class AnalyzeTaskRiskCommandHandler(
 {
     public async Task<RiskAssessmentDto?> Handle(AnalyzeTaskRiskCommand cmd, CancellationToken ct)
     {
-        var task = await taskRepo.GetByIdAsync(cmd.TaskId, ct);
-        if (task is null) return null;
+        var task = await authz.EnsureCanManageTaskAsync(cmd.TaskId, ct);
 
         var stopwatch = Stopwatch.StartNew();
         var runId = Guid.NewGuid();

@@ -2,12 +2,15 @@ using MediatR;
 using TaskGenie.Application.Common.Exceptions;
 using TaskGenie.Application.Features.Notifications.Commands;
 using TaskGenie.Application.Features.TaskComments;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Entities;
 using TaskGenie.Domain.Interfaces.Repositories;
 
 namespace TaskGenie.Application.Features.TaskComments.Commands;
 
 public class CreateTaskCommentCommandHandler(
+    ICurrentUser currentUser,
+    IResourceAuthorizationService authz,
     ITaskCommentRepository taskCommentRepository,
     ITaskRepository taskRepository,
     IMediator mediator)
@@ -15,7 +18,9 @@ public class CreateTaskCommentCommandHandler(
 {
     public async Task<TaskCommentDto> Handle(CreateTaskCommentCommand request, CancellationToken ct)
     {
-        var comment = TaskComment.Create(request.TaskId, request.UserId, request.Content, request.ImageUrl);
+        await authz.EnsureCanAccessTaskAsync(request.TaskId, ct);
+
+        var comment = TaskComment.Create(request.TaskId, currentUser.UserId, request.Content, request.ImageUrl);
         await taskCommentRepository.AddAsync(comment, ct);
 
         var newComment = await taskCommentRepository.GetByIdAsync(comment.CommentId, ct)
@@ -34,7 +39,7 @@ public class CreateTaskCommentCommandHandler(
 
             foreach (var assignee in assignees)
             {
-                if (assignee.UserId != request.UserId && assignee.UserId.HasValue)
+                if (assignee.UserId != currentUser.UserId && assignee.UserId.HasValue)
                 {
                     await mediator.Send(new CreateNotificationCommand(
                         assignee.UserId.Value,
@@ -47,7 +52,7 @@ public class CreateTaskCommentCommandHandler(
             }
 
             if (task?.CreatedBy != null
-                && task.CreatedBy != request.UserId
+                && task.CreatedBy != currentUser.UserId
                 && !assignees.Any(a => a.UserId == task.CreatedBy))
             {
                 await mediator.Send(new CreateNotificationCommand(

@@ -45,6 +45,8 @@ public class Organization
 
     public virtual ICollection<Project> Projects { get; internal set; } = new List<Project>();
 
+    public virtual ICollection<OrganizationMember> Members { get; internal set; } = new List<OrganizationMember>();
+
     public static Organization Create(string name, string? description, int ownerId) => new()
     {
         Name = name,
@@ -84,6 +86,14 @@ public class Organization
     {
         if (amount <= 0) return;
         AiQuota += amount;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void Update(string? name, string? description, string? logo)
+    {
+        if (!string.IsNullOrWhiteSpace(name)) Name = name;
+        if (description is not null) Description = description;
+        if (logo is not null) Logo = logo;
         UpdatedAt = DateTime.UtcNow;
     }
 }

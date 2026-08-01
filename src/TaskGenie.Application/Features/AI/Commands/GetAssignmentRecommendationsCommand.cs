@@ -18,7 +18,7 @@ public sealed record GetAssignmentRecommendationsCommand(
 ) : IRequest<TaskAssignmentResponseDto>;
 
 public sealed class GetAssignmentRecommendationsCommandHandler(
-    ITaskRepository taskRepo,
+    IResourceAuthorizationService authz,
     IUserRepository userRepo,
     ITaskRequiredSkillRepository skillRepo,
     IAiRecommendationRepository recommendationRepo,
@@ -31,9 +31,8 @@ public sealed class GetAssignmentRecommendationsCommandHandler(
     {
         var stopwatch = Stopwatch.StartNew();
         var runId = Guid.NewGuid();
-        // 1. Load task (with project nav for TeamId)
-        var task = await taskRepo.GetByIdAsync(cmd.TaskId, ct)
-            ?? throw new NotFoundException("Task", cmd.TaskId);
+        // 1. Load task (with project nav for TeamId), enforcing manage-level task access
+        var task = await authz.EnsureCanManageTaskAsync(cmd.TaskId, ct);
         if (task.ProjectId != cmd.ProjectId)
             throw new InvalidOperationException("Task does not belong to the requested project.");
 

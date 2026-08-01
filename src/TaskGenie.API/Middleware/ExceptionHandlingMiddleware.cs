@@ -20,6 +20,14 @@ public class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Exception
             var body = JsonSerializer.Serialize(new { errors = ex.Errors });
             await context.Response.WriteAsync(body);
         }
+        catch (ForbiddenException ex)
+        {
+            logger.LogWarning(ex, "Forbidden");
+            context.Response.StatusCode = 403;
+            context.Response.ContentType = "application/json";
+            var body = JsonSerializer.Serialize(new { message = ex.Message });
+            await context.Response.WriteAsync(body);
+        }
         catch (NotFoundException ex)
         {
             logger.LogWarning(ex, "Not found");

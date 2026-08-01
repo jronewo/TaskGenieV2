@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using TaskGenie.Application.Common.Services;
 using TaskGenie.Application.Features.Auth.Services;
 using TaskGenie.Application.Features.Payments.Services;
 using TaskGenie.Application.Interfaces;
@@ -11,6 +12,7 @@ public static class DependencyInjection
     {
         services.AddScoped<IAuthTokenIssuer, AuthTokenIssuer>();
         services.AddScoped<IPaymentFulfillmentService, PaymentFulfillmentService>();
+        services.AddScoped<IResourceAuthorizationService, ResourceAuthorizationService>();
         return services;
     }
 }

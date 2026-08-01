@@ -1,7 +1,7 @@
 using MediatR;
-using TaskGenie.Application.Common.Exceptions;
 using TaskGenie.Application.Features.Projects.DTOs;
 using TaskGenie.Application.Features.RewardPenalty;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
 
 namespace TaskGenie.Application.Features.Projects.Queries;
@@ -10,7 +10,7 @@ namespace TaskGenie.Application.Features.Projects.Queries;
 public record GetProjectSummaryQuery(int ProjectId) : IRequest<ProjectSummaryDto>;
 
 public class GetProjectSummaryQueryHandler(
-    IProjectRepository projectRepo,
+    IResourceAuthorizationService authz,
     ITaskRepository taskRepo,
     ITeamMemberRepository teamMemberRepo,
     IUserScoreRepository userScoreRepo)
@@ -18,8 +18,7 @@ public class GetProjectSummaryQueryHandler(
 {
     public async Task<ProjectSummaryDto> Handle(GetProjectSummaryQuery request, CancellationToken ct)
     {
-        var project = await projectRepo.GetByIdAsync(request.ProjectId, ct)
-            ?? throw new NotFoundException("Project", request.ProjectId);
+        var project = await authz.EnsureCanAccessProjectAsync(request.ProjectId, ct);
 
         var tasks = await taskRepo.GetByProjectIdWithDetailsAsync(request.ProjectId, ct);
 

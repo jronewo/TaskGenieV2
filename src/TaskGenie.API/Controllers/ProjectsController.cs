@@ -25,21 +25,9 @@ public class ProjectsController(IMediator mediator) : ControllerBase
         var project = await mediator.Send(new CreateProjectCommand(
             request.Name,
             request.Description,
-            HttpContext.GetCurrentUserId(),
             request.OrganizationId,
-            request.Deadline,
-            request.ProjectType ?? "Team"));
+            request.Deadline));
         return CreatedAtAction(nameof(GetById), new { id = project.ProjectId }, project);
-    }
-
-    [HttpPost("{id}/invite")]
-    public async Task<IActionResult> InviteMember(int id, [FromBody] InviteProjectMemberRequest request)
-    {
-        var result = await mediator.Send(new InviteToProjectCommand(
-            id,
-            request.Email,
-            HttpContext.GetCurrentUserId()));
-        return Ok(result);
     }
 
     [HttpPut("{id}")]
@@ -62,18 +50,10 @@ public class ProjectsController(IMediator mediator) : ControllerBase
         return NoContent();
     }
 
-    [HttpGet("{id}/members")]
-    public async Task<IActionResult> GetMembers(int id)
-        => Ok(await mediator.Send(new GetProjectMembersQuery(id)));
-
     [HttpPost("{id}/members")]
     public async Task<IActionResult> AddMember(int id, [FromBody] AddProjectMemberRequest request)
     {
-        await mediator.Send(new AddProjectMemberCommand(
-            id,
-            request.Email,
-            request.Role,
-            HttpContext.GetCurrentUserId()));
+        await mediator.Send(new AddProjectMemberCommand(id, request.Email, request.Role));
         return Ok(new { message = "Member added to project." });
     }
 
@@ -92,10 +72,7 @@ public record CreateProjectRequest(
     string Name,
     string? Description,
     int? OrganizationId,
-    DateOnly? Deadline,
-    string? ProjectType);
-
-public record InviteProjectMemberRequest(string Email);
+    DateOnly? Deadline);
 
 public record UpdateProjectRequest(
     string? Name,

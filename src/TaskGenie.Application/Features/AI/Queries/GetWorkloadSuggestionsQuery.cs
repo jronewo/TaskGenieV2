@@ -9,7 +9,7 @@ namespace TaskGenie.Application.Features.AI.Queries;
 public sealed record GetWorkloadSuggestionsQuery(int ProjectId) : IRequest<WorkloadSuggestionDto>;
 
 public sealed class GetWorkloadSuggestionsQueryHandler(
-    IProjectRepository projectRepo,
+    IResourceAuthorizationService authz,
     IUserRepository userRepo,
     ITaskRepository taskRepo,
     ITextGenerationService textGenService
@@ -18,9 +18,7 @@ public sealed class GetWorkloadSuggestionsQueryHandler(
     public async Task<WorkloadSuggestionDto> Handle(GetWorkloadSuggestionsQuery query, CancellationToken ct)
     {
         // BUG FIX: get project first, then use project.TeamId — NOT projectId — to get team members
-        var project = await projectRepo.GetByIdAsync(query.ProjectId, ct);
-        if (project is null)
-            return new WorkloadSuggestionDto { ProjectId = query.ProjectId };
+        var project = await authz.EnsureCanAccessProjectAsync(query.ProjectId, ct);
 
         List<TaskGenie.Domain.Entities.User> teamMembers;
         if (project.TeamId.HasValue)

@@ -27,6 +27,52 @@ public class OrganizationsController(IMediator mediator) : ControllerBase
         return Ok(new { org = fullOrg, projects });
     }
 
+    /// <summary>Every organization the current user belongs to (any role) — the FE's
+    /// post-login organization-context call.</summary>
+    [HttpGet("mine")]
+    public async Task<IActionResult> GetMyOrganizations()
+        => Ok(await mediator.Send(new GetMyOrganizationsQuery()));
+
+    [HttpPost]
+    public async Task<IActionResult> Create([FromBody] CreateOrganizationRequest request)
+    {
+        var org = await mediator.Send(new CreateOrganizationCommand(request.Name, request.Description));
+        return CreatedAtAction(nameof(GetOrganization), new { orgId = org.OrganizationId }, org);
+    }
+
+    [HttpPut("{orgId}")]
+    public async Task<IActionResult> Update(int orgId, [FromBody] UpdateOrganizationRequest request)
+        => Ok(await mediator.Send(new UpdateOrganizationCommand(orgId, request.Name, request.Description, request.Logo)));
+
+    [HttpGet("{orgId}/members")]
+    public async Task<IActionResult> GetMembers(int orgId)
+        => Ok(await mediator.Send(new GetOrganizationMembersQuery(orgId)));
+
+    [HttpPost("{orgId}/members")]
+    public async Task<IActionResult> AddMember(int orgId, [FromBody] AddOrganizationMemberRequest request)
+    {
+        var member = await mediator.Send(new AddOrganizationMemberCommand(orgId, request.UserId, request.Email, request.Role ?? "MEMBER"));
+        return Ok(member);
+    }
+
+    [HttpPut("{orgId}/members/{organizationMemberId}/role")]
+    public async Task<IActionResult> UpdateMemberRole(int orgId, int organizationMemberId, [FromBody] UpdateOrganizationMemberRoleRequest request)
+        => Ok(await mediator.Send(new UpdateOrganizationMemberRoleCommand(orgId, organizationMemberId, request.Role)));
+
+    [HttpDelete("{orgId}/members/{organizationMemberId}")]
+    public async Task<IActionResult> RemoveMember(int orgId, int organizationMemberId)
+    {
+        await mediator.Send(new RemoveOrganizationMemberCommand(orgId, organizationMemberId));
+        return NoContent();
+    }
+
+    [HttpPost("{orgId}/projects/{projectId}/assign-member")]
+    public async Task<IActionResult> AssignProjectMember(int orgId, int projectId, [FromBody] AssignProjectMemberRequest request)
+    {
+        await mediator.Send(new AssignOrganizationProjectMemberCommand(orgId, projectId, request.UserId, request.Role));
+        return Ok(new { message = "Member assigned to project." });
+    }
+
     [HttpGet("{orgId}")]
     public async Task<IActionResult> GetOrganization(int orgId)
         => Ok(await mediator.Send(new GetOrganizationByIdQuery(orgId)));
@@ -68,3 +114,9 @@ public record EvaluateProjectRequest(
     int? TimelinessScore,
     int? CommunicationScore,
     string? Comment);
+
+public record CreateOrganizationRequest(string Name, string? Description);
+public record UpdateOrganizationRequest(string? Name, string? Description, string? Logo);
+public record AddOrganizationMemberRequest(int? UserId, string? Email, string? Role);
+public record UpdateOrganizationMemberRoleRequest(string Role);
+public record AssignProjectMemberRequest(int UserId, string Role);

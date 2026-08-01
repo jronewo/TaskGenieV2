@@ -9,14 +9,15 @@ namespace TaskGenie.Application.Features.Tasks.Commands;
 public sealed record SuggestEstimatedTimeCommand(int TaskId) : IRequest<TaskDetailDto?>;
 
 public sealed class SuggestEstimatedTimeCommandHandler(
+    IResourceAuthorizationService authz,
     ITaskRepository taskRepo,
     ITextGenerationService textGenService
 ) : IRequestHandler<SuggestEstimatedTimeCommand, TaskDetailDto?>
 {
     public async Task<TaskDetailDto?> Handle(SuggestEstimatedTimeCommand cmd, CancellationToken ct)
     {
-        var task = await taskRepo.GetByIdAsync(cmd.TaskId, ct);
-        if (task is null || task.ProjectId is null) return null;
+        var task = await authz.EnsureCanManageTaskAsync(cmd.TaskId, ct);
+        if (task.ProjectId is null) return null;
 
         var prompt = $"Estimate the time required in hours for this task based on its title and description. " +
                      $"Ensure you output a single number representing hours.\n" +

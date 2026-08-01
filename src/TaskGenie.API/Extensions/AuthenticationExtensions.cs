@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
+using TaskGenie.API.Authorization;
 using TaskGenie.Application.Common.Options;
 using TaskGenie.Application.Interfaces;
 
@@ -55,7 +56,9 @@ public static class AuthenticationExtensions
         services.AddAuthorizationBuilder()
             .SetFallbackPolicy(new AuthorizationPolicyBuilder()
                 .RequireAuthenticatedUser()
-                .Build());
+                .Build())
+            .AddPolicy(AuthorizationPolicies.PlatformAdmin, policy =>
+                policy.RequireRole(PlatformRoles.PlatformAdmin));
 
         return services;
     }

@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
+using TaskGenie.API.Authorization;
 using TaskGenie.Application.Common.Options;
 using TaskGenie.Application.Interfaces;
 
@@ -35,6 +36,20 @@ public static class AuthenticationExtensions
 
                 options.Events = new JwtBearerEvents
                 {
+                    // Browsers cannot set an Authorization header on a WebSocket handshake, so the
+                    // SignalR client passes the token as a query string parameter. Accept it only
+                    // for the hub path — everywhere else the header stays the single source.
+                    OnMessageReceived = context =>
+                    {
+                        var accessToken = context.Request.Query["access_token"];
+                        var path = context.HttpContext.Request.Path;
+
+                        if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+                            context.Token = accessToken;
+
+                        return Task.CompletedTask;
+                    },
+
                     OnTokenValidated = context =>
                     {
                         var jti = context.Principal?.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
@@ -55,7 +70,9 @@ public static class AuthenticationExtensions
         services.AddAuthorizationBuilder()
             .SetFallbackPolicy(new AuthorizationPolicyBuilder()
                 .RequireAuthenticatedUser()
-                .Build());
+                .Build())
+            .AddPolicy(AuthorizationPolicies.PlatformAdmin, policy =>
+                policy.RequireRole(PlatformRoles.PlatformAdmin));
 
         return services;
     }

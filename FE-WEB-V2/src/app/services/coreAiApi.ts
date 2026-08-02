@@ -1,4 +1,4 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5258/api").replace(/\/$/, "");
+import { apiRequest } from "./apiClient";
 
 export interface RiskFactor {
   code: string;
@@ -54,54 +54,90 @@ export interface EvidenceItem {
   createdAt: string;
 }
 
-async function request<T>(path: string, userId: number, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      "X-User-Id": String(userId),
-      ...init?.headers,
-    },
-  });
+// Actor identity (who is performing the analysis/decision) is derived server-side from the
+// Bearer token — callers only ever select a task/project by ID, never an actor or leader ID.
 
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null);
-    throw new Error(payload?.message ?? payload?.error ?? `API request failed (${response.status}).`);
-  }
+export interface AssistantContext {
+  projectCount: number;
+  taskCount: number;
+  projectName: string | null;
+}
 
-  return response.json() as Promise<T>;
+export interface AgentStep {
+  tool: string;
+  arguments: string;
+  result: string;
+}
+
+export interface AgentReply {
+  answer: string;
+  /** What the agent actually did, so the user can audit it rather than trust a bare answer. */
+  steps: AgentStep[];
+}
+
+export interface AssistantAnswer {
+  answer: string;
+  context: AssistantContext;
 }
 
 export const coreAiApi = {
-  analyzeRisk: (taskId: number, userId: number) =>
-    request<RiskAssessment>(`/ai-analysis/${taskId}/risk`, userId, { method: "POST" }),
+  /** Assistant chat. The server decides what rows the caller may see; nothing is sent from here. */
+  ask: (question: string, projectId: number | null) =>
+    apiRequest<AssistantAnswer>("/ai-analysis/assistant", {
+      method: "POST",
+      body: JSON.stringify({ question, projectId }),
+    }),
 
-  getRiskHistory: (taskId: number, userId: number) =>
-    request<RiskAssessment[]>(`/ai-analysis/${taskId}/risk-history`, userId),
+  /**
+   * The project agent. It runs as the caller on the server, so it can only reach projects the
+   * signed-in user could open themselves.
+   */
+  runAgent: (message: string, projectId: number | null) =>
+    apiRequest<AgentReply>("/ai-analysis/agent", {
+      method: "POST",
+      body: JSON.stringify({ message, projectId }),
+    }),
 
-  recommend: (taskId: number, projectId: number, userId: number) =>
-    request<AssignmentResponse>("/task-assignment/recommend", userId, {
+  analyzeRisk: (taskId: number) =>
+    apiRequest<RiskAssessment>(`/ai-analysis/${taskId}/risk`, { method: "POST" }),
+
+  getRiskHistory: (taskId: number) =>
+    apiRequest<RiskAssessment[]>(`/ai-analysis/${taskId}/risk-history`),
+
+  /** Generates (or regenerates) the AI summary; returns the updated task. */
+  generateSummary: (taskId: number) =>
+    apiRequest<{ taskId: number; aiSummary?: string | null }>(`/ai-analysis/${taskId}/summary`, { method: "POST" }),
+
+  /** Classifies the task (priority/difficulty hints); returns the updated task. */
+  classify: (taskId: number) =>
+    apiRequest<{ taskId: number; priority?: string | null; difficulty?: number | null }>(
+      `/ai-analysis/${taskId}/classify`,
+      { method: "POST" }
+    ),
+
+  recommend: (taskId: number, projectId: number) =>
+    apiRequest<AssignmentResponse>("/task-assignment/recommend", {
       method: "POST",
       body: JSON.stringify({ taskId, projectId }),
     }),
 
-  acceptRecommendation: (taskId: number, candidateId: number, userId: number) =>
-    request<{ message: string }>("/task-assignment/accept", userId, {
+  acceptRecommendation: (taskId: number, candidateId: number) =>
+    apiRequest<{ message: string }>("/task-assignment/accept", {
       method: "POST",
-      body: JSON.stringify({ taskId, userId: candidateId, outcome: "Accepted from AI Core demo" }),
+      body: JSON.stringify({ taskId, userId: candidateId, outcome: "Accepted from task detail" }),
     }),
 
-  rejectRecommendation: (taskId: number, candidateId: number, userId: number) =>
-    request<{ message: string }>("/task-assignment/reject", userId, {
+  rejectRecommendation: (taskId: number, candidateId: number) =>
+    apiRequest<{ message: string }>("/task-assignment/reject", {
       method: "POST",
-      body: JSON.stringify({ taskId, userId: candidateId, reason: "Rejected from AI Core demo" }),
+      body: JSON.stringify({ taskId, userId: candidateId, reason: "Dismissed from task detail" }),
     }),
 
-  getEvidence: (taskId: number, userId: number) =>
-    request<EvidenceItem[]>(`/tasks/${taskId}/evidence`, userId),
+  getEvidence: (taskId: number) =>
+    apiRequest<EvidenceItem[]>(`/tasks/${taskId}/evidence`),
 
-  addUrlEvidence: (taskId: number, externalUrl: string, description: string, userId: number) =>
-    request<EvidenceItem>(`/tasks/${taskId}/evidence`, userId, {
+  addUrlEvidence: (taskId: number, externalUrl: string, description: string) =>
+    apiRequest<EvidenceItem>(`/tasks/${taskId}/evidence`, {
       method: "POST",
       body: JSON.stringify({ evidenceType: "URL", externalUrl, description }),
     }),

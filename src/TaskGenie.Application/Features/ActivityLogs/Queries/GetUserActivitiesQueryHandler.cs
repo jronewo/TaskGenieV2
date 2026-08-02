@@ -1,16 +1,20 @@
 using MediatR;
 using TaskGenie.Application.Features.ActivityLogs;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
 
 namespace TaskGenie.Application.Features.ActivityLogs.Queries;
 
 public class GetUserActivitiesQueryHandler(
+    IResourceAuthorizationService authorization,
     IActivityLogRepository activityLogRepository,
     IUserRepository userRepository)
     : IRequestHandler<GetUserActivitiesQuery, List<ActivityLogDto>>
 {
     public async Task<List<ActivityLogDto>> Handle(GetUserActivitiesQuery request, CancellationToken ct)
     {
+        authorization.EnsureSelfOrPlatformAdmin(request.UserId);
+
         var logs = await activityLogRepository.GetByUserIdAsync(request.UserId, ct);
         var user = await userRepository.GetByIdAsync(request.UserId, ct);
 

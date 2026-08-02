@@ -25,10 +25,17 @@ public class ProjectsController(IMediator mediator) : ControllerBase
         var project = await mediator.Send(new CreateProjectCommand(
             request.Name,
             request.Description,
-            request.CreatedBy,
             request.OrganizationId,
             request.Deadline));
         return CreatedAtAction(nameof(GetById), new { id = project.ProjectId }, project);
+    }
+
+    /// <summary>Only a project leader may change this — the handler enforces it, not the UI.</summary>
+    [HttpPut("{id}/working-hours")]
+    public async Task<IActionResult> SetWorkingHours(int id, [FromBody] SetWorkingHoursRequest request)
+    {
+        var hours = await mediator.Send(new SetProjectWorkingHoursCommand(id, request.WorkingHoursPerDay));
+        return Ok(new { workingHoursPerDay = hours });
     }
 
     [HttpPut("{id}")]
@@ -72,7 +79,6 @@ public class ProjectsController(IMediator mediator) : ControllerBase
 public record CreateProjectRequest(
     string Name,
     string? Description,
-    int CreatedBy,
     int? OrganizationId,
     DateOnly? Deadline);
 
@@ -84,3 +90,5 @@ public record UpdateProjectRequest(
     DateOnly? Deadline);
 
 public record AddProjectMemberRequest(string Email, string Role);
+
+public record SetWorkingHoursRequest(int WorkingHoursPerDay);

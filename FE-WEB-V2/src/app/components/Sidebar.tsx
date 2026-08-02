@@ -2,9 +2,13 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   LayoutDashboard, ChevronRight, Zap, BarChart2, Kanban,
-  Bell, Settings, Users, Plus, LogOut, HelpCircle, Sparkles, Briefcase, ClipboardCheck, Shield, BrainCircuit
+  Bell, Settings, Users, Plus, LogOut, HelpCircle, Sparkles, Briefcase, ClipboardCheck, Shield, BrainCircuit,
+  Building2, CreditCard, Layers
 } from "lucide-react";
-import { projects, Project } from "../data/tmaiData";
+import { useWorkspace } from "../hooks/useWorkspace";
+import { ProjectDto } from "../services/projectApi";
+import { AuthUser } from "../auth/types";
+import { usePreferences } from "../settings/PreferencesContext";
 
 interface SidebarProps {
   activeProject: string;
@@ -14,7 +18,46 @@ interface SidebarProps {
   collapsed: boolean;
   onSelectProject?: (p: Project) => void;
   onLogout?: () => void;
+  user?: AuthUser | null;
+  canAccessAdministration?: boolean;
+  /** Real unread notification count; the badge is hidden when zero. */
+  unreadCount?: number;
+  /** Organization tools only appear once the user actually belongs to one or holds an org plan. */
+  canAccessOrganizations?: boolean;
 }
+
+/** The sidebar's view of a project, mapped from the API's ProjectDto. */
+interface Project {
+  id: string;
+  name: string;
+  riskScore: number;
+  taskCount: number;
+  children?: Project[];
+}
+
+const RISK_SCORE: Record<string, number> = { HIGH: 85, MEDIUM: 55, LOW: 20 };
+
+/**
+ * A platform administrator manages the platform, not a board — so they get the five admin sections
+ * instead of the project workspace. Mixing both produced a sidebar where "Projects" and
+ * "Organizations" meant something different depending on which one you clicked.
+ */
+const ADMIN_NAV = [
+  { id: "admin-stats", labelKey: "nav.overview", icon: BarChart2 },
+  { id: "admin-users", labelKey: "nav.users", icon: Users },
+  { id: "admin-organizations", labelKey: "nav.organizations", icon: Building2 },
+  { id: "admin-billing", labelKey: "nav.billing", icon: CreditCard },
+  { id: "admin-plans", labelKey: "nav.plans", icon: Layers },
+  { id: "admin-skills", labelKey: "nav.skills", icon: Sparkles },
+];
+
+const toSidebarProject = (p: ProjectDto, taskCount: number): Project & { organizationName?: string | null } => ({
+  id: String(p.projectId),
+  name: p.name,
+  riskScore: RISK_SCORE[(p.riskLevel ?? "LOW").toUpperCase()] ?? 20,
+  taskCount,
+  organizationName: p.organizationName,
+});
 
 const getRiskDot = (score: number) => {
   if (score >= 70) return "#EF4444";
@@ -31,7 +74,7 @@ const ProjectItem = ({
   onSelectProject,
   setActivePage,
 }: {
-  project: Project;
+  project: Project & { organizationName?: string | null };
   depth?: number;
   activeProject: string;
   setActiveProject: (id: string) => void;
@@ -59,7 +102,12 @@ const ProjectItem = ({
       >
         {!collapsed && (
           <>
-            <span className="text-xs truncate flex-1 tracking-wide">{project.name}</span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-xs tracking-wide">{project.name}</span>
+              {project.organizationName && (
+                <span className="block truncate text-[9px] text-slate-400">{project.organizationName}</span>
+              )}
+            </span>
             <div className="flex items-center gap-1.5 ml-auto font-mono text-[10px]">
               <div
                 className={`w-1.5 h-1.5 rounded-full shrink-0 ${
@@ -98,22 +146,89 @@ const ProjectItem = ({
 };
 
 const navItems = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "board", label: "Task Board", icon: Kanban },
-  { id: "projects", label: "Projects", icon: Briefcase },
-  { id: "reports", label: "Reports", icon: BarChart2 },
-  { id: "ai-core", label: "AI Core Demo", icon: BrainCircuit },
-  { id: "team", label: "Team", icon: Users },
-  { id: "evaluations", label: "Evaluations", icon: ClipboardCheck },
-  { id: "administration", label: "Administration", icon: Shield },
-  { id: "notifications", label: "Notifications", icon: Bell, badge: 5 },
-  { id: "settings", label: "Settings", icon: Settings },
+  { id: "dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
+  { id: "board", labelKey: "nav.board", icon: Kanban },
+  { id: "projects", labelKey: "nav.projects", icon: Briefcase },
+  { id: "team", labelKey: "nav.team", icon: Users },
+  { id: "organizations", labelKey: "nav.organizations", icon: Building2 },
+  { id: "subscription", labelKey: "nav.subscription", icon: CreditCard },
+  { id: "evaluations", labelKey: "nav.evaluations", icon: ClipboardCheck },
+  { id: "administration", labelKey: "nav.administration", icon: Shield },
+  { id: "notifications", labelKey: "nav.notifications", icon: Bell as typeof Bell, badge: undefined as number | undefined },
 ];
 
-export const Sidebar = ({ activeProject, setActiveProject, activePage, setActivePage, collapsed, onSelectProject, onLogout }: SidebarProps) => {
+export const Sidebar = ({
+  activeProject, setActiveProject, activePage, setActivePage, collapsed,
+  onSelectProject, onLogout, user, canAccessAdministration, unreadCount = 0,
+  canAccessOrganizations = false,
+}: SidebarProps) => {
+  const { t } = usePreferences();
+
+  const visibleNavItems = (canAccessAdministration ? ADMIN_NAV : navItems)
+    .filter((item) => item.id !== "administration" || canAccessAdministration)
+    .filter((item) => item.id !== "organizations" || canAccessOrganizations)
+    // The badge is data, not configuration — it comes from the unread count.
+    .map((item) => (item.id === "notifications" && unreadCount > 0 ? { ...item, badge: unreadCount } : item))
+;
+
+  // Each ownership group folds on its own: someone in three organisations wants to close the ones
+  // they are not working in, not the whole list.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ personal: true, organization: true });
+  const toggleGroup = (key: string) => setOpenGroups((g) => ({ ...g, [key]: !g[key] }));
+
+  // canAccessAdministration already means "platform admin" here.
+  const adminMode = canAccessAdministration;
+
+  const workspace = useWorkspace();
+  const sidebarProjects = workspace.projects.map((p) =>
+    toSidebarProject(p, workspace.tasks.filter((t) => t.projectId === p.projectId).length)
+  );
+
+  const accountBlock = (
+    <div className={`p-3 border-t border-white/10 flex gap-2 ${collapsed ? "flex-col items-center" : ""} ${adminMode ? "border-b border-t-0" : ""}`}>
+      {!collapsed ? (
+        <div className="flex items-center gap-2 flex-1">
+          <span className="h-7 w-7 shrink-0 overflow-hidden rounded-md ring-1 ring-slate-400/40">
+            {user?.avatar ? (
+              <img src={user.avatar} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <span className="flex h-full w-full items-center justify-center bg-white/15 text-[11px] font-semibold text-white">
+                {(user?.name ?? user?.email ?? "?").trim().charAt(0).toUpperCase()}
+              </span>
+            )}
+          </span>
+          <div className="flex-1 min-w-0">
+            <div className="text-white text-xs font-semibold truncate">
+              {user?.name ?? user?.email ?? "Unknown user"}
+            </div>
+            <div className="text-slate-400 text-[10px] truncate">{user?.role ?? ""}</div>
+          </div>
+          <motion.button
+            className="text-blue-400 hover:text-white"
+            whileTap={{ scale: 0.9 }}
+            onClick={onLogout}
+            aria-label="Log out"
+          >
+            <LogOut size={14} />
+          </motion.button>
+        </div>
+      ) : (
+        <motion.button
+          className="text-slate-400 hover:text-white relative group"
+          whileTap={{ scale: 0.9 }}
+          onClick={onLogout}
+          aria-label="Log out"
+        >
+          <LogOut size={16} />
+          <div className="absolute left-full ml-2 z-50 hidden group-hover:flex items-center bg-gray-900 text-white text-xs rounded-md px-2.5 py-1.5 whitespace-nowrap shadow-lg">Log Out</div>
+        </motion.button>
+      )}
+    </div>
+  );
+
   return (
     <div
-      className="h-full flex flex-col relative overflow-hidden"
+      className="tg-sidebar h-full flex flex-col relative overflow-hidden"
       style={{ background: "#1A237E" }}
     >
       {/* Logo */}
@@ -123,15 +238,17 @@ export const Sidebar = ({ activeProject, setActiveProject, activePage, setActive
         </div>
         {!collapsed && (
           <div>
-            <div className="text-white font-bold text-base leading-tight tracking-wide">TMAI</div>
+            <div className="text-white font-bold text-base leading-tight tracking-wide">TaskGenie</div>
             <div className="text-slate-400 text-[10px]">Project Workspace</div>
           </div>
         )}
       </div>
 
+      {adminMode && accountBlock}
+
       {/* Navigation */}
       <div className="px-2 mt-3 space-y-0.5">
-        {navItems.map(({ id, label, icon: Icon, badge }) => (
+        {visibleNavItems.map(({ id, labelKey, icon: Icon, badge }) => (
           <motion.button
             key={id}
             className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md transition-all relative group ${
@@ -151,7 +268,7 @@ export const Sidebar = ({ activeProject, setActiveProject, activePage, setActive
               />
             )}
             <Icon size={16} className="shrink-0 relative z-10" />
-            {!collapsed && <span className="text-xs font-medium relative z-10">{label}</span>}
+            {!collapsed && <span className="text-xs font-medium relative z-10">{t(labelKey)}</span>}
             {badge && !collapsed && (
               <span className="ml-auto bg-red-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center relative z-10">
                 {badge}
@@ -162,19 +279,23 @@ export const Sidebar = ({ activeProject, setActiveProject, activePage, setActive
             )}
             {collapsed && (
               <div className="absolute left-full ml-2 z-50 hidden group-hover:flex items-center bg-gray-900 text-white text-xs rounded-md px-2.5 py-1.5 whitespace-nowrap shadow-lg">
-                {label}
+                {t(labelKey)}
               </div>
             )}
           </motion.button>
         ))}
       </div>
 
-      {/* Projects */}
-      <div className="px-2 mt-4 flex-1 overflow-hidden flex flex-col">
+      {/* Projects — a workspace concern; an administrator manages the platform instead. */}
+      <div className={`px-2 mt-4 flex-1 overflow-hidden flex flex-col ${adminMode ? "hidden" : ""}`}>
         {!collapsed && (
           <div className="flex items-center justify-between px-2 mb-1.5">
             <span className="text-slate-400 text-[10px] font-semibold uppercase tracking-wider">Projects</span>
             <motion.button
+              type="button"
+              onClick={() => setActivePage("projects")}
+              aria-label="Add project"
+              title="Add project"
               className="w-4 h-4 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10"
               whileTap={{ scale: 0.9 }}
             >
@@ -185,50 +306,52 @@ export const Sidebar = ({ activeProject, setActiveProject, activePage, setActive
         {collapsed && <div className="w-5 h-px bg-white/15 mx-auto mb-2" />}
 
         <div className="overflow-y-auto flex-1 space-y-0.5 pr-1">
-          {projects.map((project) => (
-            <ProjectItem
-              key={project.id}
-              project={project}
-              activeProject={activeProject}
-              setActiveProject={setActiveProject}
-              collapsed={collapsed}
-              onSelectProject={onSelectProject}
-              setActivePage={setActivePage}
-            />
-          ))}
+          {workspace.loading && !collapsed && (
+            <p className="px-3 py-2 text-[10px] text-slate-400">Loading projects…</p>
+          )}
+          {!workspace.loading && sidebarProjects.length === 0 && !collapsed && (
+            <p className="px-3 py-2 text-[10px] text-slate-400">No projects yet.</p>
+          )}
+          {[
+            { key: "personal", label: t("nav.group.personal"), items: sidebarProjects.filter((p) => !p.organizationName) },
+            { key: "organization", label: t("nav.group.organization"), items: sidebarProjects.filter((p) => p.organizationName) },
+          ]
+            .filter((group) => group.items.length > 0)
+            .map((group) => (
+              <div key={group.key} className="mb-1">
+                {!collapsed && (
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.key)}
+                    aria-expanded={openGroups[group.key]}
+                    className="flex w-full items-center gap-1 px-3 pb-0.5 pt-1.5 text-[9px] font-semibold uppercase tracking-wider text-slate-400 hover:text-white"
+                  >
+                    <motion.span animate={{ rotate: openGroups[group.key] ? 90 : 0 }} className="inline-flex">
+                      <ChevronRight size={9} />
+                    </motion.span>
+                    {group.label}
+                    <span className="ml-auto font-mono normal-case tracking-normal opacity-60">
+                      {group.items.length}
+                    </span>
+                  </button>
+                )}
+                {(collapsed || openGroups[group.key]) && group.items.map((project) => (
+                  <ProjectItem
+                    key={project.id}
+                    project={project}
+                    activeProject={activeProject}
+                    setActiveProject={setActiveProject}
+                    collapsed={collapsed}
+                    onSelectProject={onSelectProject}
+                    setActivePage={setActivePage}
+                  />
+                ))}
+              </div>
+            ))}
         </div>
       </div>
 
-      {/* Bottom actions */}
-      <div className={`p-3 border-t border-white/10 flex gap-2 ${collapsed ? "flex-col items-center" : ""}`}>
-        {!collapsed ? (
-          <div className="flex items-center gap-2 flex-1">
-            <img
-              src="https://images.unsplash.com/photo-1601513043334-36a0088140d4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100"
-              alt="User"
-              className="w-7 h-7 rounded-md object-cover ring-1 ring-slate-400/40"
-            />
-            <div className="flex-1 min-w-0">
-              <div className="text-white text-xs font-semibold truncate">Huy Pham</div>
-              <div className="text-slate-400 text-[10px] truncate">Project Lead</div>
-            </div>
-            <motion.button className="text-blue-400 hover:text-white" whileTap={{ scale: 0.9 }} onClick={onLogout}>
-              <LogOut size={14} />
-            </motion.button>
-          </div>
-        ) : (
-          <>
-            <motion.button className="text-slate-400 hover:text-white relative group" whileTap={{ scale: 0.9 }}>
-              <HelpCircle size={16} />
-              <div className="absolute left-full ml-2 z-50 hidden group-hover:flex items-center bg-gray-900 text-white text-xs rounded-md px-2.5 py-1.5 whitespace-nowrap shadow-lg">Help</div>
-            </motion.button>
-            <motion.button className="text-slate-400 hover:text-white relative group" whileTap={{ scale: 0.9 }} onClick={onLogout}>
-              <LogOut size={16} />
-              <div className="absolute left-full ml-2 z-50 hidden group-hover:flex items-center bg-gray-900 text-white text-xs rounded-md px-2.5 py-1.5 whitespace-nowrap shadow-lg">Log Out</div>
-            </motion.button>
-          </>
-        )}
-      </div>
+      {!adminMode && accountBlock}
     </div>
   );
 };

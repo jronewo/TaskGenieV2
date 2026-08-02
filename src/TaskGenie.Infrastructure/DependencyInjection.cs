@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using TaskGenie.Application.Common.Agent;
 using TaskGenie.Application.Common.Options;
 using TaskGenie.Application.Features.Admin;
 using TaskGenie.Application.Interfaces;
@@ -9,14 +10,20 @@ using TaskGenie.Infrastructure.Export;
 using TaskGenie.Infrastructure.ExternalServices;
 using TaskGenie.Infrastructure.Persistence;
 using TaskGenie.Infrastructure.Persistence.Repositories;
+using TaskGenie.Infrastructure.Persistence.Services;
 
 namespace TaskGenie.Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddInfrastructure(
+        this IServiceCollection services, IConfiguration configuration, string? environmentName = null)
     {
         services.Configure<JwtSettings>(configuration.GetSection(JwtSettings.SectionName));
+        var isProductionEnvironment = string.Equals(environmentName, "Production", StringComparison.OrdinalIgnoreCase);
+
+        services.Configure<PasswordResetSettings>(configuration.GetSection(PasswordResetSettings.SectionName));
+        services.Configure<AppUrlSettings>(configuration.GetSection(AppUrlSettings.SectionName));
 
         services.AddDbContext<AppDbContext>(options =>
         {
@@ -39,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<ITeamRepository, TeamRepository>();
         services.AddScoped<ITeamMemberRepository, TeamMemberRepository>();
         services.AddScoped<ISkillRepository, SkillRepository>();
+        services.AddScoped<ITaskTypeRepository, TaskTypeRepository>();
         services.AddScoped<IUserSkillRepository, UserSkillRepository>();
         services.AddScoped<IEvaluationRepository, EvaluationRepository>();
         services.AddScoped<IInvitationRepository, InvitationRepository>();
@@ -52,16 +60,60 @@ public static class DependencyInjection
         services.AddScoped<IMeetingRepository, MeetingRepository>();
         services.AddScoped<IRiskRepository, RiskRepository>();
         services.AddScoped<IEvidenceRepository, EvidenceRepository>();
+        services.AddScoped<IProjectLifecycleService, ProjectLifecycleService>();
+        services.AddScoped<ITeamLifecycleService, TeamLifecycleService>();
+        services.AddScoped<ITaskLifecycleService, TaskLifecycleService>();
+        services.AddScoped<IOrganizationMemberRepository, OrganizationMemberRepository>();
+        services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+        services.AddScoped<IPlanRepository, PlanRepository>();
+        services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
+        services.AddScoped<IPaymentTransactionRepository, PaymentTransactionRepository>();
+        services.AddScoped<IPasswordResetTokenRepository, PasswordResetTokenRepository>();
 
         // External Services
         services.AddHttpClient<IHuggingFaceService, HuggingFaceService>();
         services.AddHttpClient<ITextGenerationService, TextGenerationService>();
+
+        // The assistant answers from the database, not from a language model. See
+        // RuleBasedProjectAgent for why the LLM-backed version was removed.
+        services.AddScoped<IProjectAgent, RuleBasedProjectAgent>();
         services.AddHttpClient<IClassificationService, ClassificationService>();
         services.AddSingleton<ICloudinaryService, CloudinaryService>();
         services.AddScoped<IGoogleAuthService, GoogleAuthService>();
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
         services.AddScoped<IProjectExportService, ProjectExportService>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
+        // Real SMTP when configured, otherwise the logging stub. Production must not run on the
+        // stub: a password reset that silently goes nowhere looks identical to one that worked.
+        services.Configure<SmtpSettings>(configuration.GetSection(SmtpSettings.SectionName));
+        var smtp = configuration.GetSection(SmtpSettings.SectionName).Get<SmtpSettings>() ?? new SmtpSettings();
+
+        if (smtp.IsConfigured)
+        {
+            services.AddScoped<IEmailSender, SmtpEmailSender>();
+        }
+        else if (isProductionEnvironment)
+        {
+            throw new InvalidOperationException(
+                "Smtp:Host and Smtp:FromAddress must be configured in Production — "
+                + "LoggingEmailSender does not deliver mail.");
+        }
+        else
+        {
+            services.AddScoped<IEmailSender, LoggingEmailSender>();
+        }
+
+        // Payment provider is environment-gated. The simulated gateway must never be reachable in
+        // Production — fail fast at startup rather than silently exposing fake checkout.
+        var isProduction = string.Equals(environmentName, "Production", StringComparison.OrdinalIgnoreCase);
+        var useFakePayments = configuration.GetValue("Payments:UseFakeProvider", !isProduction);
+
+        if (useFakePayments && isProduction)
+            throw new InvalidOperationException(
+                "FakePaymentProvider cannot be enabled in Production. Configure a real IPaymentProvider.");
+
+        if (useFakePayments)
+            services.AddScoped<IPaymentProvider, FakePaymentProvider>();
         services.AddSingleton<ITokenRevocationService, InMemoryTokenRevocationService>();
         services.AddSingleton<TaskGenie.Application.Features.AI.Services.RiskScoringEngine>();
         services.AddSingleton<TaskGenie.Application.Features.AI.Services.AssignmentScoringEngine>();

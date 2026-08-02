@@ -1,5 +1,7 @@
 using MediatR;
 using TaskGenie.Application.Events;
+using TaskGenie.Domain.Entities;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
 using TaskEntity = TaskGenie.Domain.Entities.Task;
 
@@ -14,6 +16,7 @@ public sealed record UpdateTaskProgressCommand(
 ) : IRequest<bool>;
 
 public sealed class UpdateTaskProgressCommandHandler(
+    IResourceAuthorizationService authz,
     ITaskRepository taskRepo,
     ITaskDependencyRepository dependencyRepo,
     IMediator mediator
@@ -21,8 +24,11 @@ public sealed class UpdateTaskProgressCommandHandler(
 {
     public async Task<bool> Handle(UpdateTaskProgressCommand cmd, CancellationToken ct)
     {
-        var task = await taskRepo.GetByIdAsync(cmd.TaskId, ct);
-        if (task is null) return false;
+        var task = await authz.EnsureCanUpdateTaskStatusAsync(cmd.TaskId, ct);
+
+        // Captured before the write: the reviewer notification fires when a task *enters* review,
+        // not every time progress is saved while it already sits there.
+        var previousStatus = task.Status;
 
         // Dependency check: if marking Done, all prerequisite tasks must be Done
         if (cmd.Status == "Done")
@@ -47,10 +53,16 @@ public sealed class UpdateTaskProgressCommandHandler(
 
         await taskRepo.UpdateAsync(task, ct);
 
-        if (task.Status == "Done")
+        if (task.Status == TaskStatuses.Done)
         {
             await mediator.Publish(
                 new TaskCompletedEvent(task.TaskId, task.ProjectId, task.Title),
+                ct);
+        }
+        else if (task.Status == TaskStatuses.InReview && previousStatus != TaskStatuses.InReview)
+        {
+            await mediator.Publish(
+                new TaskSubmittedForReviewEvent(task.TaskId, task.ProjectId, task.Title),
                 ct);
         }
 

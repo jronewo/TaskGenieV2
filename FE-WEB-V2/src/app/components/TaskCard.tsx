@@ -1,186 +1,203 @@
 import React from "react";
 import { motion } from "motion/react";
 import {
-  Sparkles, Clock, MessageSquare, Paperclip,
-  AlertTriangle, CheckCircle, Flame, Zap, ChevronRight
+  AlertTriangle,
+  ArrowUp,
+  ArrowDown,
+  Bug,
+  Calendar,
+  Check,
+  Equal,
+  Loader2,
+  MessageSquare,
+  Bookmark,
+  SquareCheck,
 } from "lucide-react";
-import { Task, RiskLevel, Priority, projects } from "../data/tmaiData";
+import { TaskDetailDto } from "../services/taskApi";
+import { ISSUE_TYPE_STYLE, initials, issueKey, issueType, priorityRank } from "../lib/jira";
 
-const riskConfig: Record<RiskLevel, { color: string; bg: string; border: string; label: string; icon: React.ReactNode }> = {
-  safe: {
-    color: "#10B981",
-    bg: "rgba(16, 185, 129, 0.1)",
-    border: "rgba(16, 185, 129, 0.3)",
-    label: "Safe",
-    icon: <CheckCircle size={11} />,
-  },
-  medium: {
-    color: "#F59E0B",
-    bg: "rgba(245, 158, 11, 0.1)",
-    border: "rgba(245, 158, 11, 0.3)",
-    label: "At Risk",
-    icon: <AlertTriangle size={11} />,
-  },
-  high: {
-    color: "#EF4444",
-    bg: "rgba(239, 68, 68, 0.1)",
-    border: "rgba(239, 68, 68, 0.3)",
-    label: "High Risk",
-    icon: <Flame size={11} />,
-  },
-  critical: {
-    color: "#DC2626",
-    bg: "rgba(220, 38, 38, 0.12)",
-    border: "rgba(220, 38, 38, 0.5)",
-    label: "Critical",
-    icon: <Zap size={11} />,
-  },
+/** Corner chip. Low is deliberately quiet so that a red one still means something. */
+const RISK_CHIP: Record<string, string> = {
+  CRITICAL: "bg-red-600 text-white",
+  HIGH: "bg-red-100 text-red-700",
+  MEDIUM: "bg-amber-100 text-amber-700",
+  LOW: "bg-gray-100 text-gray-500",
 };
 
-const priorityConfig: Record<Priority, { color: string; dot: string }> = {
-  low: { color: "text-gray-400", dot: "#94A3B8" },
-  medium: { color: "text-blue-500", dot: "#3B82F6" },
-  high: { color: "text-orange-500", dot: "#F97316" },
-  urgent: { color: "text-red-500", dot: "#EF4444" },
+const RISK_DOT: Record<string, { cls: string; label: string }> = {
+  HIGH: { cls: "bg-red-500", label: "High risk" },
+  MEDIUM: { cls: "bg-amber-500", label: "Medium risk" },
+  LOW: { cls: "bg-emerald-500", label: "Low risk" },
 };
 
-const tagStyle = "bg-gray-100 text-gray-600";
+const TYPE_ICON = { Bug, Story: Bookmark, Task: SquareCheck } as const;
 
-interface TaskCardProps {
-  task: Task;
-  onClick: (task: Task) => void;
-  index: number;
+function isOverdue(task: TaskDetailDto): boolean {
+  if (!task.deadline || task.status === "Done") return false;
+  return new Date(task.deadline) < new Date(new Date().toDateString());
 }
 
-const daysUntil = (dateStr: string) => {
-  const today = new Date("2026-05-10");
-  const due = new Date(dateStr);
-  return Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-};
+interface TaskCardProps {
+  task: TaskDetailDto;
+  commentCount?: number;
+  /** Project name, used to build the issue key (e.g. "WR-42"). */
+  projectName?: string | null;
+  onClick?: (task: TaskDetailDto) => void;
+  onDragStart?: (task: TaskDetailDto) => void;
+  isMoving?: boolean;
+}
 
-export const TaskCard = ({ task, onClick, index }: TaskCardProps) => {
-  const risk = riskConfig[task.risk];
-  const priority = priorityConfig[task.priority];
-  const days = daysUntil(task.deadline);
-  const isCritical = task.risk === "critical";
-  const isOverdue = days < 0;
-  const project = task.projectId ? projects.find((p) => p.id === task.projectId) : undefined;
+/** A Jira-style issue card: title on top, then a footer of type, key, priority, flags and assignee. */
+export const TaskCard = ({ task, commentCount, projectName, onClick, onDragStart, isMoving }: TaskCardProps) => {
+  const riskLevel = (task.riskLevel ?? "LOW").toUpperCase();
+  const risk = RISK_DOT[riskLevel] ?? RISK_DOT.LOW;
+  // A high-risk task is the one thing on a board that must not need a hover to be noticed.
+  const highRisk = riskLevel === "HIGH";
+  const overdue = isOverdue(task);
+  const type = issueType(task);
+  const TypeIcon = TYPE_ICON[type];
+  const rank = priorityRank(task.priority);
+  const PriorityIcon = rank.direction === "up" ? ArrowUp : rank.direction === "down" ? ArrowDown : Equal;
+  const key = issueKey(projectName, task.taskId);
+  const done = task.status === "Done";
+  const assignee = task.assignees[0];
 
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, y: 20 }}
+      draggable={!!onDragStart}
+      onDragStart={() => onDragStart?.(task)}
+      onClick={() => onClick?.(task)}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={(e) => {
+        if (onClick && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onClick(task);
+        }
+      }}
+      aria-label={`${key}: ${task.title ?? "Untitled"}`}
+      className={`rounded border-l-2 bg-white p-2.5 shadow-sm transition-shadow ${
+        onClick ? "cursor-pointer hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A237E]" : ""
+      } ${
+        overdue || (highRisk && !done)
+          ? "border-l-red-500"
+          : done
+            ? "border-l-emerald-500"
+            : "border-l-transparent"
+      } ${
+        isMoving ? "opacity-60" : ""
+      }`}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.05, duration: 0.3 }}
-      className="bg-white rounded-[12px] p-3.5 cursor-pointer group relative overflow-hidden"
-      style={{
-        boxShadow: isCritical
-          ? "0 2px 12px rgba(220, 38, 38, 0.15), 0 1px 3px rgba(0,0,0,0.06)"
-          : "0 2px 8px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04)",
-        border: `1px solid ${isCritical ? "rgba(220, 38, 38, 0.2)" : "rgba(0,0,0,0.06)"}`,
-      }}
-      onClick={() => onClick(task)}
-      whileHover={{
-        y: -2,
-        boxShadow: "0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)",
-      }}
-      whileTap={{ scale: 0.99 }}
     >
-      {/* Top Row: Project + Priority dot + Tags + Risk Badge */}
-      <div className="flex items-start justify-between gap-2 mb-2.5">
-        <div className="flex items-center gap-2 flex-wrap flex-1">
-          {project && (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-600 flex items-center gap-1">
-              <span>{project.icon}</span> {project.name}
-            </span>
-          )}
-          <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: priority.dot }} />
-          {task.tags.slice(0, 2).map((tag) => (
-            <span
-              key={tag}
-              className={`text-[10px] font-medium px-1.5 py-0.5 rounded-md ${tagStyle}`}
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-        <div
-          className="flex items-center gap-1 px-2 py-0.5 rounded-full shrink-0 text-[10px] font-semibold"
-          style={{
-            color: risk.color,
-            backgroundColor: risk.bg,
-            border: `1px solid ${risk.border}`,
-          }}
-        >
-          {risk.icon}
-          {risk.label}
-        </div>
+      <div className="mb-2 flex items-start gap-2">
+        <p className={`flex-1 text-xs leading-snug text-gray-900 ${done ? "line-through decoration-gray-300" : ""}`}>
+          {task.title ?? "Untitled"}
+        </p>
+        {/* Top-right, not buried in the footer: a card whose risk you have to hunt for is a card
+            whose risk nobody acts on. */}
+        {!done && (
+          <span
+            className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-semibold tracking-wide ${RISK_CHIP[riskLevel] ?? RISK_CHIP.LOW}`}
+            aria-label={risk.label}
+            title={risk.label}
+          >
+            {highRisk && <AlertTriangle size={9} aria-hidden />}
+            {riskLevel}
+          </span>
+        )}
+        {isMoving && <Loader2 size={12} className="mt-0.5 shrink-0 animate-spin text-gray-400" aria-hidden />}
       </div>
 
-      {/* Title */}
-      <h3 className="text-sm font-semibold text-gray-800 mb-1.5 leading-snug group-hover:text-blue-700 transition-colors line-clamp-2">
-        {task.title}
-      </h3>
+      {task.description && <p className="mb-2 line-clamp-2 text-[10px] text-gray-500">{task.description}</p>}
 
-      {/* Progress bar */}
-      {task.status === "in_progress" && (
-        <div className="mb-2.5">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] text-gray-400">Progress</span>
-            <span className="text-[10px] font-semibold text-gray-600">{task.progress}%</span>
-          </div>
-          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <motion.div
-              className="h-full rounded-full bg-gray-700"
-              initial={{ width: 0 }}
-              animate={{ width: `${task.progress}%` }}
-              transition={{ duration: 0.8, delay: 0.3 }}
-            />
-          </div>
+      {typeof task.progress === "number" && task.progress > 0 && !done && (
+        <div className="mb-2 h-1 w-full overflow-hidden rounded-full bg-gray-100">
+          <div className="h-full rounded-full bg-[#1A237E]" style={{ width: `${Math.min(100, task.progress)}%` }} />
         </div>
       )}
 
-      {/* AI Insight */}
-      <div className="mb-2.5 px-2.5 py-2 rounded-xl flex items-start gap-2 bg-gray-50">
-        <Sparkles size={12} className="text-gray-400 mt-0.5 shrink-0" />
-        <p className="text-[10px] text-gray-600 leading-relaxed line-clamp-2">{task.aiInsight}</p>
-      </div>
+      <div className="flex items-center gap-1.5 text-[10px] text-gray-500">
+        {/* A classified task shows what it actually is; only unclassified ones fall back to the
+            title heuristic. */}
+        {task.taskTypeName ? (
+          <span
+            className="inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-[9px] font-semibold text-white"
+            style={{ background: task.taskTypeColor ?? "#64748B" }}
+            aria-label={`Type: ${task.taskTypeName}`}
+          >
+            {task.taskTypeName}
+          </span>
+        ) : (
+          <span
+            className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm ${ISSUE_TYPE_STYLE[type].cls}`}
+            title={ISSUE_TYPE_STYLE[type].title}
+            aria-label={`Issue type: ${type}`}
+          >
+            <TypeIcon size={9} className="text-white" aria-hidden />
+          </span>
+        )}
 
-      {/* Bottom Row */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <img
-            src={task.assignee.avatar}
-            alt={task.assignee.name}
-            className="w-6 h-6 rounded-full object-cover ring-2 ring-white shadow"
-          />
-          <span className="text-[10px] text-gray-500 font-medium">{task.assignee.name.split(" ")[0]}</span>
-        </div>
+        <span className={`font-medium tracking-wide ${done ? "text-gray-400 line-through" : "text-gray-600"}`}>{key}</span>
 
-        <div className="flex items-center gap-2.5">
-          <div className={`flex items-center gap-1 ${isOverdue ? "text-red-500" : days <= 2 ? "text-orange-500" : "text-gray-400"}`}>
-            <Clock size={11} />
-            <span className="text-[10px] font-medium">
-              {isOverdue ? `${Math.abs(days)}d late` : days === 0 ? "Today" : `${days}d`}
+        <PriorityIcon size={12} className={rank.color} aria-label={`Priority: ${rank.label}`} />
+
+
+
+        {overdue && (
+          <span className="inline-flex items-center gap-0.5 text-red-600" title="Past its deadline">
+            <AlertTriangle size={10} aria-hidden />
+            <span className="sr-only">Overdue</span>
+          </span>
+        )}
+
+        {task.deadline && !overdue && (
+          <span className="inline-flex items-center gap-0.5">
+            <Calendar size={10} aria-hidden />
+            {task.deadline.slice(5, 10)}
+          </span>
+        )}
+
+        {typeof commentCount === "number" && commentCount > 0 && (
+          <span className="inline-flex items-center gap-0.5">
+            <MessageSquare size={10} aria-hidden />
+            {commentCount}
+          </span>
+        )}
+
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          {typeof task.estimatedTime === "number" && task.estimatedTime > 0 && (
+            <span className="rounded-full bg-gray-100 px-1.5 py-px text-[9px] font-medium text-gray-600" title="Estimate in hours">
+              {task.estimatedTime}
             </span>
-          </div>
-
-          <div className="flex items-center gap-1 text-gray-400">
-            <MessageSquare size={11} />
-            <span className="text-[10px]">{task.comments}</span>
-          </div>
-
-          <div className="flex items-center gap-1 text-gray-400">
-            <Paperclip size={11} />
-            <span className="text-[10px]">{task.attachments}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Story points */}
-      <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-500">
-          {task.storyPoints} pts
+          )}
+          {done && <Check size={11} className="text-emerald-600" aria-hidden />}
+          {assignee ? (
+            // The real picture when there is one; initials are the fallback, not the default.
+            assignee.avatar ? (
+              <img
+                src={assignee.avatar}
+                alt={assignee.userName ?? `User ${assignee.userId}`}
+                title={task.assignees.map((a) => a.userName ?? `User ${a.userId}`).join(", ")}
+                className="h-5 w-5 shrink-0 rounded-full object-cover"
+              />
+            ) : (
+              <span
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#1A237E] text-[8px] font-semibold text-white"
+                title={task.assignees.map((a) => a.userName ?? `User ${a.userId}`).join(", ")}
+              >
+                {initials(assignee.userName ?? `U${assignee.userId}`)}
+              </span>
+            )
+          ) : (
+            <span
+              className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-gray-300 text-[8px] text-gray-400"
+              title="Unassigned"
+            >
+              –
+            </span>
+          )}
         </span>
       </div>
     </motion.div>

@@ -1,13 +1,12 @@
 using MediatR;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Entities;
 using TaskGenie.Domain.Interfaces.Repositories;
-using TaskGenie.Application.Common.Exceptions;
 
 namespace TaskGenie.Application.Features.Evidence;
 
 public sealed record CreateTaskEvidenceCommand(
     int TaskId,
-    int SubmittedBy,
     string EvidenceType,
     string? Description,
     int? TaskLogId,
@@ -19,7 +18,8 @@ public sealed record CreateTaskEvidenceCommand(
     string? StoragePublicId) : IRequest<EvidenceDto>;
 
 public sealed class CreateTaskEvidenceCommandHandler(
-    ITaskRepository taskRepository,
+    ICurrentUser currentUser,
+    IResourceAuthorizationService authz,
     ITaskLogRepository taskLogRepository,
     IEvidenceRepository evidenceRepository)
     : IRequestHandler<CreateTaskEvidenceCommand, EvidenceDto>
@@ -34,8 +34,7 @@ public sealed class CreateTaskEvidenceCommandHandler(
 
     public async Task<EvidenceDto> Handle(CreateTaskEvidenceCommand cmd, CancellationToken ct)
     {
-        _ = await taskRepository.GetByIdAsync(cmd.TaskId, ct)
-            ?? throw new NotFoundException("Task", cmd.TaskId);
+        await authz.EnsureCanManageTaskAsync(cmd.TaskId, ct);
 
         if (cmd.TaskLogId.HasValue)
         {
@@ -61,14 +60,14 @@ public sealed class CreateTaskEvidenceCommandHandler(
                 cmd.SizeBytes.Value,
                 cmd.StorageUrl,
                 cmd.StoragePublicId,
-                cmd.SubmittedBy);
+                currentUser.UserId);
             attachment = await evidenceRepository.AddAttachmentAsync(attachment, ct);
             attachmentId = attachment.AttachmentId;
         }
 
         var evidence = TaskEvidence.Create(
             cmd.TaskId,
-            cmd.SubmittedBy,
+            currentUser.UserId,
             cmd.EvidenceType,
             cmd.Description,
             cmd.TaskLogId,

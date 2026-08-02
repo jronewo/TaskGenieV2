@@ -1,7 +1,7 @@
 using MediatR;
-using TaskGenie.Application.Common.Exceptions;
 using TaskGenie.Application.Features.Projects.DTOs;
 using TaskGenie.Application.Features.RewardPenalty;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Entities;
 using TaskGenie.Domain.Interfaces.Repositories;
 
@@ -10,6 +10,7 @@ namespace TaskGenie.Application.Features.Projects.Commands;
 public record CloseProjectCommand(int ProjectId) : IRequest<ProjectSummaryDto>;
 
 public class CloseProjectCommandHandler(
+    IResourceAuthorizationService authz,
     IProjectRepository projectRepo,
     ITaskRepository taskRepo,
     ITeamMemberRepository teamMemberRepo,
@@ -18,8 +19,7 @@ public class CloseProjectCommandHandler(
 {
     public async Task<ProjectSummaryDto> Handle(CloseProjectCommand request, CancellationToken ct)
     {
-        var project = await projectRepo.GetByIdAsync(request.ProjectId, ct)
-            ?? throw new NotFoundException("Project", request.ProjectId);
+        var project = await authz.EnsureCanManageProjectAsync(request.ProjectId, ct);
 
         if (project.Status == "Completed")
             throw new InvalidOperationException("Dự án đã được đóng.");

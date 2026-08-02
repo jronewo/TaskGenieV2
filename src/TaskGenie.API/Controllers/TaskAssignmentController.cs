@@ -2,7 +2,6 @@ using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using TaskGenie.Application.Features.AI.Commands;
 using TaskGenie.Application.Features.AI.Queries;
-using TaskGenie.API.Extensions;
 
 namespace TaskGenie.API.Controllers;
 
@@ -20,7 +19,6 @@ public class TaskAssignmentController(IMediator mediator) : ControllerBase
         await mediator.Send(new AcceptAssignmentRecommendationCommand(
             request.TaskId,
             request.UserId,
-            HttpContext.GetCurrentUserId(),
             request.Outcome));
         return Ok(new { message = "Successfully assigned user to the task." });
     }
@@ -31,7 +29,6 @@ public class TaskAssignmentController(IMediator mediator) : ControllerBase
         await mediator.Send(new RejectAssignmentRecommendationCommand(
             request.TaskId,
             request.UserId,
-            HttpContext.GetCurrentUserId(),
             request.Reason));
         return Ok(new { message = "Recommendation rejected and feedback recorded." });
     }

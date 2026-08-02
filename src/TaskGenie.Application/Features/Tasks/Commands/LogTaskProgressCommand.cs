@@ -1,4 +1,5 @@
 using MediatR;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Entities;
 using TaskGenie.Domain.Interfaces.Repositories;
 
@@ -12,14 +13,14 @@ public sealed record LogTaskProgressCommand(
 ) : IRequest<bool>;
 
 public sealed class LogTaskProgressCommandHandler(
+    IResourceAuthorizationService authz,
     ITaskRepository taskRepo,
     ITaskLogRepository taskLogRepo
 ) : IRequestHandler<LogTaskProgressCommand, bool>
 {
     public async Task<bool> Handle(LogTaskProgressCommand cmd, CancellationToken ct)
     {
-        var task = await taskRepo.GetByIdAsync(cmd.TaskId, ct);
-        if (task is null) return false;
+        var task = await authz.EnsureCanManageTaskAsync(cmd.TaskId, ct);
 
         // Determine risk level from deadline and progress
         string riskLevel = "LOW";

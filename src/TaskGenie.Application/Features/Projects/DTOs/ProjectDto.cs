@@ -4,6 +4,10 @@ namespace TaskGenie.Application.Features.Projects.DTOs;
 
 public sealed class ProjectDto
 {
+    /// <summary>Whether the caller may create or manage tasks here. Rendering hint only — the
+    /// task endpoints enforce the same rule themselves.</summary>
+    public bool CanManageTasks { get; set; }
+
     public int ProjectId { get; init; }
     public int? CreatedBy { get; init; }
     public string Name { get; init; } = null!;

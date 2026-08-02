@@ -3,4 +3,5 @@ using TaskGenie.Application.Features.Users;
 
 namespace TaskGenie.Application.Features.Users.Commands;
 
-public record UpdateUserProfileCommand(int UserId, string? Name, string? Avatar) : IRequest<UserProfileDto>;
+/// <summary>Always applies to the authenticated user — the actor is never taken from the client.</summary>
+public record UpdateUserProfileCommand(string? Name, string? Avatar) : IRequest<UserProfileDto>;

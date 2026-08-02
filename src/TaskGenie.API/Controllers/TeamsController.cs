@@ -25,10 +25,7 @@ public class TeamsController(IMediator mediator) : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateTeamRequest request)
     {
-        var team = await mediator.Send(new CreateTeamCommand(
-            request.Name,
-            request.Description,
-            request.CreatedBy));
+        var team = await mediator.Send(new CreateTeamCommand(request.Name, request.Description));
         return CreatedAtAction(nameof(GetById), new { id = team.TeamId }, team);
     }
 
@@ -54,5 +51,5 @@ public class TeamsController(IMediator mediator) : ControllerBase
     }
 }
 
-public record CreateTeamRequest(string Name, string? Description, int CreatedBy);
+public record CreateTeamRequest(string Name, string? Description);
 public record AddTeamMemberRequest(int UserId, string Role);

@@ -1,14 +1,17 @@
 using MediatR;
 using TaskGenie.Application.Features.TaskComments;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
 
 namespace TaskGenie.Application.Features.TaskComments.Queries;
 
-public class GetTaskCommentsQueryHandler(ITaskCommentRepository taskCommentRepository)
+public class GetTaskCommentsQueryHandler(IResourceAuthorizationService authz, ITaskCommentRepository taskCommentRepository)
     : IRequestHandler<GetTaskCommentsQuery, List<TaskCommentDto>>
 {
     public async Task<List<TaskCommentDto>> Handle(GetTaskCommentsQuery request, CancellationToken ct)
     {
+        await authz.EnsureCanAccessTaskAsync(request.TaskId, ct);
+
         var comments = await taskCommentRepository.GetByTaskIdAsync(request.TaskId, ct);
         return comments.Select(c => new TaskCommentDto
         {

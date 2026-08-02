@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import {
   Briefcase,
@@ -10,14 +10,15 @@ import {
   Pencil,
   Trash2,
   X,
+  Loader2,
 } from "lucide-react";
-import { projects as initialProjects, tasks as initialTasks } from "../data/tmaiData";
+import { projectApi, ProjectDto, TaskSummaryDto } from "../services/projectApi";
+import { ApiError } from "../services/apiClient";
 
 interface ProjectFormState {
   name: string;
   description: string;
-  startDate: string;
-  endDate: string;
+  deadline: string;
 }
 
 interface ProjectManagementProps {
@@ -25,54 +26,138 @@ interface ProjectManagementProps {
   onProjectSelect?: (projectId: string) => void;
 }
 
-interface ProjectItem {
-  id: string;
-  name: string;
-  description: string;
-  startDate: string;
-  endDate: string;
-  taskCount: number;
-  riskScore: number;
-  color: string;
-  icon: string;
+const EMPTY_FORM: ProjectFormState = { name: "", description: "", deadline: "" };
+
+function errorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.message) return err.message;
+    if (err.status === 403) return "You don't have permission to perform this action.";
+    if (err.status === 429) return "Quota exceeded. Please try again later.";
+    return `Request failed (${err.status}).`;
+  }
+  return "Something went wrong. Please try again.";
 }
 
 export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, onProjectSelect }: ProjectManagementProps) => {
-  const [projects, setProjects] = useState<ProjectItem[]>(() =>
-    initialProjects.map((project) => ({
-      id: project.id,
-      name: project.name,
-      description: `${project.name} delivery initiative for the current roadmap.`,
-      startDate: "2026-04-01",
-      endDate: "2026-08-31",
-      taskCount: project.taskCount,
-      riskScore: project.riskScore,
-      color: project.color,
-      icon: project.icon,
-    }))
-  );
-  const [selectedProjectId, setSelectedProjectId] = useState(initialProjects[0]?.id ?? "");
+  const [projects, setProjects] = useState<ProjectDto[]>([]);
+  const [tasks, setTasks] = useState<TaskSummaryDto[]>([]);
+  const [tasksUnavailable, setTasksUnavailable] = useState(false);
+  const [taskCounts, setTaskCounts] = useState<Record<number, number>>({});
+  const [taskCountErrors, setTaskCountErrors] = useState<Record<number, boolean>>({});
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [search, setSearch] = useState("");
-  const [form, setForm] = useState<ProjectFormState>({ name: "", description: "", startDate: "", endDate: "" });
+  const [form, setForm] = useState<ProjectFormState>(EMPTY_FORM);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const [isLoadingProjects, setIsLoadingProjects] = useState(true);
+  const [isLoadingTasks, setIsLoadingTasks] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const selectProject = useCallback(
+    (projectId: number | null) => {
+      setSelectedProjectId(projectId);
+      onProjectSelect?.(projectId === null ? "" : String(projectId));
+    },
+    [onProjectSelect]
+  );
+
+  const loadProjects = useCallback(
+    async (preferredId?: number | null) => {
+      setIsLoadingProjects(true);
+      setLoadError(null);
+      try {
+        const data = await projectApi.list();
+        setProjects(data);
+
+        const counts = await Promise.all(
+          data.map(async (project) => {
+            try {
+              const projectTasks = await projectApi.getTasksByProject(project.projectId);
+              return [project.projectId, projectTasks.length, false] as const;
+            } catch {
+              return [project.projectId, 0, true] as const;
+            }
+          })
+        );
+        setTaskCounts(Object.fromEntries(counts.map(([id, count]) => [id, count])));
+        setTaskCountErrors(Object.fromEntries(counts.map(([id, , failed]) => [id, failed])));
+
+        const wantedId = preferredId === undefined ? selectedProjectId : preferredId;
+        const stillExists = wantedId !== null && data.some((project) => project.projectId === wantedId);
+        if (!stillExists) {
+          selectProject(data[0]?.projectId ?? null);
+        } else if (preferredId !== undefined) {
+          selectProject(wantedId);
+        }
+      } catch (err) {
+        setLoadError(errorMessage(err));
+      } finally {
+        setIsLoadingProjects(false);
+      }
+    },
+    [selectedProjectId, selectProject]
+  );
+
+  useEffect(() => {
+    loadProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (selectedProjectIdProp) {
-      setSelectedProjectId(selectedProjectIdProp);
+      const parsed = Number(selectedProjectIdProp);
+      if (!Number.isNaN(parsed)) setSelectedProjectId(parsed);
     }
   }, [selectedProjectIdProp]);
 
-  const selectedProject = useMemo(() => projects.find((project) => project.id === selectedProjectId) ?? projects[0], [projects, selectedProjectId]);
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.projectId === selectedProjectId) ?? null,
+    [projects, selectedProjectId]
+  );
+
   const filteredProjects = useMemo(() => {
     const query = search.toLowerCase();
-    return projects.filter((project) => project.name.toLowerCase().includes(query) || project.description.toLowerCase().includes(query));
+    return projects.filter(
+      (project) =>
+        project.name.toLowerCase().includes(query) ||
+        (project.description ?? "").toLowerCase().includes(query)
+    );
   }, [projects, search]);
 
-  const selectedTasks = useMemo(() => initialTasks.filter((task) => task.assignee.name.includes("An") || task.tags.some((tag) => selectedProject?.name.toLowerCase().includes(tag.toLowerCase()))), [selectedProject]);
+  useEffect(() => {
+    if (!selectedProject) {
+      setTasks([]);
+      setTasksUnavailable(false);
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingTasks(true);
+    setTasksUnavailable(false);
+    projectApi
+      .getTasksByProject(selectedProject.projectId)
+      .then((data) => {
+        if (!cancelled) setTasks(data);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTasks([]);
+          setTasksUnavailable(true);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingTasks(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProject]);
 
-  const handleCreateProject = (e: React.FormEvent) => {
+  const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
     const name = form.name.trim();
     if (!name) {
@@ -80,60 +165,63 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
       return;
     }
 
-    const exists = projects.some((project) => project.name.toLowerCase() === name.toLowerCase());
-    if (exists) {
-      setFeedback({ type: "error", message: "Project name already exists." });
-      return;
+    setIsSubmitting(true);
+    try {
+      const created = await projectApi.create({
+        name,
+        description: form.description.trim() || undefined,
+        deadline: form.deadline || undefined,
+      });
+      await loadProjects(created.projectId);
+      setForm(EMPTY_FORM);
+      setShowCreateForm(false);
+      setFeedback({ type: "success", message: "Project created successfully." });
+    } catch (err) {
+      setFeedback({ type: "error", message: errorMessage(err) });
+    } finally {
+      setIsSubmitting(false);
     }
-
-    if (!form.startDate || !form.endDate || new Date(form.endDate) <= new Date(form.startDate)) {
-      setFeedback({ type: "error", message: "End date must be after start date." });
-      return;
-    }
-
-    const newProject: ProjectItem = {
-      id: `project-${Date.now()}`,
-      name,
-      description: form.description.trim() || "New project created from the management console.",
-      startDate: form.startDate,
-      endDate: form.endDate,
-      taskCount: 0,
-      riskScore: 20,
-      color: "#6366f1",
-      icon: "📦",
-    };
-
-    setProjects((prev) => [newProject, ...prev]);
-    setSelectedProjectId(newProject.id);
-    setForm({ name: "", description: "", startDate: "", endDate: "" });
-    setShowCreateForm(false);
-    setFeedback({ type: "success", message: "Project created successfully." });
   };
 
-  const handleUpdateProject = (e: React.FormEvent) => {
+  const handleUpdateProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedProject) return;
-    if (!form.name.trim()) {
+    const name = form.name.trim();
+    if (!name) {
       setFeedback({ type: "error", message: "Project name is required." });
       return;
     }
-    if (!form.startDate || !form.endDate || new Date(form.endDate) <= new Date(form.startDate)) {
-      setFeedback({ type: "error", message: "End date must be after start date." });
-      return;
-    }
 
-    setProjects((prev) => prev.map((project) => project.id === selectedProject.id ? { ...project, name: form.name.trim(), description: form.description.trim(), startDate: form.startDate, endDate: form.endDate } : project));
-    setShowEditForm(false);
-    setFeedback({ type: "success", message: "Project updated successfully." });
+    setIsSubmitting(true);
+    try {
+      await projectApi.update(selectedProject.projectId, {
+        name,
+        description: form.description.trim() || undefined,
+        deadline: form.deadline || undefined,
+      });
+      await loadProjects();
+      setShowEditForm(false);
+      setFeedback({ type: "success", message: "Project updated successfully." });
+    } catch (err) {
+      setFeedback({ type: "error", message: errorMessage(err) });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleDeleteProject = (projectId: string) => {
-    setProjects((prev) => prev.filter((project) => project.id !== projectId));
-    if (selectedProjectId === projectId) {
-      const fallback = projects.find((project) => project.id !== projectId);
-      setSelectedProjectId(fallback?.id ?? "");
+  const handleDeleteProject = async () => {
+    if (!selectedProject) return;
+    setIsDeleting(true);
+    try {
+      await projectApi.remove(selectedProject.projectId);
+      setShowDeleteConfirm(false);
+      await loadProjects(null);
+      setFeedback({ type: "success", message: "Project removed successfully." });
+    } catch (err) {
+      setFeedback({ type: "error", message: errorMessage(err) });
+    } finally {
+      setIsDeleting(false);
     }
-    setFeedback({ type: "success", message: "Project removed successfully." });
   };
 
   return (
@@ -146,7 +234,14 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
           <h2 className="text-lg font-semibold text-slate-900">Create and manage delivery projects</h2>
           <p className="mt-1 text-sm text-slate-500">Track project timelines, risk level, and related tasks in one place.</p>
         </div>
-        <button onClick={() => setShowCreateForm((prev) => !prev)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-800 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-slate-700">
+        <button
+          onClick={() => {
+            setForm(EMPTY_FORM);
+            setShowCreateForm((prev) => !prev);
+          }}
+          disabled={isLoadingProjects}
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-800 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+        >
           <Plus size={15} /> Create Project
         </button>
       </div>
@@ -154,6 +249,15 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
       {feedback && (
         <div className={`mb-4 rounded-lg border px-3 py-2 text-sm ${feedback.type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700"}`}>
           {feedback.message}
+        </div>
+      )}
+
+      {loadError && (
+        <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {loadError}{" "}
+          <button onClick={() => loadProjects()} className="font-semibold underline">
+            Retry
+          </button>
         </div>
       )}
 
@@ -175,16 +279,14 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
               <textarea value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} rows={3} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500" placeholder="Summarize the goal of the project" />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Start Date</label>
-              <input type="date" value={form.startDate} onChange={(e) => setForm((prev) => ({ ...prev, startDate: e.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">End Date</label>
-              <input type="date" value={form.endDate} onChange={(e) => setForm((prev) => ({ ...prev, endDate: e.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-violet-500" />
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Deadline</label>
+              <input type="date" value={form.deadline} onChange={(e) => setForm((prev) => ({ ...prev, deadline: e.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500" />
             </div>
             <div className="md:col-span-2 flex justify-end gap-2">
               <button type="button" onClick={() => setShowCreateForm(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600">Cancel</button>
-              <button type="submit" className="rounded-lg bg-slate-800 px-3 py-2 text-sm font-semibold text-white">Create Project</button>
+              <button type="submit" disabled={isSubmitting} className="inline-flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
+                {isSubmitting && <Loader2 size={14} className="animate-spin" />} Create Project
+              </button>
             </div>
           </form>
         </motion.div>
@@ -203,20 +305,34 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
             </div>
           </div>
 
-          <div className="space-y-2">
-            {filteredProjects.map((project) => (
-              <button key={project.id} onClick={() => { setSelectedProjectId(project.id); onProjectSelect?.(project.id); }} className={`w-full rounded-xl border p-3 text-left transition ${selectedProject?.id === project.id ? "border-slate-500 bg-slate-50" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"}`}>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-slate-900">{project.name}</span>
-                  <span className="text-lg">{project.icon}</span>
-                </div>
-                <p className="mt-1 line-clamp-2 text-xs text-slate-500">{project.description}</p>
-                <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
-                  <CalendarDays size={12} /> {project.startDate} → {project.endDate}
-                </div>
-              </button>
-            ))}
-          </div>
+          {isLoadingProjects ? (
+            <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-500">
+              <Loader2 size={14} className="animate-spin" /> Loading projects…
+            </div>
+          ) : filteredProjects.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+              {projects.length === 0 ? "No projects yet. Create your first project." : "No projects match your search."}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredProjects.map((project) => (
+                <button
+                  key={project.projectId}
+                  onClick={() => selectProject(project.projectId)}
+                  className={`w-full rounded-xl border p-3 text-left transition ${selectedProject?.projectId === project.projectId ? "border-slate-500 bg-slate-50" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-slate-900">{project.name}</span>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">{project.status ?? "Active"}</span>
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-xs text-slate-500">{project.description || "No description provided."}</p>
+                  <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
+                    <CalendarDays size={12} /> {project.deadline ?? "No deadline"}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -228,17 +344,51 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
                     <Sparkles size={11} /> Project Detail
                   </div>
                   <h3 className="text-lg font-semibold text-slate-900">{selectedProject.name}</h3>
-                  <p className="mt-1 text-sm text-slate-500">{selectedProject.description}</p>
+                  <p className="mt-1 text-sm text-slate-500">{selectedProject.description || "No description provided."}</p>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => { setForm({ name: selectedProject.name, description: selectedProject.description, startDate: selectedProject.startDate, endDate: selectedProject.endDate }); setShowEditForm(true); }} className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                  <button
+                    onClick={() => {
+                      setForm({
+                        name: selectedProject.name,
+                        description: selectedProject.description ?? "",
+                        deadline: selectedProject.deadline ?? "",
+                      });
+                      setShowEditForm(true);
+                    }}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  >
                     <Pencil size={14} /> Edit
                   </button>
-                  <button onClick={() => handleDeleteProject(selectedProject.id)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100">
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100"
+                  >
                     <Trash2 size={14} /> Remove
                   </button>
                 </div>
               </div>
+
+              {showDeleteConfirm && (
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3">
+                  <p className="text-sm text-rose-700">
+                    Delete <strong>{selectedProject.name}</strong>? This action cannot be undone.
+                  </p>
+                  <div className="mt-3 flex justify-end gap-2">
+                    <button type="button" onClick={() => setShowDeleteConfirm(false)} disabled={isDeleting} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 disabled:opacity-60">
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteProject}
+                      disabled={isDeleting}
+                      className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isDeleting && <Loader2 size={14} className="animate-spin" />} Delete Project
+                    </button>
+                  </div>
+                </motion.div>
+              )}
 
               {showEditForm && (
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -258,16 +408,14 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
                       <textarea value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} rows={3} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500" />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Start Date</label>
-                      <input type="date" value={form.startDate} onChange={(e) => setForm((prev) => ({ ...prev, startDate: e.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500" />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">End Date</label>
-                      <input type="date" value={form.endDate} onChange={(e) => setForm((prev) => ({ ...prev, endDate: e.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500" />
+                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Deadline</label>
+                      <input type="date" value={form.deadline} onChange={(e) => setForm((prev) => ({ ...prev, deadline: e.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500" />
                     </div>
                     <div className="md:col-span-2 flex justify-end gap-2">
                       <button type="button" onClick={() => setShowEditForm(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600">Cancel</button>
-                      <button type="submit" className="rounded-lg bg-slate-800 px-3 py-2 text-sm font-semibold text-white">Save Changes</button>
+                      <button type="submit" disabled={isSubmitting} className="inline-flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
+                        {isSubmitting && <Loader2 size={14} className="animate-spin" />} Save Changes
+                      </button>
                     </div>
                   </form>
                 </motion.div>
@@ -281,16 +429,38 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
                   </div>
                   <div className="space-y-2 text-sm text-slate-600">
                     <div className="flex items-center justify-between">
-                      <span>Timeline</span>
-                      <span className="font-semibold text-slate-900">{selectedProject.startDate} → {selectedProject.endDate}</span>
+                      <span>Status</span>
+                      <span className="font-semibold text-slate-900">{selectedProject.status ?? "Active"}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Team</span>
+                      <span className="font-semibold text-slate-900">{selectedProject.teamName ?? "Unassigned"}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Created</span>
+                      <span className="font-semibold text-slate-900">
+                        {selectedProject.createdAt ? new Date(selectedProject.createdAt).toLocaleDateString() : "Unknown"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Deadline</span>
+                      <span className="font-semibold text-slate-900">{selectedProject.deadline ?? "—"}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span>Tasks</span>
-                      <span className="font-semibold text-slate-900">{selectedProject.taskCount}</span>
+                      <span className="font-semibold text-slate-900">
+                        {taskCountErrors[selectedProject.projectId]
+                          ? "Unavailable"
+                          : taskCounts[selectedProject.projectId] ?? tasks.length}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Progress</span>
+                      <span className="font-semibold text-slate-900">{selectedProject.progress}%</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span>Risk</span>
-                      <span className="font-semibold text-slate-900">{selectedProject.riskScore}%</span>
+                      <span className="font-semibold text-slate-900">{selectedProject.riskLevel}</span>
                     </div>
                   </div>
                 </div>
@@ -300,19 +470,31 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
                     <CheckCircle2 size={15} className="text-emerald-600" />
                     <h4 className="text-sm font-semibold text-slate-900">Related Tasks</h4>
                   </div>
-                  <div className="space-y-2">
-                    {selectedTasks.slice(0, 4).map((task) => (
-                      <div key={task.id} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600">
-                        <div className="font-medium text-slate-800">{task.title}</div>
-                        <div className="mt-1 text-xs text-slate-500">{task.status} · {task.priority}</div>
-                      </div>
-                    ))}
-                  </div>
+                  {isLoadingTasks ? (
+                    <div className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-4 text-sm text-slate-500">
+                      <Loader2 size={14} className="animate-spin" /> Loading tasks…
+                    </div>
+                  ) : tasksUnavailable ? (
+                    <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50 px-3 py-4 text-center text-sm text-amber-700">Tasks unavailable — could not load related tasks.</div>
+                  ) : tasks.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-center text-sm text-slate-500">No tasks for this project yet.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {tasks.slice(0, 4).map((task) => (
+                        <div key={task.taskId} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600">
+                          <div className="font-medium text-slate-800">{task.title ?? "Untitled task"}</div>
+                          <div className="mt-1 text-xs text-slate-500">{task.status ?? "Unknown"} · {task.priority ?? "—"}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </>
           ) : (
-            <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">No project selected.</div>
+            <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+              {isLoadingProjects ? "Loading…" : "No project selected."}
+            </div>
           )}
         </div>
       </div>

@@ -1,15 +1,20 @@
 using MediatR;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
 
 namespace TaskGenie.Application.Features.RewardPenalty.Queries;
 
 public record GetUserScoreHistoryQuery(int UserId) : IRequest<List<UserScoreDto>>;
 
-public class GetUserScoreHistoryQueryHandler(IUserScoreRepository userScoreRepo)
+public class GetUserScoreHistoryQueryHandler(
+    IResourceAuthorizationService authorization,
+    IUserScoreRepository userScoreRepo)
     : IRequestHandler<GetUserScoreHistoryQuery, List<UserScoreDto>>
 {
     public async Task<List<UserScoreDto>> Handle(GetUserScoreHistoryQuery request, CancellationToken ct)
     {
+        authorization.EnsureSelfOrPlatformAdmin(request.UserId);
+
         var scores = await userScoreRepo.GetByUserIdAsync(request.UserId, ct);
 
         return scores.Select(s => new UserScoreDto

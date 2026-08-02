@@ -34,6 +34,11 @@ public class TasksController(IMediator mediator) : ControllerBase
     public async Task<IActionResult> GetById(int id)
         => Ok(await mediator.Send(new GetTaskByIdQuery(id)));
 
+    /// <summary>The type catalog the create form offers. Reference data, readable by any signed-in user.</summary>
+    [HttpGet("types")]
+    public async Task<IActionResult> GetTypes([FromQuery] bool includeArchived = false)
+        => Ok(await mediator.Send(new GetTaskTypesQuery(includeArchived)));
+
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateTaskRequest request)
     {
@@ -44,7 +49,7 @@ public class TasksController(IMediator mediator) : ControllerBase
             request.Priority,
             request.Deadline,
             request.Difficulty,
-            HttpContext.GetCurrentUserId()));
+            request.TaskTypeId));
         return CreatedAtAction(nameof(GetById), new { id = task.TaskId }, task);
     }
 
@@ -71,6 +76,8 @@ public class TasksController(IMediator mediator) : ControllerBase
         return NoContent();
     }
 
+    /// <summary>Returns the updated task so the caller can render authoritative state instead of
+    /// trusting its own optimistic guess — the server may clamp progress or refuse a status move.</summary>
     [HttpPut("{id}/progress")]
     public async Task<IActionResult> UpdateProgress(int id, [FromBody] UpdateProgressRequest request)
     {
@@ -80,7 +87,8 @@ public class TasksController(IMediator mediator) : ControllerBase
             request.Progress,
             request.RiskLevel,
             request.ActualTime));
-        return NoContent();
+
+        return Ok(await mediator.Send(new GetTaskByIdQuery(id)));
     }
 
     [HttpPost("{id}/estimate")]
@@ -112,7 +120,8 @@ public record CreateTaskRequest(
     string? Description,
     string? Priority,
     string? Deadline,
-    int? Difficulty);
+    int? Difficulty,
+    int? TaskTypeId = null);
 
 public record UpdateTaskRequest(
     string? Title,

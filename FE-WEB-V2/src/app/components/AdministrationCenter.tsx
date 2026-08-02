@@ -1,522 +1,597 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { motion } from "motion/react";
 import {
-  Users, Building2, BarChart2, Search, UserCog, Power, PowerOff,
-  Plus, Pencil, Trash2, X, Layers, CheckCircle2,
+  Users, Building2, BarChart2, Search, Power, PowerOff, Shield,
+  CreditCard, Receipt, Loader2, Layers, AlertTriangle,
 } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell,
-} from "recharts";
-import {
-  teamMembers as seedUsers,
-  organizations as seedOrganizations,
-  tasks,
-  projects,
-  statusColumns,
-  TeamMember,
-  SystemRole,
-  UserStatus,
-  Organization,
-  OrgPlan,
-} from "../data/tmaiData";
+  adminApi,
+  AdminOrganizationDto,
+  AdminPaymentDto,
+  AdminPlanDto,
+  AdminSubscriptionDto,
+  AdminUserDto,
+  PlatformStatsDto,
+  SubscriptionAnalyticsDto,
+} from "../services/adminApi";
+import { formatMoney } from "../services/billingApi";
+import { ApiError } from "../services/apiClient";
+import { useAuth } from "../auth/AuthContext";
 
-type AdminTab = "users" | "organizations" | "stats";
+type AdminTab = "stats" | "users" | "organizations" | "billing" | "plans";
 
-const systemRoles: SystemRole[] = ["Admin", "Manager", "Member", "Viewer"];
-const orgPlans: OrgPlan[] = ["Free", "Pro", "Enterprise"];
+const TABS: { id: AdminTab; label: string; icon: React.ElementType }[] = [
+  { id: "stats", label: "Overview", icon: BarChart2 },
+  { id: "users", label: "Users", icon: Users },
+  { id: "organizations", label: "Organizations", icon: Building2 },
+  { id: "billing", label: "Billing", icon: CreditCard },
+  { id: "plans", label: "Plans", icon: Layers },
+];
 
-const roleBadgeStyle: Record<SystemRole, string> = {
-  Admin: "bg-purple-50 text-purple-700 border border-purple-200",
-  Manager: "bg-blue-50 text-blue-700 border border-blue-200",
-  Member: "bg-slate-100 text-slate-600 border border-slate-200",
-  Viewer: "bg-gray-50 text-gray-500 border border-gray-200",
-};
-
-const planBadgeStyle: Record<OrgPlan, string> = {
-  Free: "bg-slate-100 text-slate-600",
-  Pro: "bg-blue-50 text-blue-700",
-  Enterprise: "bg-purple-50 text-purple-700",
-};
-
-const roleColor: Record<SystemRole, string> = {
-  Admin: "#7C4DFF",
-  Manager: "#1E88E5",
-  Member: "#64748B",
-  Viewer: "#94A3B8",
-};
-
-interface OrgFormState {
-  name: string;
-  description: string;
-  memberCount: string;
-  plan: OrgPlan;
+function errorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.message) return err.message;
+    if (err.status === 403) return "You don't have permission to perform this action.";
+    return `Request failed (${err.status}).`;
+  }
+  return "Something went wrong. Please try again.";
 }
 
-const emptyOrgForm: OrgFormState = { name: "", description: "", memberCount: "", plan: "Free" };
+const PAGE_SIZE = 10;
 
-export const AdministrationCenter = () => {
-  const [tab, setTab] = useState<AdminTab>("users");
+interface AdministrationCenterProps {
+  /** Driven by the admin sidebar; the page keeps its own tabs only when nothing is passed. */
+  section?: AdminTab;
+}
 
-  // --- Users state ---
-  const [users, setUsers] = useState<TeamMember[]>(seedUsers);
+export const AdministrationCenter = ({ section }: AdministrationCenterProps = {}) => {
+  const { user } = useAuth();
+  const [ownTab, setOwnTab] = useState<AdminTab>("stats");
+  const tab = section ?? ownTab;
+  const setTab = setOwnTab;
+
+  const [stats, setStats] = useState<PlatformStatsDto | null>(null);
+  const [analytics, setAnalytics] = useState<SubscriptionAnalyticsDto | null>(null);
+  const [users, setUsers] = useState<AdminUserDto[]>([]);
+  const [banTarget, setBanTarget] = useState<AdminUserDto | null>(null);
+  const [banDays, setBanDays] = useState<string>("7");
+  const [banReason, setBanReason] = useState("");
+  const [userTotal, setUserTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState<"All" | SystemRole>("All");
-  const [statusFilter, setStatusFilter] = useState<"All" | UserStatus>("All");
-  const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
+  const [organizations, setOrganizations] = useState<AdminOrganizationDto[]>([]);
+  const [subscriptions, setSubscriptions] = useState<AdminSubscriptionDto[]>([]);
+  const [payments, setPayments] = useState<AdminPaymentDto[]>([]);
+  const [plans, setPlans] = useState<AdminPlanDto[]>([]);
 
-  const filteredUsers = users.filter((u) => {
-    const query = search.toLowerCase();
-    const matchesSearch = u.name.toLowerCase().includes(query) || u.email.toLowerCase().includes(query);
-    const matchesRole = roleFilter === "All" || u.systemRole === roleFilter;
-    const matchesStatus = statusFilter === "All" || u.status === statusFilter;
-    return matchesSearch && matchesRole && matchesStatus;
-  });
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  const handleRoleChange = (id: string, role: SystemRole) => {
-    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, systemRole: role } : u)));
-    setEditingRoleId(null);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      if (tab === "stats") {
+        const [s, a] = await Promise.all([adminApi.platformStats(), adminApi.subscriptionAnalytics()]);
+        setStats(s);
+        setAnalytics(a);
+      } else if (tab === "users") {
+        const result = await adminApi.users(search, page, PAGE_SIZE);
+        setUsers(result.items);
+        setUserTotal(result.total);
+      } else if (tab === "organizations") {
+        setOrganizations(await adminApi.organizations());
+      } else if (tab === "billing") {
+        const [subs, pays] = await Promise.all([adminApi.subscriptions(), adminApi.payments()]);
+        setSubscriptions(subs);
+        setPayments(pays);
+      } else if (tab === "plans") {
+        setPlans(await adminApi.plans());
+      }
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [tab, search, page]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const confirmBan = () => {
+    if (!banTarget) return;
+    const days = banDays === "permanent" ? null : Number(banDays);
+    const target = banTarget;
+
+    void run(
+      `ban-${target.userId}`,
+      async () => {
+        await adminApi.banUser(target.userId, days, banReason.trim() || null);
+        setBanTarget(null);
+        setBanReason("");
+        await loadUsers();
+      },
+      days === null ? `${target.name} đã bị khóa vĩnh viễn.` : `${target.name} đã bị khóa ${days} ngày.`
+    );
   };
 
-  const handleToggleStatus = (id: string) => {
-    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, status: u.status === "active" ? "inactive" : "active" } : u)));
+  const run = async (key: string, action: () => Promise<void>, successMessage?: string) => {
+    if (busy) return; // double-submit guard
+    setBusy(key);
+    setError(null);
+    setNotice(null);
+    try {
+      await action();
+      if (successMessage) setNotice(successMessage);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(null);
+    }
   };
 
-  // --- Organizations state ---
-  const [orgs, setOrgs] = useState<Organization[]>(seedOrganizations);
-  const [orgSearch, setOrgSearch] = useState("");
-  const [showOrgForm, setShowOrgForm] = useState(false);
-  const [editingOrgId, setEditingOrgId] = useState<string | null>(null);
-  const [orgForm, setOrgForm] = useState<OrgFormState>(emptyOrgForm);
-  const [orgFeedback, setOrgFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
-
-  const filteredOrgs = orgs.filter((o) => o.name.toLowerCase().includes(orgSearch.toLowerCase()));
-
-  const openCreateOrg = () => {
-    setEditingOrgId(null);
-    setOrgForm(emptyOrgForm);
-    setShowOrgForm(true);
-  };
-
-  const openEditOrg = (org: Organization) => {
-    setEditingOrgId(org.id);
-    setOrgForm({ name: org.name, description: org.description, memberCount: String(org.memberCount), plan: org.plan });
-    setShowOrgForm(true);
-  };
-
-  const handleSubmitOrg = (e: React.FormEvent) => {
-    e.preventDefault();
-    const name = orgForm.name.trim();
-    if (!name) {
-      setOrgFeedback({ type: "error", message: "Organization name is required." });
+  const toggleUserStatus = (target: AdminUserDto) => {
+    const next = target.status === 1 ? 0 : 1;
+    // Suspending asks for how long, so a ban is a deliberate decision with an end date rather than
+    // an indefinite flag nobody remembers to clear.
+    if (next === 0) {
+      setBanTarget(target);
       return;
     }
-
-    if (editingOrgId) {
-      setOrgs((prev) =>
-        prev.map((o) =>
-          o.id === editingOrgId
-            ? { ...o, name, description: orgForm.description.trim(), memberCount: Number(orgForm.memberCount) || 0, plan: orgForm.plan }
-            : o
-        )
-      );
-      setOrgFeedback({ type: "success", message: "Organization updated successfully." });
-    } else {
-      const newOrg: Organization = {
-        id: `org-${Date.now()}`,
-        name,
-        description: orgForm.description.trim() || "No description provided.",
-        memberCount: Number(orgForm.memberCount) || 0,
-        plan: orgForm.plan,
-        createdAt: new Date().toISOString().slice(0, 10),
-      };
-      setOrgs((prev) => [newOrg, ...prev]);
-      setOrgFeedback({ type: "success", message: "Organization created successfully." });
-    }
-
-    setShowOrgForm(false);
-    setEditingOrgId(null);
-    setOrgForm(emptyOrgForm);
+    void run(
+      `status-${target.userId}`,
+      async () => {
+        await adminApi.setUserStatus(target.userId, next);
+        await load();
+      },
+      next === 1 ? "User activated." : "User deactivated."
+    );
   };
 
-  const handleDeleteOrg = (id: string) => {
-    setOrgs((prev) => prev.filter((o) => o.id !== id));
-    setOrgFeedback({ type: "success", message: "Organization removed successfully." });
-  };
+  const changeUserRole = (target: AdminUserDto, role: string) =>
+    run(
+      `role-${target.userId}`,
+      async () => {
+        await adminApi.setUserRole(target.userId, role);
+        await load();
+      },
+      "Role updated."
+    );
 
-  // --- Platform stats ---
-  const totalUsers = users.length;
-  const activeUsers = users.filter((u) => u.status === "active").length;
-  const totalTasks = tasks.length;
-  const totalProjects = projects.length;
+  const togglePlanActive = (plan: AdminPlanDto) =>
+    run(
+      `plan-${plan.planId}`,
+      async () => {
+        await adminApi.setPlanActive(plan.planId, !plan.isActive);
+        await load();
+      },
+      plan.isActive ? "Plan archived." : "Plan restored."
+    );
 
-  const tasksByStatus = statusColumns.map((col) => ({
-    label: col.label,
-    count: tasks.filter((t) => t.status === col.id).length,
-    color: col.color,
-  }));
-
-  const usersByRole = systemRoles
-    .map((role) => ({ name: role, value: users.filter((u) => u.systemRole === role).length, color: roleColor[role] }))
-    .filter((r) => r.value > 0);
-
-  const statTiles = [
-    { label: "Total Users", value: totalUsers, icon: Users, color: "#1E88E5" },
-    { label: "Active Users", value: activeUsers, icon: CheckCircle2, color: "#10B981" },
-    { label: "Total Tasks", value: totalTasks, icon: Layers, color: "#7C4DFF" },
-    { label: "Total Projects", value: totalProjects, icon: Building2, color: "#F59E0B" },
-  ];
+  const totalPages = Math.max(1, Math.ceil(userTotal / PAGE_SIZE));
 
   return (
-    <div className="h-full overflow-y-auto bg-slate-50 p-4 lg:p-6">
-      <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-700">
-            <UserCog size={12} /> Administration
-          </div>
-          <h2 className="text-lg font-semibold text-slate-900">Manage users, organizations & platform health</h2>
-          <p className="mt-1 text-sm text-slate-500">Control access, oversee organizations, and monitor platform-wide activity.</p>
-        </div>
-        <div className="flex items-center gap-0.5 bg-white border border-slate-200 rounded-lg p-0.5 shrink-0">
-          {[
-            { id: "users" as AdminTab, label: "Users", icon: Users },
-            { id: "organizations" as AdminTab, label: "Organizations", icon: Building2 },
-            { id: "stats" as AdminTab, label: "Platform Stats", icon: BarChart2 },
-          ].map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setTab(id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                tab === id ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50"
-              }`}
-            >
-              <Icon size={13} /> {label}
-            </button>
-          ))}
-        </div>
-      </div>
+    <div className="p-4 space-y-4">
+      <header>
+        <h1 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+          <Shield size={16} className="text-[#1A237E]" aria-hidden />
+          Administration
+        </h1>
+        <p className="text-[10px] text-gray-500 mt-0.5">Platform-wide data — every figure below comes from the API.</p>
+      </header>
 
-      {tab === "users" && (
-        <div className="space-y-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-            <div className="flex flex-1 items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
-              <Search size={14} className="text-slate-400" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by name or email..."
-                className="w-full bg-transparent text-sm outline-none"
-              />
-            </div>
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value as "All" | SystemRole)}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500"
-            >
-              <option value="All">All Roles</option>
-              {systemRoles.map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as "All" | UserStatus)}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500"
-            >
-              <option value="All">All Statuses</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </div>
+      {/* The sidebar owns navigation for an administrator; these tabs are the fallback. */}
+      {!section && (
+      <nav className="flex gap-1 border-b border-gray-200" role="tablist" aria-label="Administration sections">
+        {TABS.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={tab === id}
+            type="button"
+            onClick={() => {
+              setTab(id);
+              setPage(1);
+            }}
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px ${
+              tab === id ? "border-[#1A237E] text-[#1A237E]" : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            <Icon size={13} aria-hidden />
+            {label}
+          </button>
+        ))}
+      </nav>
+      )}
 
-          <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="px-4 py-3 font-semibold text-slate-600">Name</th>
-                  <th className="px-4 py-3 font-semibold text-slate-600">Email</th>
-                  <th className="px-4 py-3 font-semibold text-slate-600">Role</th>
-                  <th className="px-4 py-3 font-semibold text-slate-600">Status</th>
-                  <th className="px-4 py-3 font-semibold text-slate-600 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredUsers.map((user) => (
-                  <tr key={user.id}>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <img src={user.avatar} alt={user.name} className="h-8 w-8 rounded-full object-cover" />
-                        <div>
-                          <div className="font-semibold text-slate-900">{user.name}</div>
-                          <div className="text-xs text-slate-500">{user.role}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">{user.email}</td>
-                    <td className="px-4 py-3">
-                      {editingRoleId === user.id ? (
-                        <select
-                          autoFocus
-                          value={user.systemRole}
-                          onChange={(e) => handleRoleChange(user.id, e.target.value as SystemRole)}
-                          onBlur={() => setEditingRoleId(null)}
-                          className="rounded-lg border border-slate-200 px-2 py-1 text-xs outline-none focus:border-slate-500"
-                        >
-                          {systemRoles.map((r) => (
-                            <option key={r} value={r}>{r}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className={`text-xs font-semibold px-2 py-1 rounded-full ${roleBadgeStyle[user.systemRole]}`}>
-                          {user.systemRole}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`text-xs font-semibold px-2 py-1 rounded-full ${
-                          user.status === "active" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-slate-100 text-slate-500 border border-slate-200"
-                        }`}
-                      >
-                        {user.status === "active" ? "Active" : "Inactive"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={() => setEditingRoleId(user.id)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                        >
-                          <UserCog size={12} /> Edit Role
-                        </button>
-                        <button
-                          onClick={() => handleToggleStatus(user.id)}
-                          className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${
-                            user.status === "active"
-                              ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                              : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                          }`}
-                        >
-                          {user.status === "active" ? <PowerOff size={12} /> : <Power size={12} />}
-                          {user.status === "active" ? "Deactivate" : "Activate"}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {filteredUsers.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-400">No users match your filters.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+      {error && (
+        <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          {error}
+        </div>
+      )}
+      {notice && (
+        <div role="status" className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+          {notice}
         </div>
       )}
 
-      {tab === "organizations" && (
-        <div className="space-y-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
-              <Search size={14} className="text-slate-400" />
-              <input
-                value={orgSearch}
-                onChange={(e) => setOrgSearch(e.target.value)}
-                placeholder="Search organizations..."
-                className="w-full bg-transparent text-sm outline-none"
-              />
-            </div>
-            <button
-              onClick={openCreateOrg}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-            >
-              <Plus size={15} /> Add Organization
-            </button>
-          </div>
-
-          {orgFeedback && (
-            <div className={`rounded-lg border px-3 py-2 text-sm ${orgFeedback.type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700"}`}>
-              {orgFeedback.message}
-            </div>
-          )}
-
-          {showOrgForm && (
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-900">{editingOrgId ? "Edit Organization" : "New Organization"}</h3>
-                <button onClick={() => setShowOrgForm(false)} className="rounded-full p-1 text-slate-400 hover:bg-slate-100">
-                  <X size={14} />
-                </button>
+      {loading ? (
+        <div className="flex items-center gap-2 py-12 text-xs text-gray-500">
+          <Loader2 size={14} className="animate-spin" aria-hidden /> Loading…
+        </div>
+      ) : (
+        <>
+          {tab === "stats" && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                {[
+                  { label: "Users", value: stats?.users ?? 0 },
+                  { label: "Organizations", value: stats?.organizations ?? 0 },
+                  { label: "Projects", value: stats?.projects ?? 0 },
+                  { label: "Tasks", value: stats?.tasks ?? 0 },
+                  { label: "Active subs", value: analytics?.activeSubscriptions ?? 0 },
+                ].map((card) => (
+                  <div key={card.label} className="rounded-lg border border-gray-200 bg-white p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-500">{card.label}</p>
+                    <p className="mt-1 text-lg font-semibold text-gray-900">{card.value}</p>
+                  </div>
+                ))}
               </div>
-              <form onSubmit={handleSubmitOrg} className="grid gap-3 md:grid-cols-2">
-                <div className="md:col-span-2">
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Organization Name</label>
-                  <input
-                    value={orgForm.name}
-                    onChange={(e) => setOrgForm((p) => ({ ...p, name: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500"
-                    placeholder="e.g. Northwind Studio"
-                  />
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-lg border border-gray-200 bg-white p-3">
+                  <p className="text-[10px] uppercase tracking-wide text-gray-500">Revenue</p>
+                  <p className="mt-1 text-lg font-semibold text-gray-900">
+                    {formatMoney(analytics?.totalRevenueMinor ?? 0, "USD")}
+                  </p>
+                  {(analytics?.testRevenueMinor ?? 0) > 0 && (
+                    <p className="mt-1 flex items-center gap-1 text-[10px] text-amber-600">
+                      <AlertTriangle size={11} aria-hidden />
+                      {formatMoney(analytics!.testRevenueMinor, "USD")} from the simulated gateway — excluded above.
+                    </p>
+                  )}
                 </div>
-                <div className="md:col-span-2">
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Description</label>
-                  <textarea
-                    value={orgForm.description}
-                    onChange={(e) => setOrgForm((p) => ({ ...p, description: e.target.value }))}
-                    rows={2}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500"
-                    placeholder="What does this organization do?"
-                  />
+                <div className="rounded-lg border border-gray-200 bg-white p-3">
+                  <p className="mb-2 text-[10px] uppercase tracking-wide text-gray-500">Payments by month</p>
+                  {analytics && analytics.byMonth.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={140}>
+                      <BarChart data={analytics.byMonth}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
+                        <XAxis dataKey="period" tick={{ fontSize: 10 }} />
+                        <YAxis tick={{ fontSize: 10 }} />
+                        <Tooltip />
+                        <Bar dataKey="count" fill="#1A237E" name="Payments" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <p className="py-8 text-center text-xs text-gray-400">No payment data yet.</p>
+                  )}
                 </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Members</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={orgForm.memberCount}
-                    onChange={(e) => setOrgForm((p) => ({ ...p, memberCount: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500"
-                    placeholder="0"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Plan</label>
-                  <select
-                    value={orgForm.plan}
-                    onChange={(e) => setOrgForm((p) => ({ ...p, plan: e.target.value as OrgPlan }))}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500"
-                  >
-                    {orgPlans.map((p) => (
-                      <option key={p} value={p}>{p}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="md:col-span-2 flex justify-end gap-2">
-                  <button type="button" onClick={() => setShowOrgForm(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600">
-                    Cancel
-                  </button>
-                  <button type="submit" className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white">
-                    {editingOrgId ? "Save Changes" : "Create Organization"}
-                  </button>
-                </div>
-              </form>
+              </div>
             </motion.div>
           )}
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {filteredOrgs.map((org) => (
-              <div key={org.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="mb-2 flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100">
-                      <Building2 size={16} className="text-slate-500" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold text-slate-900">{org.name}</div>
-                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${planBadgeStyle[org.plan]}`}>{org.plan}</span>
-                    </div>
-                  </div>
+          {tab === "users" && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1 max-w-sm">
+                  <Search size={13} className="absolute left-2.5 top-2.5 text-gray-400" aria-hidden />
+                  <input
+                    value={search}
+                    onChange={(e) => {
+                      setSearch(e.target.value);
+                      setPage(1);
+                    }}
+                    placeholder="Search name or email"
+                    aria-label="Search users"
+                    className="w-full rounded-md border border-gray-200 py-2 pl-8 pr-3 text-xs"
+                  />
                 </div>
-                <p className="mb-3 text-xs text-slate-500 leading-relaxed line-clamp-2">{org.description}</p>
-                <div className="mb-3 flex items-center gap-1.5 text-xs text-slate-600">
-                  <Users size={12} className="text-slate-400" /> {org.memberCount} members
-                </div>
-                <div className="flex gap-2 border-t border-slate-100 pt-3">
-                  <button
-                    onClick={() => openEditOrg(org)}
-                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                  >
-                    <Pencil size={12} /> Edit
-                  </button>
-                  <button
-                    onClick={() => handleDeleteOrg(org.id)}
-                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
-                  >
-                    <Trash2 size={12} /> Delete
-                  </button>
-                </div>
+                <span className="text-[10px] text-gray-500">{userTotal} user(s)</span>
               </div>
-            ))}
-            {filteredOrgs.length === 0 && (
-              <div className="md:col-span-2 xl:col-span-3 rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-                No organizations found.
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
-      {tab === "stats" && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {statTiles.map((stat) => (
-              <motion.div
-                key={stat.label}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-              >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: `${stat.color}15` }}>
-                  <stat.icon size={18} style={{ color: stat.color }} />
+              {users.length === 0 ? (
+                <p className="py-10 text-center text-xs text-gray-400">No users match this search.</p>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-gray-50 text-[10px] uppercase tracking-wide text-gray-500">
+                      <tr>
+                        <th className="px-3 py-2">Name</th>
+                        <th className="px-3 py-2">Email</th>
+                        <th className="px-3 py-2">Role</th>
+                        <th className="px-3 py-2">Status</th>
+                        <th className="px-3 py-2 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {users.map((u) => (
+                        <tr key={u.userId}>
+                          <td className="px-3 py-2 text-gray-900">{u.name}</td>
+                          <td className="px-3 py-2 text-gray-500">{u.email}</td>
+                          <td className="px-3 py-2">
+                            <select
+                              value={u.role}
+                              onChange={(e) => changeUserRole(u, e.target.value)}
+                              disabled={busy === `role-${u.userId}`}
+                              aria-label={`Role for ${u.name}`}
+                              className="rounded border border-gray-200 px-1.5 py-1 text-[11px] disabled:opacity-50"
+                            >
+                              <option value="NORMAL_USER">Normal user</option>
+                              <option value="PLATFORM_ADMIN">Platform admin</option>
+                            </select>
+                          </td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={`rounded px-2 py-0.5 text-[10px] ${
+                                u.status === 1 ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500"
+                              }`}
+                            >
+                              {u.status === 1 ? "Active" : "Inactive"}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <button
+                              type="button"
+                              onClick={() => toggleUserStatus(u)}
+                              disabled={busy === `status-${u.userId}` || u.userId === user?.userId}
+                              title={u.userId === user?.userId ? "You cannot change your own status" : undefined}
+                              aria-label={u.status === 1 ? `Deactivate ${u.name}` : `Activate ${u.name}`}
+                              className="rounded p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-40"
+                            >
+                              {u.status === 1 ? <PowerOff size={13} aria-hidden /> : <Power size={13} aria-hidden />}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                <div>
-                  <div className="text-xl font-bold text-slate-900">{stat.value}</div>
-                  <div className="text-xs text-slate-500">{stat.label}</div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
+              )}
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h3 className="mb-1 text-sm font-semibold text-slate-900">Tasks by Status</h3>
-              <p className="mb-3 text-xs text-slate-500">Distribution across the Kanban pipeline</p>
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={tasksByStatus}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#64748B" }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: "#64748B" }} axisLine={false} tickLine={false} allowDecimals={false} />
-                  <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} cursor={{ fill: "rgba(0,0,0,0.03)" }} />
-                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                    {tasksByStatus.map((entry, index) => (
-                      <Cell key={`status-bar-${index}`} fill={entry.color} />
+              {totalPages > 1 && (
+                <div className="flex items-center justify-end gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page <= 1}
+                    className="rounded border border-gray-200 px-2 py-1 disabled:opacity-40"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-gray-500">
+                    Page {page} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page >= totalPages}
+                    className="rounded border border-gray-200 px-2 py-1 disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === "organizations" && (
+            <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+              {organizations.length === 0 ? (
+                <p className="py-10 text-center text-xs text-gray-400">No organizations registered yet.</p>
+              ) : (
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-gray-50 text-[10px] uppercase tracking-wide text-gray-500">
+                    <tr>
+                      <th className="px-3 py-2">Name</th>
+                      <th className="px-3 py-2">Owner</th>
+                      <th className="px-3 py-2">Created</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {organizations.map((o) => (
+                      <tr key={o.organizationId}>
+                        <td className="px-3 py-2 text-gray-900">{o.name}</td>
+                        <td className="px-3 py-2 text-gray-500">{o.ownerName ?? "—"}</td>
+                        <td className="px-3 py-2 text-gray-500">{o.createdAt?.slice(0, 10) ?? "—"}</td>
+                      </tr>
                     ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+                  </tbody>
+                </table>
+              )}
             </div>
+          )}
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h3 className="mb-1 text-sm font-semibold text-slate-900">Users by Role</h3>
-              <p className="mb-3 text-xs text-slate-500">System role distribution across active users</p>
-              <div className="flex items-center gap-4">
-                <div className="h-40 w-40 shrink-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={usersByRole} cx="50%" cy="50%" innerRadius={40} outerRadius={68} paddingAngle={3} dataKey="value" strokeWidth={0}>
-                        {usersByRole.map((entry, index) => (
-                          <Cell key={`role-cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
-                    </PieChart>
-                  </ResponsiveContainer>
+          {tab === "billing" && (
+            <div className="space-y-4">
+              <section>
+                <h2 className="mb-2 text-xs font-semibold text-gray-700">Subscriptions ({subscriptions.length})</h2>
+                <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-gray-50 text-[10px] uppercase tracking-wide text-gray-500">
+                      <tr>
+                        <th className="px-3 py-2">#</th>
+                        <th className="px-3 py-2">Plan</th>
+                        <th className="px-3 py-2">Owner</th>
+                        <th className="px-3 py-2">Status</th>
+                        <th className="px-3 py-2">Period end</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {subscriptions.map((s) => (
+                        <tr key={s.subscriptionId}>
+                          <td className="px-3 py-2">{s.subscriptionId}</td>
+                          <td className="px-3 py-2">{s.planCode ?? "—"}</td>
+                          <td className="px-3 py-2 text-gray-500">
+                            {s.ownerType === "PERSONAL" ? `User ${s.userId}` : `Org ${s.organizationId}`}
+                          </td>
+                          <td className="px-3 py-2">{s.status}</td>
+                          <td className="px-3 py-2 text-gray-500">{s.currentPeriodEnd?.slice(0, 10) ?? "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {subscriptions.length === 0 && <p className="py-8 text-center text-xs text-gray-400">No subscriptions.</p>}
                 </div>
-                <div className="flex-1 space-y-2">
-                  {usersByRole.map((r) => (
-                    <div key={r.name} className="flex items-center gap-2 text-xs">
-                      <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: r.color }} />
-                      <span className="flex-1 text-slate-600">{r.name}</span>
-                      <span className="font-bold text-slate-800">{r.value}</span>
-                    </div>
+              </section>
+
+              <section>
+                <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-gray-700">
+                  <Receipt size={13} aria-hidden /> Payments ({payments.length})
+                </h2>
+                <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-gray-50 text-[10px] uppercase tracking-wide text-gray-500">
+                      <tr>
+                        <th className="px-3 py-2">#</th>
+                        <th className="px-3 py-2">Plan</th>
+                        <th className="px-3 py-2">Amount</th>
+                        <th className="px-3 py-2">Status</th>
+                        <th className="px-3 py-2">Source</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {payments.map((p) => (
+                        <tr key={p.paymentTransactionId}>
+                          <td className="px-3 py-2">{p.paymentTransactionId}</td>
+                          <td className="px-3 py-2">{p.planCode ?? "—"}</td>
+                          <td className="px-3 py-2">{formatMoney(p.amountMinor, p.currency)}</td>
+                          <td className="px-3 py-2">{p.status}</td>
+                          <td className="px-3 py-2">
+                            {p.isTest ? (
+                              <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">SIMULATED</span>
+                            ) : (
+                              <span className="text-gray-500">{p.provider}</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {payments.length === 0 && <p className="py-8 text-center text-xs text-gray-400">No payments.</p>}
+                </div>
+              </section>
+            </div>
+          )}
+
+          {tab === "plans" && (
+            <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-gray-50 text-[10px] uppercase tracking-wide text-gray-500">
+                  <tr>
+                    <th className="px-3 py-2">Code</th>
+                    <th className="px-3 py-2">Name</th>
+                    <th className="px-3 py-2">Audience</th>
+                    <th className="px-3 py-2">Price</th>
+                    <th className="px-3 py-2">Projects</th>
+                    <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {plans.map((p) => (
+                    <tr key={p.planId}>
+                      <td className="px-3 py-2 font-mono text-[11px] text-gray-900">{p.code}</td>
+                      <td className="px-3 py-2">{p.name}</td>
+                      <td className="px-3 py-2 text-gray-500">{p.audience}</td>
+                      <td className="px-3 py-2">{p.priceMinor === 0 ? "Free" : formatMoney(p.priceMinor, p.currency)}</td>
+                      <td className="px-3 py-2">{p.projectLimit ?? "Unlimited"}</td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`rounded px-2 py-0.5 text-[10px] ${
+                            p.isActive ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500"
+                          }`}
+                        >
+                          {p.isActive ? "Active" : "Archived"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => togglePlanActive(p)}
+                          disabled={busy === `plan-${p.planId}`}
+                          className="rounded border border-gray-200 px-2 py-1 text-[11px] hover:bg-gray-50 disabled:opacity-40"
+                        >
+                          {p.isActive ? "Archive" : "Restore"}
+                        </button>
+                      </td>
+                    </tr>
                   ))}
-                </div>
-              </div>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+    {banTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Khóa tài khoản"
+        >
+          <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-5">
+            <h3 className="text-sm font-semibold text-gray-900">Khóa tài khoản</h3>
+            <p className="mt-1 text-[11px] text-gray-500">
+              {banTarget.name} ({banTarget.email}) sẽ bị đăng xuất khỏi mọi thiết bị ngay lập tức.
+              Dữ liệu của họ được giữ nguyên — đây là khóa, không phải xoá.
+            </p>
+
+            <label htmlFor="ban-duration" className="mt-3 block text-[11px] font-medium text-gray-700">
+              Thời hạn
+            </label>
+            <select
+              id="ban-duration"
+              value={banDays}
+              onChange={(e) => setBanDays(e.target.value)}
+              className="mt-1 w-full rounded-md border border-gray-200 px-2.5 py-2 text-sm"
+            >
+              <option value="1">1 ngày</option>
+              <option value="7">7 ngày</option>
+              <option value="30">30 ngày</option>
+              <option value="90">90 ngày</option>
+              <option value="permanent">Vĩnh viễn</option>
+            </select>
+
+            <label htmlFor="ban-reason" className="mt-3 block text-[11px] font-medium text-gray-700">
+              Lý do (tuỳ chọn)
+            </label>
+            <input
+              id="ban-reason"
+              value={banReason}
+              onChange={(e) => setBanReason(e.target.value)}
+              maxLength={300}
+              placeholder="Vi phạm điều khoản…"
+              className="mt-1 w-full rounded-md border border-gray-200 px-2.5 py-2 text-sm"
+            />
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setBanTarget(null)}
+                className="rounded-lg px-4 py-2 text-sm text-gray-600 hover:text-gray-900"
+              >
+                Huỷ
+              </button>
+              <button
+                type="button"
+                onClick={confirmBan}
+                disabled={busy === `ban-${banTarget.userId}`}
+                className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {busy === `ban-${banTarget.userId}` && <Loader2 size={14} className="animate-spin" aria-hidden />}
+                Khóa tài khoản
+              </button>
             </div>
           </div>
         </div>
       )}
+
     </div>
   );
 };

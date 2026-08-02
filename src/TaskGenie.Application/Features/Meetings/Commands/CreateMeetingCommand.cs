@@ -1,13 +1,13 @@
 using MediatR;
 using TaskGenie.Application.Features.Meetings.DTOs;
 using TaskGenie.Domain.Entities;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
 
 namespace TaskGenie.Application.Features.Meetings.Commands;
 
 public sealed record CreateMeetingCommand(
     int ProjectId,
-    int OrganizedBy,
     string Title,
     string? Description,
     DateTime ScheduledAt,
@@ -17,6 +17,8 @@ public sealed record CreateMeetingCommand(
 ) : IRequest<MeetingDto>;
 
 public sealed class CreateMeetingCommandHandler(
+    ICurrentUser currentUser,
+    IResourceAuthorizationService authorization,
     IMeetingRepository meetingRepo,
     IProjectRepository projectRepo,
     IUserRepository userRepo
@@ -24,12 +26,12 @@ public sealed class CreateMeetingCommandHandler(
 {
     public async Task<MeetingDto> Handle(CreateMeetingCommand cmd, CancellationToken ct)
     {
-        var project = await projectRepo.GetByIdAsync(cmd.ProjectId, ct)
-            ?? throw new InvalidOperationException($"Project {cmd.ProjectId} not found.");
+        // Scheduling is scoped to the project; the organiser is always the actor.
+        var project = await authorization.EnsureCanAccessProjectAsync(cmd.ProjectId, ct);
 
         var meeting = Meeting.Create(
             projectId: cmd.ProjectId,
-            organizedBy: cmd.OrganizedBy,
+            organizedBy: currentUser.UserId,
             title: cmd.Title,
             description: cmd.Description,
             scheduledAt: cmd.ScheduledAt,
@@ -40,7 +42,7 @@ public sealed class CreateMeetingCommandHandler(
 
         foreach (var userId in cmd.AttendeeUserIds.Distinct())
         {
-            if (userId == cmd.OrganizedBy) continue;
+            if (userId == currentUser.UserId) continue;
             var user = await userRepo.GetByIdAsync(userId, ct)
                 ?? throw new InvalidOperationException($"User {userId} not found.");
             var attendee = MeetingAttendee.Create(meeting.MeetingId, userId);

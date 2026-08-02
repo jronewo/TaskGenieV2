@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using MediatR;
 using Moq;
+using TaskGenie.Application.Common.Services;
 using TaskGenie.Application.Features.AI.Commands;
 using TaskGenie.Application.Features.AI.Services;
 using TaskGenie.Application.Features.Evidence;
@@ -15,26 +17,62 @@ namespace TaskGenie.Tests.Integration;
 
 public sealed class AiCorePersistenceIntegrationTests
 {
+    // A platform admin bypasses ownership checks entirely, so these persistence-focused tests don't
+    // need to seed a Project/Team/TeamMember graph just to satisfy IResourceAuthorizationService.
+    private static IResourceAuthorizationService CreateAdminAuthz(AppDbContext context, ITaskRepository taskRepo)
+    {
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.SetupGet(u => u.IsPlatformAdmin).Returns(true);
+        currentUser.SetupGet(u => u.UserId).Returns(1);
+        return new ResourceAuthorizationService(
+            currentUser.Object,
+            new ProjectRepository(context),
+            new TeamRepository(context),
+            new TeamMemberRepository(context),
+            new OrganizationRepository(context),
+            new OrganizationMemberRepository(context),
+            taskRepo,
+            new UserSkillRepository(context));
+    }
+
+    private static async Task<int> SeedProjectAsync(AppDbContext context, int ownerUserId = 1)
+    {
+        var project = Project.Create($"Integration project {Guid.NewGuid():N}", null, ownerUserId);
+        context.Projects.Add(project);
+        await context.SaveChangesAsync();
+        return project.ProjectId;
+    }
+
     [Fact]
     public async Task RiskAnalysis_PersistsHistoryFactorsLogAndTaskLevel()
     {
         await using var context = CreateContext();
+        var projectId = await SeedProjectAsync(context);
         var taskRepo = new TaskRepository(context);
         var task = await taskRepo.AddAsync(TaskEntity.Create(
-            1, "Risk integration", "Persistence flow", deadline: DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1)));
+            projectId, "Risk integration", "Persistence flow", deadline: DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1)));
         task.Update(null, null, "InProgress", null, null, 40, 2, null);
         await taskRepo.UpdateAsync(task);
         var textService = new Mock<ITextGenerationService>();
         textService.Setup(service => service.GenerateTextAsync(It.IsAny<string>(), It.IsAny<int>()))
             .ThrowsAsync(new HttpRequestException("offline"));
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.SetupGet(u => u.UserId).Returns(1);
+        var mediator = new Mock<IMediator>();
+
         var handler = new AnalyzeTaskRiskCommandHandler(
+            CreateAdminAuthz(context, taskRepo),
             taskRepo,
             new TaskLogRepository(context),
             new TaskDependencyRepository(context),
             Mock.Of<IUserRepository>(),
+            new ProjectRepository(context),
+            new TeamMemberRepository(context),
             new RiskRepository(context),
             new RiskScoringEngine(),
-            textService.Object);
+            textService.Object,
+            currentUser.Object,
+            mediator.Object);
 
         var result = await handler.Handle(new AnalyzeTaskRiskCommand(task.TaskId), CancellationToken.None);
 
@@ -49,15 +87,19 @@ public sealed class AiCorePersistenceIntegrationTests
     public async Task UrlEvidence_PersistsAndCanBeQueried()
     {
         await using var context = CreateContext();
+        var projectId = await SeedProjectAsync(context);
         var taskRepo = new TaskRepository(context);
-        var task = await taskRepo.AddAsync(TaskEntity.Create(1, "Evidence integration", null));
+        var task = await taskRepo.AddAsync(TaskEntity.Create(projectId, "Evidence integration", null));
         var evidenceRepo = new EvidenceRepository(context);
-        var handler = new CreateTaskEvidenceCommandHandler(taskRepo, new TaskLogRepository(context), evidenceRepo);
+        var authz = CreateAdminAuthz(context, taskRepo);
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.SetupGet(u => u.UserId).Returns(7);
+        var handler = new CreateTaskEvidenceCommandHandler(currentUser.Object, authz, new TaskLogRepository(context), evidenceRepo);
 
         var created = await handler.Handle(new CreateTaskEvidenceCommand(
-            task.TaskId, 7, "URL", "CI proof", null, "https://ci.example.com/run/10",
+            task.TaskId, "URL", "CI proof", null, "https://ci.example.com/run/10",
             null, null, null, null, null), CancellationToken.None);
-        var queried = await new GetTaskEvidenceQueryHandler(evidenceRepo)
+        var queried = await new GetTaskEvidenceQueryHandler(authz, evidenceRepo)
             .Handle(new GetTaskEvidenceQuery(task.TaskId), CancellationToken.None);
 
         Assert.Equal("https://ci.example.com/run/10", created.ExternalUrl);
@@ -73,13 +115,14 @@ public sealed class AiCorePersistenceIntegrationTests
             User.Create("Alice", "alice@integration.test", "hash"),
             User.Create("Bob", "bob@integration.test", "hash"));
         await context.SaveChangesAsync();
+        var projectId = await SeedProjectAsync(context);
         var taskRepo = new TaskRepository(context);
-        var task = await taskRepo.AddAsync(TaskEntity.Create(2, "Recommendation integration", "Rank candidates"));
+        var task = await taskRepo.AddAsync(TaskEntity.Create(projectId, "Recommendation integration", "Rank candidates"));
         var semantic = new Mock<IHuggingFaceService>();
         semantic.Setup(service => service.ComputeSimilarityBatchAsync(It.IsAny<string>(), It.IsAny<List<string>>()))
             .ReturnsAsync(new List<double> { 0.7, 0.8 });
         var handler = new GetAssignmentRecommendationsCommandHandler(
-            taskRepo,
+            CreateAdminAuthz(context, taskRepo),
             new UserRepository(context),
             new TaskRequiredSkillRepository(context),
             new AiRecommendationRepository(context),
@@ -88,7 +131,7 @@ public sealed class AiCorePersistenceIntegrationTests
             new AssignmentScoringEngine());
 
         var result = await handler.Handle(
-            new GetAssignmentRecommendationsCommand(task.TaskId, 2),
+            new GetAssignmentRecommendationsCommand(task.TaskId, projectId),
             CancellationToken.None);
 
         Assert.Equal(2, result.Suggestions.Count);

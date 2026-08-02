@@ -31,6 +31,11 @@ public class UserRepository : IUserRepository
         return await _context.Users.SingleOrDefaultAsync(u => u.Email == email && u.Status == 1 && u.DeletedAt == null, ct);
     }
 
+    public async System.Threading.Tasks.Task<User?> GetByEmailIncludingSuspendedAsync(string email, CancellationToken ct = default)
+    {
+        return await _context.Users.SingleOrDefaultAsync(u => u.Email == email && u.DeletedAt == null, ct);
+    }
+
     public async System.Threading.Tasks.Task AddUserAsync(User user, CancellationToken ct = default)
     {
         await _context.Users.AddAsync(user, ct);

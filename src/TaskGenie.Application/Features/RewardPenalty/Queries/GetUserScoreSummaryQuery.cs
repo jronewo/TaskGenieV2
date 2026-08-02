@@ -1,5 +1,6 @@
 using MediatR;
 using TaskGenie.Application.Common.Exceptions;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
 
 namespace TaskGenie.Application.Features.RewardPenalty.Queries;
@@ -7,12 +8,15 @@ namespace TaskGenie.Application.Features.RewardPenalty.Queries;
 public record GetUserScoreSummaryQuery(int UserId) : IRequest<UserScoreSummaryDto>;
 
 public class GetUserScoreSummaryQueryHandler(
+    IResourceAuthorizationService authorization,
     IUserScoreRepository userScoreRepo,
     IUserRepository userRepo)
     : IRequestHandler<GetUserScoreSummaryQuery, UserScoreSummaryDto>
 {
     public async Task<UserScoreSummaryDto> Handle(GetUserScoreSummaryQuery request, CancellationToken ct)
     {
+        authorization.EnsureSelfOrPlatformAdmin(request.UserId);
+
         var user = await userRepo.GetByIdAsync(request.UserId, ct)
             ?? throw new NotFoundException("User", request.UserId);
 

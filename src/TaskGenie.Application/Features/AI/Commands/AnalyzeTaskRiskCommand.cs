@@ -12,19 +12,29 @@ namespace TaskGenie.Application.Features.AI.Commands;
 public sealed record AnalyzeTaskRiskCommand(int TaskId) : IRequest<RiskAssessmentDto?>;
 
 public sealed class AnalyzeTaskRiskCommandHandler(
+    IResourceAuthorizationService authz,
     ITaskRepository taskRepo,
     ITaskLogRepository taskLogRepo,
     ITaskDependencyRepository dependencyRepo,
     IUserRepository userRepo,
+    IProjectRepository projectRepo,
+    ITeamMemberRepository teamMemberRepo,
     IRiskRepository riskRepo,
     RiskScoringEngine scoringEngine,
-    ITextGenerationService textGenService
+    ITextGenerationService textGenService,
+    ICurrentUser currentUser,
+    IMediator mediator
 ) : IRequestHandler<AnalyzeTaskRiskCommand, RiskAssessmentDto?>
 {
     public async Task<RiskAssessmentDto?> Handle(AnalyzeTaskRiskCommand cmd, CancellationToken ct)
     {
-        var task = await taskRepo.GetByIdAsync(cmd.TaskId, ct);
-        if (task is null) return null;
+        var task = await authz.EnsureCanManageTaskAsync(cmd.TaskId, ct);
+
+        // The project decides what a working day is, so capacity is measured against its own shift
+        // rather than a platform-wide assumption.
+        var project = task.ProjectId is int projectId
+            ? await projectRepo.GetByIdAsync(projectId, ct)
+            : null;
 
         var stopwatch = Stopwatch.StartNew();
         var runId = Guid.NewGuid();
@@ -62,7 +72,10 @@ public sealed class AnalyzeTaskRiskCommandHandler(
             LatestProgressAt: latestLog?.CreatedAt,
             AverageActiveTaskCount: activeTaskCounts.Count == 0 ? -1 : activeTaskCounts.Average(),
             AverageAvailableHours: availableHours.Count == 0 ? 0 : availableHours.Average(),
-            AverageDeadlineScore: deadlineScores.Count == 0 ? null : deadlineScores.Average());
+            AverageDeadlineScore: deadlineScores.Count == 0 ? null : deadlineScores.Average(),
+            Difficulty: task.Difficulty,
+            Priority: task.Priority,
+            WorkingHoursPerDay: project?.WorkingHoursPerDay);
 
         var configuredRules = (await riskRepo.GetActiveRulesAsync(ct))
             .Select(rule => new RiskRuleDefinition(rule.RiskRuleId, rule.Code, rule.Weight, rule.Version))
@@ -135,6 +148,69 @@ public sealed class AnalyzeTaskRiskCommandHandler(
             providerError);
 
         await riskRepo.AddAssessmentAsync(history, executionLog, ct);
+
+        await WarnAboutHighRiskAsync(task, result.RiskLevel, result.TotalScore, assignees, ct);
+
         return RiskAssessmentDto.FromEntity(history);
+    }
+
+    /// <summary>
+    /// Raises a notification when the engine puts a task at HIGH or CRITICAL. It goes to the people
+    /// doing the work and to whoever created the task; the caller who ran the estimate already sees
+    /// the result on screen, so they are skipped.
+    /// </summary>
+    private async System.Threading.Tasks.Task WarnAboutHighRiskAsync(
+        Domain.Entities.Task task,
+        string riskLevel,
+        double totalScore,
+        IReadOnlyList<TaskAssignee> assignees,
+        CancellationToken ct)
+    {
+        if (!string.Equals(riskLevel, "HIGH", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(riskLevel, "CRITICAL", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        // Whoever is doing the work hears about it first; the leaders hear about it either way.
+        // When nobody is assigned there is no one else to tell, so it falls to the leaders alone.
+        var recipients = assignees
+            .Where(assignee => assignee.UserId.HasValue)
+            .Select(assignee => assignee.UserId!.Value)
+            .ToList();
+
+        if (task.CreatedBy is int creator) recipients.Add(creator);
+
+        var project = task.ProjectId is int pid ? await projectRepo.GetByIdAsync(pid, ct) : null;
+        if (project?.TeamId is int teamId)
+        {
+            var members = await teamMemberRepo.GetByTeamIdAsync(teamId, ct);
+            foreach (var leader in members.Where(m => m.Role == "LEADER" && m.UserId.HasValue))
+                recipients.Add(leader.UserId!.Value);
+        }
+
+        var title = string.IsNullOrWhiteSpace(task.Title) ? $"Task #{task.TaskId}" : task.Title;
+        var level = riskLevel.ToUpperInvariant();
+
+        foreach (var userId in recipients.Distinct().Where(id => id != currentUser.UserId))
+        {
+            try
+            {
+                await mediator.Send(
+                    new Notifications.Commands.CreateNotificationCommand(
+                        userId,
+                        "TASK_RISK",
+                        $"Rủi ro {level}: {title}",
+                        $"AI chấm mức rủi ro {level} ({Math.Round(totalScore)} điểm). Hãy xem lại công việc này.",
+                        task.TaskId,
+                        "TASK",
+                        task.ProjectId),
+                    ct);
+            }
+            catch
+            {
+                // A failed notification must never invalidate the assessment that was just stored.
+            }
+        }
     }
 }

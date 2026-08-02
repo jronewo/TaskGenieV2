@@ -1,345 +1,295 @@
-import React, { useMemo, useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import {
-  Users,
-  Plus,
-  Search,
-  Mail,
-  UserPlus,
-  ShieldCheck,
-  Trash2,
-  Sparkles,
-  Briefcase,
-  CheckCircle2,
-  X,
-} from "lucide-react";
-import { initialTeams, teamMembers, projects } from "../data/tmaiData";
+import React, { useCallback, useEffect, useState } from "react";
+import { motion } from "motion/react";
+import { Users, Plus, UserPlus, Trash2, Loader2, ShieldCheck, X } from "lucide-react";
+import { invitationApi } from "../services/notificationApi";
+import { teamApi, TeamDto } from "../services/teamApi";
+import { ApiError } from "../services/apiClient";
+import { useConfirm } from "./ConfirmDialog";
 
-interface TeamManagementProps {
-  onClose?: () => void;
+function errorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.message) return err.message;
+    if (err.status === 403) return "You don't have permission to manage this team.";
+    if (err.status === 404) return "Not found.";
+    return `Request failed (${err.status}).`;
+  }
+  return "Something went wrong. Please try again.";
 }
 
-interface TeamFormState {
-  name: string;
-  description: string;
-}
+export const TeamManagement = () => {
+  const confirm = useConfirm();
 
-interface InviteFormState {
-  email: string;
-}
+  const [teams, setTeams] = useState<TeamDto[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
 
-export const TeamManagement = ({ onClose }: TeamManagementProps) => {
-  const [teams, setTeams] = useState(initialTeams);
-  const [selectedTeamId, setSelectedTeamId] = useState(initialTeams[0]?.id ?? "");
-  const [search, setSearch] = useState("");
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [showInviteForm, setShowInviteForm] = useState(false);
-  const [form, setForm] = useState<TeamFormState>({ name: "", description: "" });
-  const [inviteForm, setInviteForm] = useState<InviteFormState>({ email: "" });
-  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  const selectedTeam = useMemo(
-    () => teams.find((team) => team.id === selectedTeamId) ?? teams[0],
-    [teams, selectedTeamId]
-  );
+  const [showCreate, setShowCreate] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: "", description: "" });
+  const [inviteForm, setInviteForm] = useState({ email: "", role: "MEMBER" });
 
-  const filteredTeams = useMemo(() => {
-    const query = search.toLowerCase();
-    return teams.filter((team) => team.name.toLowerCase().includes(query) || team.description.toLowerCase().includes(query));
-  }, [teams, search]);
-
-  const teamMembersById = useMemo(
-    () => Object.fromEntries(teamMembers.map((member) => [member.id, member])),
-    []
-  );
-
-  const selectedMembers = useMemo(() => {
-    if (!selectedTeam) return [];
-    return selectedTeam.memberIds.map((id) => teamMembersById[id]).filter(Boolean);
-  }, [selectedTeam, teamMembersById]);
-
-  const handleCreateTeam = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmedName = form.name.trim();
-    const trimmedDescription = form.description.trim();
-
-    if (!trimmedName) {
-      setFeedback({ type: "error", message: "Team name is required." });
-      return;
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const list = await teamApi.myTeams();
+      setTeams(list);
+      setSelectedId((current) => current ?? list[0]?.teamId ?? null);
+    } catch (err) {
+      setError(errorMessage(err));
+      setTeams([]);
+    } finally {
+      setLoading(false);
     }
+  }, []);
 
-    const exists = teams.some((team) => team.name.toLowerCase() === trimmedName.toLowerCase());
-    if (exists) {
-      setFeedback({ type: "error", message: "Team name already exists." });
-      return;
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const selected = teams.find((t) => t.teamId === selectedId) ?? null;
+
+  const run = async (key: string, action: () => Promise<void>, successMessage?: string) => {
+    if (busy) return; // double-submit guard
+    setBusy(key);
+    setError(null);
+    setNotice(null);
+    try {
+      await action();
+      if (successMessage) setNotice(successMessage);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(null);
     }
-
-    const newTeam: typeof initialTeams[number] = {
-      id: `team-${Date.now()}`,
-      name: trimmedName,
-      description: trimmedDescription || "New team created from the management console.",
-      leaderId: "t1",
-      memberIds: ["t1"],
-      projectIds: [],
-      status: "active",
-      createdAt: new Date().toISOString().slice(0, 10),
-    };
-
-    setTeams((prev) => [newTeam, ...prev]);
-    setSelectedTeamId(newTeam.id);
-    setForm({ name: "", description: "" });
-    setShowCreateForm(false);
-    setFeedback({ type: "success", message: "Team created successfully." });
   };
 
-  const handleInviteMember = (e: React.FormEvent) => {
-    e.preventDefault();
-    const email = inviteForm.email.trim().toLowerCase();
-    if (!email) {
-      setFeedback({ type: "error", message: "Email is required." });
-      return;
-    }
-
-    const member = teamMembers.find((item) => item.email.toLowerCase() === email);
-    if (!member) {
-      setFeedback({ type: "error", message: "User does not exist." });
-      return;
-    }
-
-    if (!selectedTeam) {
-      setFeedback({ type: "error", message: "Please select a team first." });
-      return;
-    }
-
-    if (selectedTeam.memberIds.includes(member.id)) {
-      setFeedback({ type: "error", message: "User is already a member of this team." });
-      return;
-    }
-
-    setTeams((prev) =>
-      prev.map((team) =>
-        team.id === selectedTeam.id ? { ...team, memberIds: [...team.memberIds, member.id] } : team
-      )
+  const handleCreate = () =>
+    run(
+      "create",
+      async () => {
+        const team = await teamApi.create(createForm.name.trim(), createForm.description.trim() || null);
+        setCreateForm({ name: "", description: "" });
+        setShowCreate(false);
+        await load();
+        setSelectedId(team.teamId);
+      },
+      "Team created."
     );
 
-    setInviteForm({ email: "" });
-    setShowInviteForm(false);
-    setFeedback({ type: "success", message: "Invitation sent successfully." });
+  /**
+   * Sends an invitation rather than adding the person outright. Joining a team is their decision:
+   * the API creates a Pending invitation, pushes a notification, and only writes the membership
+   * once they accept it in their own notification centre.
+   */
+  const handleInvite = () =>
+    selectedId != null &&
+    run(
+      "invite",
+      async () => {
+        await invitationApi.create(selectedId, inviteForm.email.trim());
+        setInviteForm({ email: "", role: "MEMBER" });
+        await load();
+      },
+      "Invitation sent. They'll see it in their notifications."
+    );
+
+  const handleRemoveMember = async (memberId: number, label: string) => {
+    if (!(await confirm({
+      title: `Gỡ ${label} khỏi nhóm?`,
+      description: "Các task đang giao cho họ sẽ trở thành chưa có người nhận.",
+      confirmLabel: "Gỡ thành viên",
+      tone: "danger",
+    }))) return;
+    void run(
+      `remove-${memberId}`,
+      async () => {
+        await teamApi.removeMember(memberId);
+        await load();
+      },
+      "Member removed."
+    );
   };
 
-  const handleRemoveMember = (memberId: string) => {
-    if (!selectedTeam) return;
-    if (selectedTeam.leaderId === memberId) {
-      setFeedback({ type: "error", message: "Cannot remove the Team Leader." });
-      return;
-    }
-
-    setTeams((prev) =>
-      prev.map((team) =>
-        team.id === selectedTeam.id
-          ? { ...team, memberIds: team.memberIds.filter((id) => id !== memberId) }
-          : team
-      )
+  const handleDeleteTeam = async () => {
+    if (selectedId == null || !selected) return;
+    if (!(await confirm({
+      title: `Xóa nhóm "${selected.name}"?`,
+      description: "Không thể hoàn tác. Toàn bộ thành viên sẽ bị gỡ khỏi nhóm này.",
+      confirmLabel: "Xóa nhóm",
+      tone: "danger",
+    }))) return;
+    void run(
+      "delete",
+      async () => {
+        await teamApi.remove(selectedId);
+        setSelectedId(null);
+        await load();
+      },
+      "Team deleted."
     );
-    setFeedback({ type: "success", message: "Member removed from team." });
   };
 
   return (
-    <div className="h-full overflow-y-auto bg-slate-50 p-4 lg:p-6">
-      <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+    <div className="p-4 space-y-4">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-700">
-            <ShieldCheck size={12} /> Team Management
-          </div>
-          <h2 className="text-lg font-semibold text-slate-900">Create, organize, and manage project teams</h2>
-          <p className="mt-1 text-sm text-slate-500">Keep team structure aligned with projects and invite new members in one place.</p>
+          <h1 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+            <Users size={16} className="text-[#1A237E]" aria-hidden /> Teams
+          </h1>
+          <p className="text-[10px] text-gray-500 mt-0.5">Teams you created or belong to.</p>
         </div>
         <button
-          onClick={() => setShowCreateForm((prev) => !prev)}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+          type="button"
+          onClick={() => setShowCreate((v) => !v)}
+          className="inline-flex items-center gap-1.5 rounded-md bg-[#1A237E] px-3 py-1.5 text-xs text-white hover:bg-[#0D1757]"
         >
-          <Plus size={15} /> Create Team
+          <Plus size={13} aria-hidden /> New team
         </button>
-      </div>
+      </header>
 
-      {feedback && (
-        <div className={`mb-4 rounded-lg border px-3 py-2 text-sm ${feedback.type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700"}`}>
-          {feedback.message}
-        </div>
+      {error && (
+        <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>
+      )}
+      {notice && (
+        <div role="status" className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{notice}</div>
       )}
 
-      {showCreateForm && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-900">New Team</h3>
-            <button onClick={() => setShowCreateForm(false)} className="rounded-full p-1 text-slate-400 hover:bg-slate-100">
-              <X size={14} />
+      {showCreate && (
+        <motion.section initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <input
+              value={createForm.name}
+              onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
+              placeholder="Team name"
+              aria-label="Team name"
+              className="rounded-md border border-gray-200 px-3 py-2 text-xs"
+            />
+            <input
+              value={createForm.description}
+              onChange={(e) => setCreateForm((f) => ({ ...f, description: e.target.value }))}
+              placeholder="Description (optional)"
+              aria-label="Team description"
+              className="rounded-md border border-gray-200 px-3 py-2 text-xs"
+            />
+          </div>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={handleCreate}
+              disabled={!createForm.name.trim() || busy === "create"}
+              className="inline-flex items-center gap-1.5 rounded-md bg-[#1A237E] px-3 py-1.5 text-xs text-white disabled:opacity-40"
+            >
+              {busy === "create" && <Loader2 size={12} className="animate-spin" aria-hidden />} Create
+            </button>
+            <button type="button" onClick={() => setShowCreate(false)} className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800">
+              Cancel
             </button>
           </div>
-          <form onSubmit={handleCreateTeam} className="space-y-3">
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Team Name</label>
-              <input value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500" placeholder="e.g. Platform Core" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Description</label>
-              <textarea value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} rows={3} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500" placeholder="Describe the team purpose and scope" />
-            </div>
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setShowCreateForm(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600">Cancel</button>
-              <button type="submit" className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white">Create Team</button>
-            </div>
-          </form>
-        </motion.div>
+        </motion.section>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-900">Teams</h3>
-              <p className="text-xs text-slate-500">{teams.length} active teams</p>
-            </div>
-            <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-2 py-1.5">
-              <Search size={13} className="text-slate-400" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" className="w-20 bg-transparent text-xs outline-none" />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            {filteredTeams.map((team) => (
-              <button key={team.id} onClick={() => setSelectedTeamId(team.id)} className={`w-full rounded-xl border p-3 text-left transition ${selectedTeam?.id === team.id ? "border-slate-500 bg-slate-50" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"}`}>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-slate-900">{team.name}</span>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">{team.status}</span>
-                </div>
-                <p className="mt-1 line-clamp-2 text-xs text-slate-500">{team.description}</p>
-                <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
-                  <Users size={12} /> {team.memberIds.length} members
-                  <span className="mx-1">•</span>
-                  <Briefcase size={12} /> {team.projectIds.length} projects
-                </div>
+      {loading ? (
+        <div className="flex items-center gap-2 py-12 text-xs text-gray-500">
+          <Loader2 size={14} className="animate-spin" aria-hidden /> Loading teams…
+        </div>
+      ) : teams.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-gray-200 py-12 text-center text-xs text-gray-500">
+          You don't belong to any team yet.
+        </div>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-[220px_1fr]">
+          <nav aria-label="Your teams" className="space-y-1">
+            {teams.map((t) => (
+              <button
+                key={t.teamId}
+                type="button"
+                onClick={() => setSelectedId(t.teamId)}
+                aria-current={t.teamId === selectedId}
+                className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-xs ${
+                  t.teamId === selectedId ? "bg-[#1A237E]/10 text-[#1A237E]" : "text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                <span className="truncate">{t.name ?? `Team ${t.teamId}`}</span>
+                <span className="ml-2 shrink-0 text-[10px] text-gray-400">{t.members.length}</span>
               </button>
             ))}
-          </div>
-        </div>
+          </nav>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          {selectedTeam ? (
-            <>
-              <div className="mb-4 flex flex-col gap-3 border-b border-slate-200 pb-4 lg:flex-row lg:items-start lg:justify-between">
+          {selected && (
+            <section className="rounded-lg border border-gray-200 bg-white p-4">
+              <div className="mb-3 flex items-start justify-between gap-2">
                 <div>
-                  <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-600">
-                    <Sparkles size={11} /> Team Detail
-                  </div>
-                  <h3 className="text-lg font-semibold text-slate-900">{selectedTeam.name}</h3>
-                  <p className="mt-1 text-sm text-slate-500">{selectedTeam.description}</p>
+                  <h2 className="text-xs font-semibold text-gray-900">{selected.name}</h2>
+                  {selected.description && <p className="text-[10px] text-gray-500">{selected.description}</p>}
                 </div>
-                <button onClick={() => setShowInviteForm((prev) => !prev)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200">
-                  <UserPlus size={14} /> Invite Member
+                <button
+                  type="button"
+                  onClick={handleDeleteTeam}
+                  disabled={busy === "delete"}
+                  className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-[10px] text-red-600 hover:bg-red-50 disabled:opacity-40"
+                >
+                  {busy === "delete" ? <Loader2 size={11} className="animate-spin" aria-hidden /> : <X size={11} aria-hidden />}
+                  Delete team
                 </button>
               </div>
 
-              {showInviteForm && (
-                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="mb-2 flex items-center justify-between">
-                    <h4 className="text-sm font-semibold text-slate-900">Invite a teammate</h4>
-                    <button onClick={() => setShowInviteForm(false)} className="rounded-full p-1 text-slate-400 hover:bg-white">
-                      <X size={13} />
-                    </button>
-                  </div>
-                  <form onSubmit={handleInviteMember} className="flex flex-col gap-2 md:flex-row">
-                    <div className="flex-1">
-                      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Member Email</label>
-                      <div className="flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2">
-                        <Mail size={14} className="mr-2 text-slate-400" />
-                        <input value={inviteForm.email} onChange={(e) => setInviteForm({ email: e.target.value })} placeholder="name@company.com" className="w-full bg-transparent text-sm outline-none" />
-                      </div>
-                    </div>
-                    <button type="submit" className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white">Send Invite</button>
-                  </form>
-                </motion.div>
-              )}
-
-              <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="mb-3 flex items-center justify-between">
-                    <h4 className="text-sm font-semibold text-slate-900">Members</h4>
-                    <span className="text-xs text-slate-500">{selectedMembers.length} active</span>
-                  </div>
-                  <div className="space-y-2">
-                    {selectedMembers.map((member) => (
-                      <div key={member.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5">
-                        <div className="flex items-center gap-3">
-                          <img src={member.avatar} alt={member.name} className="h-10 w-10 rounded-full object-cover" />
-                          <div>
-                            <div className="text-sm font-semibold text-slate-900">{member.name}</div>
-                            <div className="text-xs text-slate-500">{member.role}</div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {selectedTeam.leaderId === member.id && (
-                            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">Leader</span>
-                          )}
-                          {selectedTeam.leaderId !== member.id && (
-                            <button onClick={() => handleRemoveMember(member.id)} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600">
-                              <Trash2 size={14} />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="rounded-xl border border-slate-200 bg-white p-3">
-                    <div className="mb-2 flex items-center gap-2">
-                      <CheckCircle2 size={15} className="text-emerald-600" />
-                      <h4 className="text-sm font-semibold text-slate-900">Team Summary</h4>
-                    </div>
-                    <div className="space-y-2 text-sm text-slate-600">
-                      <div className="flex items-center justify-between">
-                        <span>Leader</span>
-                        <span className="font-semibold text-slate-900">{teamMembersById[selectedTeam.leaderId]?.name ?? "Unknown"}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Projects</span>
-                        <span className="font-semibold text-slate-900">{selectedTeam.projectIds.length}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Status</span>
-                        <span className="font-semibold text-slate-900 capitalize">{selectedTeam.status}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <h4 className="mb-2 text-sm font-semibold text-slate-900">Associated Projects</h4>
-                    <div className="space-y-2">
-                      {selectedTeam.projectIds.length > 0 ? (
-                        selectedTeam.projectIds.map((projectId) => {
-                          const project = projects.find((item) => item.id === projectId);
-                          return project ? (
-                            <div key={project.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
-                              <span className="font-medium text-slate-700">{project.name}</span>
-                              <span className="text-xs text-slate-500">{project.taskCount} tasks</span>
-                            </div>
-                          ) : null;
-                        })
-                      ) : (
-                        <p className="text-sm text-slate-500">No projects linked yet.</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
+              <div className="mb-3 flex flex-wrap gap-2">
+                <input
+                  type="email"
+                  value={inviteForm.email}
+                  onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))}
+                  placeholder="member@example.com"
+                  aria-label="Member email"
+                  className="min-w-[180px] flex-1 rounded-md border border-gray-200 px-3 py-1.5 text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={handleInvite}
+                  disabled={!inviteForm.email.trim() || busy === "invite"}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-[#1A237E] px-3 py-1.5 text-xs text-white disabled:opacity-40"
+                >
+                  {busy === "invite" ? <Loader2 size={12} className="animate-spin" aria-hidden /> : <UserPlus size={12} aria-hidden />}
+                  Invite
+                </button>
               </div>
-            </>
-          ) : (
-            <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">No team selected.</div>
+              <p className="-mt-2 mb-3 text-[10px] text-gray-500">
+                They join once they accept the invitation in their notifications.
+              </p>
+
+              <ul className="divide-y divide-gray-100">
+                {selected.members.map((m) => (
+                  <li key={m.id} className="flex items-center gap-2 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs text-gray-900">
+                        {m.userName ?? `User ${m.userId}`}
+                        {m.role === "LEADER" && <ShieldCheck size={11} className="ml-1 inline text-[#1A237E]" aria-label="Leader" />}
+                      </p>
+                      {m.email && <p className="truncate text-[10px] text-gray-400">{m.email}</p>}
+                    </div>
+                    <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600">{m.role ?? "MEMBER"}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveMember(m.id, m.userName ?? m.email ?? `User ${m.userId}`)}
+                      disabled={busy === `remove-${m.id}`}
+                      aria-label={`Remove ${m.userName ?? m.email}`}
+                      className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+                    >
+                      <Trash2 size={12} aria-hidden />
+                    </button>
+                  </li>
+                ))}
+                {selected.members.length === 0 && (
+                  <li className="py-6 text-center text-[10px] text-gray-400">No members yet.</li>
+                )}
+              </ul>
+            </section>
           )}
         </div>
-      </div>
+      )}
     </div>
   );
 };

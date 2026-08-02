@@ -1,3 +1,4 @@
+using MediatR;
 using Moq;
 using TaskGenie.Application.Features.AI.Commands;
 using TaskGenie.Application.Features.AI.Services;
@@ -26,6 +27,7 @@ public sealed class AnalyzeTaskRiskCommandHandlerTests
         var dependencyRepo = new Mock<ITaskDependencyRepository>();
         dependencyRepo.Setup(repo => repo.GetByTaskIdWithDetailsAsync(42, It.IsAny<CancellationToken>())).ReturnsAsync(new List<TaskDependency>());
         var userRepo = new Mock<IUserRepository>();
+        var projectRepo = new Mock<IProjectRepository>();
         var riskRepo = new Mock<IRiskRepository>();
         riskRepo.Setup(repo => repo.GetActiveRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new List<RiskRule>());
         RiskScoreHistory? savedHistory = null;
@@ -40,15 +42,26 @@ public sealed class AnalyzeTaskRiskCommandHandlerTests
         var textService = new Mock<ITextGenerationService>();
         textService.Setup(service => service.GenerateTextAsync(It.IsAny<string>(), It.IsAny<int>()))
             .ThrowsAsync(new HttpRequestException("provider unavailable"));
+        var authz = new Mock<IResourceAuthorizationService>();
+        authz.Setup(a => a.EnsureCanManageTaskAsync(42, It.IsAny<CancellationToken>())).ReturnsAsync(task);
+
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.SetupGet(u => u.UserId).Returns(1);
+        var mediator = new Mock<IMediator>();
 
         var handler = new AnalyzeTaskRiskCommandHandler(
+            authz.Object,
             taskRepo.Object,
             logRepo.Object,
             dependencyRepo.Object,
             userRepo.Object,
+            projectRepo.Object,
+            Mock.Of<ITeamMemberRepository>(),
             riskRepo.Object,
             new RiskScoringEngine(),
-            textService.Object);
+            textService.Object,
+            currentUser.Object,
+            mediator.Object);
 
         var result = await handler.Handle(new AnalyzeTaskRiskCommand(42), CancellationToken.None);
 
@@ -65,23 +78,34 @@ public sealed class AnalyzeTaskRiskCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_UnknownTask_ReturnsNullWithoutCallingAi()
+    public async Task Handle_UnknownTask_ThrowsNotFoundWithoutCallingAi()
     {
         var taskRepo = new Mock<ITaskRepository>();
-        taskRepo.Setup(repo => repo.GetByIdAsync(404, It.IsAny<CancellationToken>())).ReturnsAsync((TaskEntity?)null);
         var textService = new Mock<ITextGenerationService>();
+        var authz = new Mock<IResourceAuthorizationService>();
+        authz.Setup(a => a.EnsureCanManageTaskAsync(404, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TaskGenie.Application.Common.Exceptions.NotFoundException("Task", 404));
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.SetupGet(u => u.UserId).Returns(1);
+        var mediator = new Mock<IMediator>();
+
         var handler = new AnalyzeTaskRiskCommandHandler(
+            authz.Object,
             taskRepo.Object,
             Mock.Of<ITaskLogRepository>(),
             Mock.Of<ITaskDependencyRepository>(),
             Mock.Of<IUserRepository>(),
+            Mock.Of<IProjectRepository>(),
+            Mock.Of<ITeamMemberRepository>(),
             Mock.Of<IRiskRepository>(),
             new RiskScoringEngine(),
-            textService.Object);
+            textService.Object,
+            currentUser.Object,
+            mediator.Object);
 
-        var result = await handler.Handle(new AnalyzeTaskRiskCommand(404), CancellationToken.None);
+        await Assert.ThrowsAsync<TaskGenie.Application.Common.Exceptions.NotFoundException>(
+            () => handler.Handle(new AnalyzeTaskRiskCommand(404), CancellationToken.None));
 
-        Assert.Null(result);
         textService.Verify(service => service.GenerateTextAsync(It.IsAny<string>(), It.IsAny<int>()), Times.Never);
     }
 }

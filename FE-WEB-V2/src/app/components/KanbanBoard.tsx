@@ -1,189 +1,300 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Plus, MoreHorizontal, ChevronDown, Inbox } from "lucide-react";
-import { statusColumns, Task, TaskStatus } from "../data/tmaiData";
+import { Plus, Inbox, Loader2, SlidersHorizontal } from "lucide-react";
 import { TaskCard } from "./TaskCard";
+import { taskApi, TaskDetailDto, TaskStatusValue } from "../services/taskApi";
+import { ApiError } from "../services/apiClient";
+import { usePreferences } from "../settings/PreferencesContext";
+import { progressFor } from "../lib/jira";
 
-interface KanbanBoardProps {
-  tasks: Task[];
-  onTaskClick: (task: Task) => void;
-  onTaskStatusChange: (taskId: string, status: TaskStatus) => void;
-  onAddTask: (status: TaskStatus) => void;
+/** Column ids are the backend's status values verbatim. */
+const COLUMNS: { id: TaskStatusValue; labelKey: string; accent: string }[] = [
+  { id: "Todo", labelKey: "board.todo", accent: "#64748B" },
+  { id: "InProgress", labelKey: "board.inProgress", accent: "#1E88E5" },
+  { id: "InReview", labelKey: "board.inReview", accent: "#F59E0B" },
+  { id: "Done", labelKey: "board.done", accent: "#10B981" },
+];
+
+function errorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.message) return err.message;
+    if (err.status === 403) return "You don't have permission to change this task.";
+    return `Request failed (${err.status}).`;
+  }
+  return "Something went wrong. Please try again.";
 }
 
-export const KanbanBoard = ({ tasks, onTaskClick, onTaskStatusChange, onAddTask }: KanbanBoardProps) => {
-  const [collapsedColumns, setCollapsedColumns] = useState<Set<string>>(new Set());
-  const [draggedTask, setDraggedTask] = useState<Task | null>(null);
-  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
+interface KanbanBoardProps {
+  projectId: number | null;
+  /** Used to render each card's issue key (e.g. "WR-42"). */
+  projectName?: string | null;
+  /** Only a project leader (or owner/admin) may add tasks; the API enforces the same rule. */
+  canManageTasks?: boolean;
+  onTaskClick?: (task: TaskDetailDto) => void;
+  onCreateTask?: (status: TaskStatusValue) => void;
+  /** Bumped by the parent after a create/edit so the board refetches. */
+  refreshToken?: number;
+  /** Lets the parent (project header) reuse the same loaded tasks. */
+  onTasksLoaded?: (tasks: TaskDetailDto[]) => void;
+}
 
-  const getColumnTasks = (status: TaskStatus) =>
-    tasks.filter(t => t.status === status);
+export const KanbanBoard = ({ projectId, projectName, canManageTasks = false, onTaskClick, onCreateTask, refreshToken, onTasksLoaded }: KanbanBoardProps) => {
+  const { t } = usePreferences();
+  const [tasks, setTasks] = useState<TaskDetailDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState<TaskDetailDto | null>(null);
+  const [filters, setFilters] = useState({ risk: "ALL", difficulty: "ALL", assigned: "ALL", sort: "created-desc" });
+  const [movingId, setMovingId] = useState<number | null>(null);
 
-  const toggleColumn = (colId: string) => {
-    setCollapsedColumns(prev => {
-      const next = new Set(prev);
-      if (next.has(colId)) next.delete(colId);
-      else next.add(colId);
-      return next;
-    });
-  };
+  // Ref-held so an inline parent callback can't re-create this effect on every render.
+  const onTasksLoadedRef = useRef(onTasksLoaded);
+  useEffect(() => {
+    onTasksLoadedRef.current = onTasksLoaded;
+  }, [onTasksLoaded]);
 
-  const handleDragStart = (e: React.DragEvent, task: Task) => {
-    setDraggedTask(task);
-    e.dataTransfer.effectAllowed = "move";
-  };
-
-  const handleDragOver = (e: React.DragEvent, columnId: string) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setDragOverColumn(columnId);
-  };
-
-  const handleDrop = (e: React.DragEvent, columnId: string) => {
-    e.preventDefault();
-    if (draggedTask) {
-      onTaskStatusChange(draggedTask.id, columnId as TaskStatus);
+  const load = useCallback(async () => {
+    if (projectId == null) {
+      setTasks([]);
+      setLoading(false);
+      return;
     }
-    setDraggedTask(null);
-    setDragOverColumn(null);
+    setLoading(true);
+    setError(null);
+    try {
+      const list = await taskApi.byProject(projectId);
+      setTasks(list);
+      onTasksLoadedRef.current?.(list);
+    } catch (err) {
+      setError(errorMessage(err));
+      setTasks([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  /** Filtering/sorting is view-only — the server stays the source of truth for the data itself. */
+  const visibleTasks = useMemo(() => {
+    let list = [...tasks];
+
+    if (filters.risk !== "ALL") list = list.filter((t) => (t.riskLevel ?? "LOW").toUpperCase() === filters.risk);
+    if (filters.difficulty !== "ALL") list = list.filter((t) => String(t.difficulty ?? "") === filters.difficulty);
+    if (filters.assigned === "YES") list = list.filter((t) => (t.assignees?.length ?? 0) > 0);
+    if (filters.assigned === "NO") list = list.filter((t) => (t.assignees?.length ?? 0) === 0);
+
+    const RISK_ORDER: Record<string, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+    const time = (v?: string | null) => (v ? new Date(v).getTime() : 0);
+
+    switch (filters.sort) {
+      case "created-asc":
+        return list.sort((a, b) => time(a.createdAt) - time(b.createdAt));
+      case "deadline":
+        return list.sort((a, b) => time(a.deadline) - time(b.deadline));
+      case "risk":
+        return list.sort(
+          (a, b) =>
+            (RISK_ORDER[(b.riskLevel ?? "LOW").toUpperCase()] ?? 1) -
+            (RISK_ORDER[(a.riskLevel ?? "LOW").toUpperCase()] ?? 1)
+        );
+      case "difficulty":
+        return list.sort((a, b) => (b.difficulty ?? 0) - (a.difficulty ?? 0));
+      default:
+        return list.sort((a, b) => time(b.createdAt) - time(a.createdAt));
+    }
+  }, [tasks, filters]);
+
+  useEffect(() => {
+    void load();
+  }, [load, refreshToken]);
+
+  /** Optimistic move with rollback — the server is the authority on whether it's allowed. */
+  const moveTask = async (task: TaskDetailDto, status: TaskStatusValue) => {
+    if (task.status === status || movingId != null) return;
+
+    const previous = tasks;
+    setMovingId(task.taskId);
+    setTasks((current) => current.map((t) => (t.taskId === task.taskId ? { ...t, status } : t)));
+    setError(null);
+
+    try {
+      const updated = await taskApi.updateProgress(task.taskId, {
+        status,
+        progress: progressFor(status, task.progress),
+      });
+
+      // Never dereference the response blindly: an endpoint that answers 204 yields `undefined`,
+      // and throwing inside a state updater unmounts the whole tree instead of being caught below.
+      if (updated?.taskId != null) {
+        setTasks((current) => current.map((t) => (t.taskId === updated.taskId ? updated : t)));
+      } else {
+        await load(); // no body came back — re-read rather than trust the optimistic value
+      }
+    } catch (err) {
+      setTasks(previous); // e.g. a dependency isn't Done yet — the API refuses and we revert
+      setError(errorMessage(err));
+    } finally {
+      setMovingId(null);
+    }
   };
 
-  const handleDragLeave = () => {
-    setDragOverColumn(null);
-  };
-
-  const totalPoints = (status: TaskStatus) =>
-    getColumnTasks(status).reduce((acc, t) => acc + t.storyPoints, 0);
+  if (projectId == null) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-2 text-gray-400">
+        <Inbox size={28} aria-hidden />
+        <p className="text-xs">Select a project to see its board.</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex gap-4 h-full overflow-x-auto pb-4 px-1">
-      {statusColumns.map(col => {
-        const colTasks = getColumnTasks(col.id as TaskStatus);
-        const isCollapsed = collapsedColumns.has(col.id);
-        const isDragOver = dragOverColumn === col.id;
+    <div className="flex h-full flex-col">
+      {error && (
+        <div role="alert" className="mx-4 mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          {error}
+        </div>
+      )}
 
-        return (
-          <motion.div
-            key={col.id}
-            className={`flex flex-col rounded-2xl transition-all ${isCollapsed ? "w-12" : "w-72 shrink-0"}`}
-            animate={{ width: isCollapsed ? 48 : 288 }}
-            style={{
-              background: isDragOver ? "rgba(26,35,126,0.04)" : "#F8FAFC",
-              border: isDragOver ? "2px dashed #1A237E" : "2px solid transparent",
-            }}
-            onDragOver={e => handleDragOver(e, col.id)}
-            onDrop={e => handleDrop(e, col.id)}
-            onDragLeave={handleDragLeave}
+      {/* Filter / sort bar */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-4 py-2">
+        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-500">
+          <SlidersHorizontal size={12} aria-hidden /> Filter
+        </span>
+
+        <select
+          value={filters.risk}
+          onChange={(e) => setFilters((f) => ({ ...f, risk: e.target.value }))}
+          aria-label="Filter by risk"
+          className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700"
+        >
+          <option value="ALL">Any risk</option>
+          <option value="HIGH">High risk</option>
+          <option value="MEDIUM">Medium risk</option>
+          <option value="LOW">Low risk</option>
+        </select>
+
+        <select
+          value={filters.difficulty}
+          onChange={(e) => setFilters((f) => ({ ...f, difficulty: e.target.value }))}
+          aria-label="Filter by difficulty"
+          className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700"
+        >
+          <option value="ALL">Any difficulty</option>
+          {[1, 2, 3, 4, 5].map((d) => (
+            <option key={d} value={String(d)}>
+              Difficulty {d}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={filters.assigned}
+          onChange={(e) => setFilters((f) => ({ ...f, assigned: e.target.value }))}
+          aria-label="Filter by assignment"
+          className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700"
+        >
+          <option value="ALL">Assigned or not</option>
+          <option value="YES">Assigned</option>
+          <option value="NO">Unassigned</option>
+        </select>
+
+        <span className="ml-auto inline-flex items-center gap-1.5">
+          <label htmlFor="board-sort" className="text-[11px] text-gray-500">
+            Sort
+          </label>
+          <select
+            id="board-sort"
+            value={filters.sort}
+            onChange={(e) => setFilters((f) => ({ ...f, sort: e.target.value }))}
+            className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700"
           >
-            {/* Column Header */}
-            <div className={`flex items-center gap-2 p-3 ${isCollapsed ? "flex-col" : ""}`}>
-              {isCollapsed ? (
-                <motion.button
-                  className="flex flex-col items-center gap-2 py-2"
-                  onClick={() => toggleColumn(col.id)}
-                  style={{ writingMode: "vertical-rl" }}
-                >
-                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: col.color }} />
-                  <span className="text-xs font-bold text-gray-600" style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
-                    {col.label}
-                  </span>
-                  <span className="text-xs text-gray-400">{colTasks.length}</span>
-                </motion.button>
-              ) : (
-                <>
-                  <div
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ backgroundColor: col.color }}
-                  />
-                  <span className="text-sm font-bold text-gray-700 flex-1">{col.label}</span>
+            <option value="created-desc">Newest first</option>
+            <option value="created-asc">Oldest first</option>
+            <option value="deadline">Deadline</option>
+            <option value="risk">Risk</option>
+            <option value="difficulty">Difficulty</option>
+          </select>
+        </span>
+
+        {(filters.risk !== "ALL" || filters.difficulty !== "ALL" || filters.assigned !== "ALL") && (
+          <button
+            type="button"
+            onClick={() => setFilters({ risk: "ALL", difficulty: "ALL", assigned: "ALL", sort: filters.sort })}
+            className="rounded-md px-2 py-1 text-[11px] text-[#1A237E] hover:underline"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="flex flex-1 items-center justify-center gap-2 text-xs text-gray-500">
+          <Loader2 size={14} className="animate-spin" aria-hidden /> Loading board…
+        </div>
+      ) : (
+        <div className="grid flex-1 grid-cols-1 gap-3 overflow-y-auto p-4 sm:grid-cols-2 xl:grid-cols-4">
+          {COLUMNS.map((column) => {
+            const columnTasks = visibleTasks.filter((t) => (t.status ?? "Todo") === column.id);
+            return (
+              <section
+                key={column.id}
+                aria-label={t(column.labelKey)}
+                data-testid={`column-${column.id}`}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => dragging && moveTask(dragging, column.id)}
+                // The accent is set inline so each column keeps its identity in both themes; the
+                // utility palette only has one board surface, which made four columns look like one.
+                style={{ borderTopColor: column.accent }}
+                className={`tg-column flex flex-col rounded border border-gray-200 border-t-[3px] bg-[#F4F5F7] p-2 transition-colors ${
+                  dragging && dragging.status !== column.id ? "ring-2 ring-inset ring-[#1A237E]/30" : ""
+                }`}
+              >
+                <header className="mb-2 flex items-center justify-between px-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center bg-gray-100 text-gray-500">
-                      {colTasks.length}
-                    </span>
-                    <motion.button
-                      className="w-6 h-6 rounded-lg hover:bg-gray-200 flex items-center justify-center text-gray-400"
-                      onClick={() => toggleColumn(col.id)}
-                      whileTap={{ scale: 0.9 }}
+                    <span className="h-2 w-2 rounded-full" style={{ background: column.accent }} aria-hidden />
+                    <h3
+                      className="text-[11px] font-semibold uppercase tracking-wider"
+                      style={{ color: column.accent }}
                     >
-                      <ChevronDown size={14} />
-                    </motion.button>
-                    <motion.button
-                      className="w-6 h-6 rounded-lg hover:bg-gray-200 flex items-center justify-center text-gray-400"
-                      whileTap={{ scale: 0.9 }}
-                    >
-                      <MoreHorizontal size={14} />
-                    </motion.button>
+                      {t(column.labelKey)}
+                    </h3>
+                    <span className="text-[11px] text-gray-500">{columnTasks.length}</span>
                   </div>
-                </>
-              )}
-            </div>
-
-            {/* Points indicator */}
-            {!isCollapsed && (
-              <div className="px-3 pb-2 flex items-center gap-2">
-                <div className="h-1 flex-1 rounded-full overflow-hidden bg-gray-200">
-                  <motion.div
-                    className="h-full rounded-full bg-gray-400"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${Math.min((colTasks.length / tasks.length) * 100, 100)}%` }}
-                    transition={{ duration: 0.8 }}
-                  />
-                </div>
-                <span className="text-[10px] text-gray-400">{totalPoints(col.id as TaskStatus)} pts</span>
-              </div>
-            )}
-
-            {/* Task Cards */}
-            {!isCollapsed && (
-              <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2.5 min-h-[200px]">
-                <AnimatePresence>
-                  {colTasks.map((task, index) => (
-                    <div
-                      key={task.id}
-                      draggable
-                      onDragStart={e => handleDragStart(e, task)}
-                      className={`${draggedTask?.id === task.id ? "opacity-40" : ""} cursor-grab active:cursor-grabbing`}
+                  {onCreateTask && canManageTasks && (
+                    <button
+                      type="button"
+                      onClick={() => onCreateTask(column.id)}
+                      aria-label={`Add task to ${t(column.labelKey)}`}
+                      className="rounded p-1 text-gray-400 hover:bg-white hover:text-gray-700"
                     >
+                      <Plus size={13} aria-hidden />
+                    </button>
+                  )}
+                </header>
+
+                <div className="flex-1 space-y-2">
+                  <AnimatePresence mode="popLayout">
+                    {columnTasks.map((task) => (
                       <TaskCard
+                        key={task.taskId}
                         task={task}
+                        projectName={projectName}
                         onClick={onTaskClick}
-                        index={index}
+                        onDragStart={setDragging}
+                        isMoving={movingId === task.taskId}
                       />
-                    </div>
-                  ))}
-                </AnimatePresence>
-
-                {colTasks.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-8 text-gray-300">
-                    <Inbox size={26} className="mb-2" />
-                    <p className="text-xs">Drop tasks here</p>
-                  </div>
-                )}
-
-                {/* Add task button */}
-                <motion.button
-                  className="w-full flex items-center gap-2 p-2.5 rounded-xl border-2 border-dashed border-gray-200 text-gray-400 hover:border-blue-300 hover:text-blue-500 hover:bg-blue-50/50 transition-all text-sm"
-                  onClick={() => onAddTask(col.id as TaskStatus)}
-                  whileHover={{ scale: 1.01 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <Plus size={14} />
-                  Add task
-                </motion.button>
-              </div>
-            )}
-          </motion.div>
-        );
-      })}
-
-      {/* Add Column */}
-      <motion.button
-        className="flex flex-col items-center justify-center w-12 shrink-0 rounded-2xl border-2 border-dashed border-gray-200 text-gray-300 hover:border-blue-300 hover:text-blue-400 hover:bg-blue-50/30 transition-all"
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-      >
-        <Plus size={18} />
-      </motion.button>
+                    ))}
+                  </AnimatePresence>
+                  {columnTasks.length === 0 && (
+                    <p className="py-6 text-center text-[10px] text-gray-400">
+                      {tasks.length > 0 && visibleTasks.length === 0 ? t("board.noMatch") : t("board.noTasks")}
+                    </p>
+                  )}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

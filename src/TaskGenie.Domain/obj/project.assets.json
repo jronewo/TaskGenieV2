@@ -8,32 +8,24 @@
     "net10.0": []
   },
   "packageFolders": {
-    "C:\\Users\\anleq\\.nuget\\packages\\": {},
-    "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
+    "/Users/jronehuynh/.nuget/packages/": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Domain\\TaskGenie.Domain.csproj",
+      "projectUniqueName": "/Users/jronehuynh/Downloads/TaskGenieV2-main/src/TaskGenie.Domain/TaskGenie.Domain.csproj",
       "projectName": "TaskGenie.Domain",
-      "projectPath": "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Domain\\TaskGenie.Domain.csproj",
-      "packagesPath": "C:\\Users\\anleq\\.nuget\\packages\\",
-      "outputPath": "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Domain\\obj\\",
+      "projectPath": "/Users/jronehuynh/Downloads/TaskGenieV2-main/src/TaskGenie.Domain/TaskGenie.Domain.csproj",
+      "packagesPath": "/Users/jronehuynh/.nuget/packages/",
+      "outputPath": "/Users/jronehuynh/Downloads/TaskGenieV2-main/src/TaskGenie.Domain/obj/",
       "projectStyle": "PackageReference",
-      "fallbackFolders": [
-        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
-      ],
       "configFilePaths": [
-        "C:\\Users\\anleq\\AppData\\Roaming\\NuGet\\NuGet.Config",
-        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
-        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        "/Users/jronehuynh/.nuget/NuGet/NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net10.0"
       ],
       "sources": {
-        "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
-        "C:\\Program Files\\dotnet\\library-packs": {},
         "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
@@ -75,7 +67,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.301/PortableRuntimeIdentifierGraph.json",
+        "runtimeIdentifierGraphPath": "/usr/local/share/dotnet/sdk/10.0.302/PortableRuntimeIdentifierGraph.json",
         "packagesToPrune": {
           "Microsoft.CSharp": "(,4.7.32767]",
           "Microsoft.VisualBasic": "(,10.4.32767]",

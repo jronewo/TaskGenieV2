@@ -11,6 +11,7 @@ public record ExportProjectQuery(int ProjectId, string Format) : IRequest<Export
 public record ExportResult(byte[] Data, string ContentType, string FileName);
 
 public class ExportProjectQueryHandler(
+    IResourceAuthorizationService authorization,
     IProjectRepository projectRepo,
     ITaskRepository taskRepo,
     ITeamMemberRepository teamMemberRepo,
@@ -20,6 +21,10 @@ public class ExportProjectQueryHandler(
 {
     public async Task<ExportResult> Handle(ExportProjectQuery request, CancellationToken ct)
     {
+        // An export bundles every task, member and score in the project into one file — it must
+        // be gated on project access, not merely on being logged in.
+        await authorization.EnsureCanAccessProjectAsync(request.ProjectId, ct);
+
         var project = await projectRepo.GetByIdAsync(request.ProjectId, ct)
             ?? throw new NotFoundException("Project", request.ProjectId);
 

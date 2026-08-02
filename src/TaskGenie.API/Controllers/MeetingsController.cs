@@ -31,7 +31,6 @@ public class MeetingsController(IMediator mediator) : ControllerBase
     {
         var meeting = await mediator.Send(new CreateMeetingCommand(
             request.ProjectId,
-            request.OrganizedBy,
             request.Title,
             request.Description,
             request.ScheduledAt,
@@ -86,7 +85,6 @@ public class MeetingsController(IMediator mediator) : ControllerBase
 
 public record CreateMeetingRequest(
     int ProjectId,
-    int OrganizedBy,
     string Title,
     string? Description,
     DateTime ScheduledAt,

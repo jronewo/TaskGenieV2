@@ -1,5 +1,6 @@
 using MediatR;
 using TaskGenie.Application.Features.Auth.DTOs;
+using TaskGenie.Application.Common.Security;
 using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Entities;
 using TaskGenie.Domain.Interfaces.Repositories;
@@ -33,7 +34,7 @@ public class GoogleLoginCommandHandler(
                 displayName,
                 googleUser.Email,
                 passwordHasher.Hash(Guid.NewGuid().ToString()),
-                avatar: googleUser.Picture);
+                avatar: GoogleAvatarUrl.Normalize(googleUser.Picture));
 
             await userRepository.AddUserAsync(user, ct);
         }

@@ -1,19 +1,27 @@
 using MediatR;
 using TaskGenie.Application.Common.Exceptions;
 using TaskGenie.Application.Features.Evaluations;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Entities;
 using TaskGenie.Domain.Interfaces.Repositories;
 
 namespace TaskGenie.Application.Features.Evaluations.Commands;
 
-public class CreateEvaluationCommandHandler(IEvaluationRepository evaluationRepository)
+public class CreateEvaluationCommandHandler(
+    ICurrentUser currentUser,
+    IEvaluationRepository evaluationRepository)
     : IRequestHandler<CreateEvaluationCommand, EvaluationDto>
 {
     public async Task<EvaluationDto> Handle(CreateEvaluationCommand request, CancellationToken ct)
     {
+        // The leader is the actor. Previously LeaderId came from the request body, so anyone
+        // could file a performance review in another leader's name.
+        if (request.UserId == currentUser.UserId)
+            throw new ForbiddenException("You cannot evaluate yourself.");
+
         var evaluation = Evaluation.Create(
             request.UserId,
-            request.LeaderId,
+            currentUser.UserId,
             request.SkillScore,
             request.TeamworkScore,
             request.DeadlineScore,

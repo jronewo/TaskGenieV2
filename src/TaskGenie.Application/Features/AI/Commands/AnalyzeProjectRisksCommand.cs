@@ -1,4 +1,5 @@
 using MediatR;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
 
 namespace TaskGenie.Application.Features.AI.Commands;
@@ -16,12 +17,15 @@ public sealed record ProjectRiskSummaryDto(
 public sealed record AnalyzeProjectRisksCommand(int ProjectId) : IRequest<ProjectRiskSummaryDto>;
 
 public sealed class AnalyzeProjectRisksCommandHandler(
+    IResourceAuthorizationService authz,
     ITaskRepository taskRepo,
     IMediator mediator
 ) : IRequestHandler<AnalyzeProjectRisksCommand, ProjectRiskSummaryDto>
 {
     public async Task<ProjectRiskSummaryDto> Handle(AnalyzeProjectRisksCommand cmd, CancellationToken ct)
     {
+        await authz.EnsureCanManageTasksInProjectAsync(cmd.ProjectId, ct);
+
         var tasks = await taskRepo.GetByProjectIdAsync(cmd.ProjectId, ct);
         var activeTasks = tasks.Where(task => !string.Equals(task.Status, "Done", StringComparison.OrdinalIgnoreCase)).ToList();
         var assessments = new List<(string Title, TaskGenie.Application.Features.AI.DTOs.RiskAssessmentDto Result)>();

@@ -1,5 +1,6 @@
 using MediatR;
 using TaskGenie.Application.Features.Tasks.DTOs;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
 
 namespace TaskGenie.Application.Features.Tasks.Queries;
@@ -7,12 +8,15 @@ namespace TaskGenie.Application.Features.Tasks.Queries;
 public sealed record GetDependencyGraphQuery(int ProjectId) : IRequest<DependencyGraphDto>;
 
 public sealed class GetDependencyGraphQueryHandler(
+    IResourceAuthorizationService authz,
     ITaskRepository taskRepo,
     ITaskDependencyRepository dependencyRepo
 ) : IRequestHandler<GetDependencyGraphQuery, DependencyGraphDto>
 {
     public async Task<DependencyGraphDto> Handle(GetDependencyGraphQuery query, CancellationToken ct)
     {
+        await authz.EnsureCanAccessProjectAsync(query.ProjectId, ct);
+
         var tasks = await taskRepo.GetByProjectIdAsync(query.ProjectId, ct);
         var graph = new DependencyGraphDto
         {

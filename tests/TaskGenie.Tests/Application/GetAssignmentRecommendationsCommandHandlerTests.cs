@@ -30,8 +30,8 @@ public sealed class GetAssignmentRecommendationsCommandHandlerTests
         var bobSkill = UserSkill.Create(11, 7, 2);
         bobSkill.Skill = skill;
 
-        var taskRepo = new Mock<ITaskRepository>();
-        taskRepo.Setup(repo => repo.GetByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(task);
+        var authz = new Mock<IResourceAuthorizationService>();
+        authz.Setup(a => a.EnsureCanManageTaskAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(task);
         var userRepo = new Mock<IUserRepository>();
         userRepo.Setup(repo => repo.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new List<User> { alice, bob });
         userRepo.Setup(repo => repo.GetUserSkillsAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync(new List<UserSkill> { aliceSkill });
@@ -57,7 +57,7 @@ public sealed class GetAssignmentRecommendationsCommandHandlerTests
             .Returns(System.Threading.Tasks.Task.CompletedTask);
 
         var handler = new GetAssignmentRecommendationsCommandHandler(
-            taskRepo.Object,
+            authz.Object,
             userRepo.Object,
             skillRepo.Object,
             recommendationRepo.Object,
@@ -83,11 +83,11 @@ public sealed class GetAssignmentRecommendationsCommandHandlerTests
     {
         var task = TaskEntity.Create(20, "Task", null);
         task.TaskId = 5;
-        var taskRepo = new Mock<ITaskRepository>();
-        taskRepo.Setup(repo => repo.GetByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(task);
+        var authz = new Mock<IResourceAuthorizationService>();
+        authz.Setup(a => a.EnsureCanManageTaskAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(task);
         var embedding = new Mock<IHuggingFaceService>();
         var handler = new GetAssignmentRecommendationsCommandHandler(
-            taskRepo.Object,
+            authz.Object,
             Mock.Of<IUserRepository>(),
             Mock.Of<ITaskRequiredSkillRepository>(),
             Mock.Of<IAiRecommendationRepository>(),

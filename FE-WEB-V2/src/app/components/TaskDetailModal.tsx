@@ -1,595 +1,549 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  X, Sparkles, Clock, MessageSquare, Paperclip, Tag,
-  ChevronRight, User, BarChart2, Flame, AlertTriangle,
-  CheckCircle, Circle, Plus, Send, Star, Zap, TrendingUp,
-  ArrowRight, Brain, Target, Shield
+  X,
+  MessageSquare,
+  Send,
+  Trash2,
+  Loader2,
+  AlertTriangle,
+  Save,
+  ChevronRight,
+  ArrowUp,
+  ArrowDown,
+  Equal,
+  Bug,
+  Bookmark,
+  SquareCheck,
+  ImagePlus,
 } from "lucide-react";
-import { Task, TaskStatus, aiSuggestedMembers, statusColumns, teamMembers, projects } from "../data/tmaiData";
-import { RadialBarChart, RadialBar, PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
-import { toast } from "sonner";
+import { taskApi, commentApi, TaskDetailDto, TaskCommentDto, TaskStatusValue } from "../services/taskApi";
+import { ApiError } from "../services/apiClient";
+import { useConfirm } from "./ConfirmDialog";
+import { AiAssignmentPanel } from "./AiAssignmentPanel";
+import { AiTaskInsights } from "./AiTaskInsights";
+import { TaskPlanningPanel } from "./TaskPlanningPanel";
+import { useAuth } from "../auth/AuthContext";
+import { userApi } from "../services/userApi";
+import {
+  ISSUE_TYPE_STYLE,
+  STATUS_LOZENGE,
+  WORKFLOW,
+  initials,
+  issueKey,
+  issueType,
+  priorityRank,
+  progressFor,
+  statusLabel,
+} from "../lib/jira";
 
-interface TaskDetailModalProps {
-  task: Task | null;
-  onClose: () => void;
-  onUpdate: (taskId: string, changes: Partial<Task>) => void;
+const TYPE_ICON = { Bug, Story: Bookmark, Task: SquareCheck } as const;
+
+function errorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.message) return err.message;
+    if (err.status === 403) return "You don't have permission to change this task.";
+    return `Request failed (${err.status}).`;
+  }
+  return "Something went wrong. Please try again.";
 }
 
-const RiskGauge = ({ score }: { score: number }) => {
-  const angle = (score / 100) * 180;
-  const getColor = () => {
-    if (score < 30) return "#10B981";
-    if (score < 60) return "#F59E0B";
-    if (score < 80) return "#EF4444";
-    return "#DC2626";
+/** One labelled row in the right-hand Details panel. */
+const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  <div className="grid grid-cols-[84px_1fr] items-center gap-2 py-1.5">
+    <span className="text-[10px] font-medium text-gray-500">{label}</span>
+    <div className="min-w-0 text-[11px] text-gray-900">{children}</div>
+  </div>
+);
+
+interface TaskDetailModalProps {
+  taskId: number | null;
+  /** Used for the breadcrumb and the issue key. */
+  projectName?: string | null;
+  onClose: () => void;
+  /** Called after any successful mutation so the board can refetch. */
+  onChanged?: () => void;
+}
+
+/**
+ * Jira-style issue view: breadcrumb and key at the top, the work itself on the left, and a Details
+ * panel on the right holding the workflow transition and every field.
+ */
+export const TaskDetailModal = ({ taskId, projectName, onClose, onChanged }: TaskDetailModalProps) => {
+  const { user } = useAuth();
+
+  const confirm = useConfirm();
+
+  const [task, setTask] = useState<TaskDetailDto | null>(null);
+  const [comments, setComments] = useState<TaskCommentDto[]>([]);
+  const [draft, setDraft] = useState("");
+  // Held until the comment is posted, so an image and its text arrive as one comment.
+  const [draftImage, setDraftImage] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (taskId == null) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const [detail, commentList] = await Promise.all([
+        taskApi.getById(taskId),
+        commentApi.byTask(taskId).catch(() => [] as TaskCommentDto[]),
+      ]);
+      setTask(detail);
+      setProgress(detail.progress ?? 0);
+      setComments(commentList);
+    } catch (err) {
+      setError(errorMessage(err));
+      setTask(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [taskId]);
+
+  useEffect(() => {
+    if (taskId != null) void load();
+    else {
+      setTask(null);
+      setComments([]);
+      setError(null);
+    }
+  }, [taskId, load]);
+
+  const run = async (key: string, action: () => Promise<void>) => {
+    if (busy) return; // double-submit guard
+    setBusy(key);
+    setError(null);
+    try {
+      await action();
+      onChanged?.();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(null);
+    }
   };
 
-  const getLabel = () => {
-    if (score < 30) return "Low Risk";
-    if (score < 60) return "Moderate";
-    if (score < 80) return "High Risk";
-    return "Critical";
+  const changeStatus = (status: TaskStatusValue) =>
+    task &&
+    run("status", async () => {
+      const updated = await taskApi.updateProgress(task.taskId, {
+        status,
+        progress: progressFor(status, task.progress),
+      });
+      setTask(updated);
+      setProgress(updated.progress ?? 0);
+    });
+
+  const saveProgress = () =>
+    task &&
+    run("progress", async () => {
+      const updated = await taskApi.updateProgress(task.taskId, { progress });
+      setTask(updated);
+    });
+
+  const addComment = () =>
+    task &&
+    run("comment", async () => {
+      await commentApi.create(task.taskId, draft.trim(), draftImage);
+      setDraft("");
+      setDraftImage(null);
+      setComments(await commentApi.byTask(task.taskId));
+    });
+
+  /** Uploads immediately so the author sees the picture before committing to the comment. */
+  const attachImage = (file: File) =>
+    task &&
+    run("upload", async () => {
+      const { imageUrl } = await userApi.uploadImage(file);
+      setDraftImage(imageUrl);
+    });
+
+  const deleteComment = async (commentId: number) => {
+    if (!(await confirm({
+      title: "Xóa bình luận này?",
+      description: "Bình luận sẽ bị gỡ khỏi task và không khôi phục được.",
+      confirmLabel: "Xóa",
+      tone: "danger",
+    }))) return;
+    void run(`del-${commentId}`, async () => {
+      await commentApi.remove(commentId);
+      if (task) setComments(await commentApi.byTask(task.taskId));
+    });
   };
 
-  const segments = [
-    { value: 30, color: "#10B981" },
-    { value: 30, color: "#F59E0B" },
-    { value: 20, color: "#EF4444" },
-    { value: 20, color: "#DC2626" },
-  ];
-
-  return (
-    <div className="flex flex-col items-center py-4">
-      <div className="relative w-44 h-24">
-        {/* Gauge background arc */}
-        <svg viewBox="0 0 200 110" className="w-full h-full">
-          {/* Background track */}
-          <path
-            d="M 20 100 A 80 80 0 0 1 180 100"
-            fill="none"
-            stroke="#F1F5F9"
-            strokeWidth="16"
-            strokeLinecap="round"
-          />
-          {/* Green segment */}
-          <path
-            d="M 20 100 A 80 80 0 0 1 68 34"
-            fill="none"
-            stroke="#10B981"
-            strokeWidth="14"
-            strokeLinecap="round"
-            opacity="0.8"
-          />
-          {/* Yellow segment */}
-          <path
-            d="M 68 34 A 80 80 0 0 1 132 34"
-            fill="none"
-            stroke="#F59E0B"
-            strokeWidth="14"
-            opacity="0.8"
-          />
-          {/* Red segment */}
-          <path
-            d="M 132 34 A 80 80 0 0 1 180 100"
-            fill="none"
-            stroke="#EF4444"
-            strokeWidth="14"
-            strokeLinecap="round"
-            opacity="0.8"
-          />
-          {/* Needle */}
-          <motion.g
-            initial={{ rotate: -90 }}
-            animate={{ rotate: -90 + angle }}
-            style={{ transformOrigin: "100px 100px" }}
-          >
-            <line
-              x1="100" y1="100"
-              x2="100" y2="28"
-              stroke={getColor()}
-              strokeWidth="3"
-              strokeLinecap="round"
-            />
-          </motion.g>
-          {/* Center dot */}
-          <circle cx="100" cy="100" r="6" fill={getColor()} />
-          <circle cx="100" cy="100" r="3" fill="white" />
-        </svg>
-      </div>
-      <motion.div
-        className="text-3xl font-bold mt-0"
-        style={{ color: getColor() }}
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        transition={{ type: "spring", delay: 0.3 }}
-      >
-        {score}
-      </motion.div>
-      <div
-        className="text-xs font-semibold mt-1 px-3 py-1 rounded-full"
-        style={{ color: getColor(), background: `${getColor()}20` }}
-      >
-        {getLabel()}
-      </div>
-    </div>
-  );
-};
-
-export const TaskDetailModal = ({ task, onClose, onUpdate }: TaskDetailModalProps) => {
-  const [activeTab, setActiveTab] = useState<"overview" | "ai" | "activity">("overview");
-  const [newComment, setNewComment] = useState("");
-
-  if (!task) return null;
-
-  const completedSubtasks = task.subtasks?.filter(s => s.done).length || 0;
-  const totalSubtasks = task.subtasks?.length || 0;
-  const project = task.projectId ? projects.find(p => p.id === task.projectId) : undefined;
-
-  const tabs = [
-    { id: "overview", label: "Overview", icon: Target },
-    { id: "ai", label: "AI Analysis", icon: Brain },
-    { id: "activity", label: "Activity", icon: MessageSquare },
-  ];
+  const type = task ? issueType(task) : "Task";
+  const TypeIcon = TYPE_ICON[type];
+  const rank = priorityRank(task?.priority);
+  const PriorityIcon = rank.direction === "up" ? ArrowUp : rank.direction === "down" ? ArrowDown : Equal;
+  const key = task ? issueKey(projectName, task.taskId) : "";
 
   return (
     <AnimatePresence>
-      {task && (
+      {taskId != null && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Task detail"
         >
-          {/* Backdrop */}
           <motion.div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={onClose}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-          />
-
-          {/* Modal */}
-          <motion.div
-            className="relative bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
-            initial={{ opacity: 0, scale: 0.9, y: 30 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 30 }}
-            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            className="flex max-h-[90vh] w-full max-w-5xl flex-col rounded-lg bg-white"
+            initial={{ scale: 0.96, y: 8 }}
+            animate={{ scale: 1, y: 0 }}
+            exit={{ scale: 0.96, y: 8 }}
           >
-            {/* Header */}
-            <div
-              className="px-6 pt-6 pb-4 relative"
-              style={{ background: "linear-gradient(135deg, #1A237E 0%, #283593 100%)" }}
-            >
-              {/* Decorative orbs */}
-              <div className="absolute top-0 right-16 w-32 h-32 rounded-full opacity-10"
-                style={{ background: "radial-gradient(circle, #7C4DFF, transparent)" }} />
-              <div className="absolute bottom-0 left-8 w-20 h-20 rounded-full opacity-10"
-                style={{ background: "radial-gradient(circle, #1E88E5, transparent)" }} />
-
-              <div className="flex items-start justify-between relative z-10">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs font-semibold text-blue-300 uppercase tracking-wider">#{task.id}</span>
-                    <span className="text-blue-400">·</span>
-                    <span className="text-xs text-blue-300">{task.storyPoints} story points</span>
-                  </div>
-                  <h2 className="text-xl font-bold text-white mb-3 leading-tight">{task.title}</h2>
-                  <div className="flex flex-wrap gap-2">
-                    {task.tags.map(tag => (
-                      <span key={tag} className="text-xs font-medium px-2.5 py-1 rounded-full bg-white/15 text-blue-100 border border-white/10">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <motion.button
-                  onClick={onClose}
-                  className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white ml-4"
-                  whileTap={{ scale: 0.9 }}
-                >
-                  <X size={18} />
-                </motion.button>
-              </div>
-
-              {/* Tabs */}
-              <div className="flex gap-1 mt-4 relative z-10">
-                {tabs.map(({ id, label, icon: Icon }) => (
-                  <motion.button
-                    key={id}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-t-xl text-sm font-medium transition-all ${
-                      activeTab === id
-                        ? "bg-white text-gray-800"
-                        : "text-blue-200 hover:text-white hover:bg-white/10"
+            <header className="flex items-center justify-between gap-3 border-b border-gray-200 px-5 py-2.5">
+              <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 text-[11px] text-gray-500">
+                <span className="truncate">{projectName ?? "Project"}</span>
+                <ChevronRight size={11} aria-hidden className="shrink-0" />
+                {task && (
+                  <span
+                    className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm ${
+                      task.taskTypeColor ? "" : ISSUE_TYPE_STYLE[type].cls
                     }`}
-                    onClick={() => setActiveTab(id as typeof activeTab)}
-                    whileTap={{ scale: 0.97 }}
+                    style={task.taskTypeColor ? { background: task.taskTypeColor } : undefined}
+                    aria-label={`Issue type: ${task.taskTypeName ?? type}`}
                   >
-                    <Icon size={14} />
-                    {label}
-                  </motion.button>
-                ))}
+                    <TypeIcon size={9} className="text-white" aria-hidden />
+                  </span>
+                )}
+                <span className="font-medium text-gray-700">{key}</span>
+              </nav>
+              <button type="button" onClick={onClose} aria-label="Close" className="shrink-0 text-gray-400 hover:text-gray-700">
+                <X size={16} aria-hidden />
+              </button>
+            </header>
+
+            {error && (
+              <div role="alert" className="mx-5 mt-3 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden />
+                {error}
               </div>
-            </div>
+            )}
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto">
-              <AnimatePresence mode="wait">
-                {activeTab === "overview" && (
-                  <motion.div
-                    key="overview"
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 10 }}
-                    className="p-6 grid grid-cols-1 md:grid-cols-3 gap-5"
-                  >
-                    {/* Left: Main Info */}
-                    <div className="md:col-span-2 space-y-5">
-                      <div>
-                        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Description</h4>
-                        <p className="text-sm text-gray-700 leading-relaxed">{task.description}</p>
-                      </div>
+            {loading ? (
+              <div className="flex items-center gap-2 p-10 text-xs text-gray-500">
+                <Loader2 size={14} className="animate-spin" aria-hidden /> Loading task…
+              </div>
+            ) : task ? (
+              <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
+                {/* Left: the work itself */}
+                <div className="flex-1 space-y-5 overflow-y-auto p-5">
+                  <h2 className="text-base font-semibold leading-snug text-gray-900">{task.title ?? "Task"}</h2>
 
-                      {task.subtasks && task.subtasks.length > 0 && (
-                        <div>
-                          <div className="flex items-center justify-between mb-3">
-                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                              Subtasks ({completedSubtasks}/{totalSubtasks})
-                            </h4>
-                            <div className="h-1.5 w-24 bg-gray-100 rounded-full overflow-hidden">
-                              <motion.div
-                                className="h-full bg-blue-500 rounded-full"
-                                initial={{ width: 0 }}
-                                animate={{ width: `${(completedSubtasks / totalSubtasks) * 100}%` }}
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            {task.subtasks.map(sub => (
-                              <motion.div
-                                key={sub.id}
-                                className={`flex items-center gap-3 p-2.5 rounded-xl border ${
-                                  sub.done ? "bg-green-50 border-green-100" : "bg-gray-50 border-gray-100"
-                                }`}
-                                whileHover={{ x: 2 }}
-                              >
-                                {sub.done
-                                  ? <CheckCircle size={16} className="text-green-500 shrink-0" />
-                                  : <Circle size={16} className="text-gray-300 shrink-0" />
-                                }
-                                <span className={`text-sm ${sub.done ? "text-gray-400 line-through" : "text-gray-700"}`}>
-                                  {sub.title}
-                                </span>
-                              </motion.div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                  <section>
+                    <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Description</h3>
+                    {task.description ? (
+                      <p className="whitespace-pre-line text-xs leading-relaxed text-gray-700">{task.description}</p>
+                    ) : (
+                      <p className="text-xs text-gray-400">No description.</p>
+                    )}
+                  </section>
 
-                      {/* Progress */}
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Progress</h4>
-                          <span className="text-sm font-bold text-gray-800">{task.progress}%</span>
-                        </div>
-                        <input
-                          type="range"
-                          min={0}
-                          max={100}
-                          step={5}
-                          value={task.progress}
-                          onChange={(e) => {
-                            const progress = Number(e.target.value);
-                            onUpdate(task.id, {
-                              progress,
-                              status: progress === 100 ? "done" : task.status === "done" ? "in_progress" : task.status,
-                            });
-                          }}
-                          className="w-full accent-[#7C4DFF] cursor-pointer"
-                        />
-                        <div className="h-3 bg-gray-100 rounded-full overflow-hidden -mt-1">
-                          <motion.div
-                            className="h-full rounded-full"
-                            style={{
-                              background: "linear-gradient(90deg, #7C4DFF, #1E88E5)",
-                            }}
-                            initial={{ width: 0 }}
-                            animate={{ width: `${task.progress}%` }}
-                            transition={{ duration: 0.4 }}
-                          />
-                        </div>
-                      </div>
-                    </div>
+                  <TaskPlanningPanel
+                    task={task}
+                    onChanged={() => {
+                      void load();
+                      onChanged?.();
+                    }}
+                  />
 
-                    {/* Right: Meta */}
-                    <div className="space-y-4">
-                      {project && (
-                        <div>
-                          <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Project</div>
-                          <div className="flex items-center gap-2 text-sm text-gray-700">
-                            <span>{project.icon}</span> {project.name}
-                          </div>
-                        </div>
-                      )}
+                  <AiTaskInsights
+                    task={task}
+                    onChanged={() => {
+                      void load();
+                      onChanged?.();
+                    }}
+                  />
 
-                      <div>
-                        <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Assignee</div>
-                        <select
-                          value={task.assignee.id}
-                          onChange={(e) => {
-                            const member = teamMembers.find((m) => m.id === e.target.value);
-                            if (member) onUpdate(task.id, { assignee: member });
-                          }}
-                          className="w-full text-xs font-semibold text-gray-800 border border-gray-200 rounded-lg px-2.5 py-2 outline-none focus:border-[#1A237E] bg-white"
+                  {/* AI assignment — the product's core feature, offered where the work is. */}
+                  {task.projectId != null && (
+                    <AiAssignmentPanel
+                      taskId={task.taskId}
+                      projectId={task.projectId}
+                      onAssigned={() => {
+                        void load();
+                        onChanged?.();
+                      }}
+                    />
+                  )}
+
+                  <section>
+                    <h3 className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                      <MessageSquare size={11} aria-hidden /> Comments ({comments.length})
+                    </h3>
+
+                    {draftImage && (
+                      <div className="mb-2 flex items-center gap-2 rounded-md border border-gray-200 p-2">
+                        <img src={draftImage} alt="Ảnh đính kèm" className="h-14 w-14 rounded object-cover" />
+                        <span className="flex-1 text-[10px] text-gray-500">Ảnh sẽ gửi kèm bình luận này.</span>
+                        <button
+                          type="button"
+                          onClick={() => setDraftImage(null)}
+                          aria-label="Bỏ ảnh đính kèm"
+                          className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
                         >
-                          {teamMembers.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.name} · {m.role}
-                            </option>
-                          ))}
-                        </select>
-                        <div className="flex items-center gap-2 mt-2">
-                          <img src={task.assignee.avatar} alt="" className="w-7 h-7 rounded-full object-cover" />
-                          <div>
-                            <div className="text-xs font-semibold text-gray-800">{task.assignee.name}</div>
-                            <div className="text-[10px] text-gray-500">{task.assignee.role}</div>
-                          </div>
-                        </div>
+                          <X size={12} aria-hidden />
+                        </button>
                       </div>
+                    )}
 
-                      <div>
-                        <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Deadline</div>
-                        <div className="flex items-center gap-2 text-sm text-gray-700">
-                          <Clock size={14} className="text-gray-400" />
-                          {new Date(task.deadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Priority</div>
-                        <span className={`text-xs font-semibold capitalize px-2.5 py-1 rounded-full ${
-                          task.priority === "urgent" ? "bg-red-100 text-red-600" :
-                          task.priority === "high" ? "bg-orange-100 text-orange-600" :
-                          task.priority === "medium" ? "bg-blue-100 text-blue-600" :
-                          "bg-gray-100 text-gray-600"
-                        }`}>
-                          {task.priority}
-                        </span>
-                      </div>
-
-                      <div>
-                        <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Status</div>
-                        <select
-                          value={task.status}
-                          onChange={(e) => {
-                            const status = e.target.value as TaskStatus;
-                            onUpdate(task.id, {
-                              status,
-                              progress: status === "done" ? 100 : task.progress,
-                            });
-                          }}
-                          className="w-full text-xs font-semibold text-gray-800 border border-gray-200 rounded-lg px-2.5 py-2 outline-none focus:border-[#1A237E] bg-white capitalize"
-                        >
-                          {statusColumns.map((col) => (
-                            <option key={col.id} value={col.id}>
-                              {col.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-
-                {activeTab === "ai" && (
-                  <motion.div
-                    key="ai"
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 10 }}
-                    className="p-6"
-                  >
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      {/* Risk Gauge */}
-                      <div className="bg-gradient-to-br from-slate-50 to-gray-100 rounded-2xl p-5 border border-gray-200">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Shield size={15} className="text-purple-600" />
-                          <h4 className="text-sm font-bold text-gray-800">Risk Prediction</h4>
-                        </div>
-                        <p className="text-xs text-gray-500 mb-2">AI-powered risk assessment</p>
-                        <RiskGauge score={task.riskScore} />
-                        <div className="grid grid-cols-4 gap-1 mt-2">
-                          {["Safe", "Moderate", "High", "Critical"].map((l, i) => (
-                            <div key={l} className="text-center">
-                              <div className="h-1 rounded-full mb-1" style={{
-                                background: ["#10B981", "#F59E0B", "#EF4444", "#DC2626"][i]
-                              }} />
-                              <span className="text-[9px] text-gray-500">{l}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* AI Insight Card */}
-                      <div
-                        className="rounded-2xl p-5 border"
-                        style={{
-                          background: "linear-gradient(135deg, rgba(124,77,255,0.06) 0%, rgba(30,136,229,0.06) 100%)",
-                          borderColor: "rgba(124,77,255,0.2)",
-                        }}
+                    <div className="mb-3 flex gap-2">
+                      <label
+                        htmlFor="comment-image"
+                        title="Đính kèm ảnh"
+                        className="flex cursor-pointer items-center rounded-md border border-gray-200 px-2 text-gray-500 hover:bg-gray-50"
                       >
-                        <div className="flex items-center gap-2 mb-3">
-                          <motion.div
-                            animate={{ rotate: [0, 10, -10, 0] }}
-                            transition={{ duration: 2, repeat: Infinity }}
-                          >
-                            <Sparkles size={15} className="text-purple-600" />
-                          </motion.div>
-                          <h4 className="text-sm font-bold text-gray-800">AI Insight</h4>
-                        </div>
-                        <p className="text-sm text-gray-700 leading-relaxed mb-4">{task.aiInsight}</p>
-                        <div className="space-y-2">
-                          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Recommendations</div>
-                          {[
-                            "Break task into smaller subtasks",
-                            "Add a second developer for backup",
-                            "Request deadline extension if needed",
-                          ].map((rec, i) => (
-                            <motion.div
-                              key={i}
-                              className="flex items-start gap-2 text-xs text-purple-800"
-                              initial={{ opacity: 0, x: -10 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              transition={{ delay: i * 0.1 }}
-                            >
-                              <ArrowRight size={12} className="text-purple-400 mt-0.5 shrink-0" />
-                              {rec}
-                            </motion.div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Team Suggestions */}
-                      <div className="md:col-span-2 bg-white rounded-2xl p-5 border border-gray-200">
-                        <div className="flex items-center gap-2 mb-4">
-                          <TrendingUp size={15} className="text-blue-600" />
-                          <h4 className="text-sm font-bold text-gray-800">AI-Suggested Team Members</h4>
-                          <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full ml-auto font-medium">
-                            Based on skills & availability
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                          {aiSuggestedMembers.map(({ member, score, reason }, i) => {
-                            const isAssigned = task.assignee.id === member.id;
-                            return (
-                              <motion.div
-                                key={member.id}
-                                className={`p-3 rounded-xl border transition-all ${
-                                  isAssigned ? "border-emerald-200 bg-emerald-50/40" : "border-gray-100 hover:border-blue-200 hover:shadow-md"
-                                }`}
-                                initial={{ opacity: 0, y: 15 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: i * 0.1 }}
-                                whileHover={{ y: -2 }}
-                              >
-                                <div className="relative mb-2">
-                                  <img
-                                    src={member.avatar}
-                                    alt={member.name}
-                                    className="w-10 h-10 rounded-xl object-cover"
-                                  />
-                                  <div
-                                    className="absolute -bottom-1 -right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white"
-                                    style={{
-                                      background: score >= 95 ? "#10B981" : score >= 85 ? "#1E88E5" : "#7C4DFF",
-                                    }}
-                                  >
-                                    {score}%
-                                  </div>
-                                </div>
-                                <div className="text-xs font-semibold text-gray-800 truncate">{member.name}</div>
-                                <div className="text-[10px] text-gray-500 mb-1">{member.role}</div>
-                                <div className="text-[10px] text-blue-600 line-clamp-2 leading-tight">{reason}</div>
-                                <div className="flex flex-wrap gap-1 mt-2 mb-2.5">
-                                  {member.skills.slice(0, 2).map(skill => (
-                                    <span key={skill} className="text-[9px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-md">
-                                      {skill}
-                                    </span>
-                                  ))}
-                                </div>
-                                <button
-                                  type="button"
-                                  disabled={isAssigned}
-                                  onClick={() => {
-                                    onUpdate(task.id, { assignee: member });
-                                    toast.success(`Assigned to ${member.name}`);
-                                    setActiveTab("overview");
-                                  }}
-                                  className={`w-full text-[10px] font-semibold py-1.5 rounded-lg transition-colors ${
-                                    isAssigned
-                                      ? "bg-emerald-100 text-emerald-700 cursor-default"
-                                      : "bg-[#1A237E] text-white hover:bg-[#0D1757]"
-                                  }`}
-                                >
-                                  {isAssigned ? "Assigned" : "Assign"}
-                                </button>
-                              </motion.div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-
-                {activeTab === "activity" && (
-                  <motion.div
-                    key="activity"
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 10 }}
-                    className="p-6"
-                  >
-                    <div className="space-y-4">
-                      {[
-                        { user: "An Le", avatar: "https://images.unsplash.com/photo-1763128516808-785e80c1dd68?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100", action: "updated the risk score from 65 to 88", time: "2 hours ago", type: "update" },
-                        { user: "Minh Tran", avatar: "https://images.unsplash.com/photo-1762753674498-73ec49feafc4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100", action: "Added comment: 'Need to fix accuracy on edge cases'", time: "5 hours ago", type: "comment" },
-                        { user: "AI Engine", avatar: null, action: "detected deadline conflict and sent alert", time: "6 hours ago", type: "ai" },
-                        { user: "Linh Nguyen", avatar: "https://images.unsplash.com/photo-1607746882042-944635dfe10e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100", action: "completed subtask: Model training loop", time: "1 day ago", type: "complete" },
-                      ].map((activity, i) => (
-                        <motion.div
-                          key={i}
-                          className="flex gap-3"
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: i * 0.1 }}
-                        >
-                          {activity.avatar ? (
-                            <img src={activity.avatar} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
-                          ) : (
-                            <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
-                              style={{ background: "linear-gradient(135deg, #7C4DFF, #1E88E5)" }}>
-                              <Sparkles size={14} className="text-white" />
-                            </div>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm text-gray-700">
-                              <span className="font-semibold">{activity.user}</span> {activity.action}
-                            </p>
-                            <p className="text-xs text-gray-400 mt-0.5">{activity.time}</p>
-                          </div>
-                        </motion.div>
-                      ))}
-                    </div>
-
-                    {/* Comment input */}
-                    <div className="mt-6 flex gap-3">
-                      <img
-                        src="https://images.unsplash.com/photo-1601513043334-36a0088140d4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100"
-                        alt=""
-                        className="w-8 h-8 rounded-full object-cover shrink-0"
+                        {busy === "upload" ? <Loader2 size={13} className="animate-spin" aria-hidden /> : <ImagePlus size={13} aria-hidden />}
+                        <span className="sr-only">Đính kèm ảnh</span>
+                      </label>
+                      <input
+                        id="comment-image"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) void attachImage(file);
+                          e.target.value = "";
+                        }}
                       />
-                      <div className="flex-1 flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2">
-                        <input
-                          className="flex-1 text-sm outline-none text-gray-700 placeholder-gray-400"
-                          placeholder="Add a comment..."
-                          value={newComment}
-                          onChange={e => setNewComment(e.target.value)}
-                        />
-                        <motion.button
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0"
-                          style={{ background: newComment ? "linear-gradient(135deg, #7C4DFF, #1E88E5)" : "#E5E7EB" }}
-                          whileTap={{ scale: 0.9 }}
-                        >
-                          <Send size={13} className={newComment ? "text-white" : "text-gray-400"} />
-                        </motion.button>
-                      </div>
+                      <input
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && draft.trim() && addComment()}
+                        placeholder="Write a comment…"
+                        aria-label="New comment"
+                        className="flex-1 rounded-md border border-gray-200 px-3 py-2 text-xs outline-none focus:border-[#1A237E]"
+                      />
+                      <button
+                        type="button"
+                        onClick={addComment}
+                        disabled={(!draft.trim() && !draftImage) || busy === "comment"}
+                        aria-label="Post comment"
+                        className="rounded-md bg-[#1A237E] px-3 text-white disabled:opacity-40"
+                      >
+                        {busy === "comment" ? <Loader2 size={13} className="animate-spin" aria-hidden /> : <Send size={13} aria-hidden />}
+                      </button>
                     </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+
+                    {comments.length === 0 ? (
+                      <p className="py-4 text-center text-[10px] text-gray-400">No comments yet.</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {comments.map((c) => {
+                          const mine = c.userId === user?.userId;
+                          return (
+                          <li
+                            key={c.commentId}
+                            className={`flex gap-2.5 rounded-lg border p-2.5 ${
+                              mine ? "border-blue-100 bg-blue-50" : "border-gray-200 bg-white"
+                            }`}
+                          >
+                            {/* The author is the first thing read, so the avatar carries the real
+                                picture when there is one rather than initials for everybody. */}
+                            {c.userAvatar ? (
+                              <img
+                                src={c.userAvatar}
+                                alt=""
+                                className="mt-0.5 h-7 w-7 shrink-0 rounded-full object-cover"
+                              />
+                            ) : (
+                              <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#1A237E] text-[9px] font-semibold text-white">
+                                {initials(c.userName ?? `U${c.userId}`)}
+                              </span>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-gray-900">
+                                  {c.userName ?? `User ${c.userId}`}
+                                  {mine && (
+                                    <span className="rounded-full bg-[#1A237E] px-1.5 py-0.5 text-[8px] font-medium text-white">
+                                      Bạn
+                                    </span>
+                                  )}
+                                  {c.createdAt && (
+                                    <span className="font-normal text-[9px] text-gray-500">
+                                      {c.createdAt.slice(0, 16).replace("T", " ")}
+                                    </span>
+                                  )}
+                                </p>
+                                {mine && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void deleteComment(c.commentId)}
+                                    disabled={busy === `del-${c.commentId}`}
+                                    aria-label="Delete comment"
+                                    className="shrink-0 rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+                                  >
+                                    <Trash2 size={12} aria-hidden />
+                                  </button>
+                                )}
+                              </div>
+                              {c.content && (
+                                <p className="mt-0.5 text-xs leading-relaxed whitespace-pre-line text-gray-700">
+                                  {c.content}
+                                </p>
+                              )}
+                              {c.imageUrl && (
+                                <a href={c.imageUrl} target="_blank" rel="noreferrer" className="mt-1.5 block">
+                                  <img
+                                    src={c.imageUrl}
+                                    alt="Ảnh đính kèm"
+                                    className="max-h-52 rounded-md border border-gray-200 object-cover"
+                                  />
+                                </a>
+                              )}
+                            </div>
+                          </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </section>
+                </div>
+
+                {/* Right: workflow transition + Details panel */}
+                <aside className="shrink-0 space-y-3 overflow-y-auto border-t border-gray-200 p-5 lg:w-80 lg:border-l lg:border-t-0">
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="task-status" className="sr-only">
+                      Status
+                    </label>
+                    <select
+                      id="task-status"
+                      value={task.status ?? "Todo"}
+                      onChange={(e) => changeStatus(e.target.value as TaskStatusValue)}
+                      disabled={busy === "status"}
+                      className={`rounded px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide disabled:opacity-50 ${
+                        STATUS_LOZENGE[task.status ?? "Todo"] ?? STATUS_LOZENGE.Todo
+                      }`}
+                    >
+                      {WORKFLOW.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                    {busy === "status" && <Loader2 size={13} className="animate-spin text-gray-400" aria-hidden />}
+                  </div>
+                  <p className="text-[10px] text-gray-400">
+                    A task can't move to Done while a blocker is still open — the API enforces that.
+                  </p>
+
+                  <div className="rounded-md border border-gray-200">
+                    <h3 className="border-b border-gray-200 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                      Details
+                    </h3>
+                    <div className="divide-y divide-gray-100 px-3 py-1">
+                      <Field label="Type">
+                        {/* The stored type wins; the title heuristic is only for tasks created
+                            before types existed, or left unclassified on purpose. */}
+                        {task.taskTypeName ? (
+                          <span
+                            className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                            style={{ background: task.taskTypeColor ?? "#64748B" }}
+                          >
+                            {task.taskTypeName}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5">
+                            <span
+                              className={`inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm ${ISSUE_TYPE_STYLE[type].cls}`}
+                              aria-hidden
+                            >
+                              <TypeIcon size={9} className="text-white" />
+                            </span>
+                            {type}
+                          </span>
+                        )}
+                      </Field>
+                      <Field label="Status">
+                        <span
+                          className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                            STATUS_LOZENGE[task.status ?? "Todo"] ?? STATUS_LOZENGE.Todo
+                          }`}
+                        >
+                          {statusLabel(task.status)}
+                        </span>
+                      </Field>
+                      <Field label="Priority">
+                        <span className="inline-flex items-center gap-1">
+                          <PriorityIcon size={12} className={rank.color} aria-hidden />
+                          {rank.label}
+                        </span>
+                      </Field>
+                      <Field label="Assignee">
+                        {task.assignees.length > 0 ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            {task.assignees[0].avatar ? (
+                              <img
+                                src={task.assignees[0].avatar}
+                                alt={task.assignees[0].userName ?? `User ${task.assignees[0].userId}`}
+                                className="h-5 w-5 shrink-0 rounded-full object-cover"
+                              />
+                            ) : (
+                              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#1A237E] text-[8px] font-semibold text-white">
+                                {initials(task.assignees[0].userName ?? `U${task.assignees[0].userId}`)}
+                              </span>
+                            )}
+                            <span className="truncate">
+                              {task.assignees[0].userName ?? `User ${task.assignees[0].userId}`}
+                              {task.assignees.length > 1 && ` +${task.assignees.length - 1}`}
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">Unassigned</span>
+                        )}
+                      </Field>
+                      <Field label="Risk">{task.riskLevel ?? "—"}</Field>
+                      <Field label="Due">{task.deadline ? task.deadline.slice(0, 10) : "—"}</Field>
+                      <Field label="Estimate">
+                        {task.estimatedTime
+                          ? `${task.estimatedTime}h`
+                          : task.aiEstimatedTime
+                            ? `${task.aiEstimatedTime}h (AI)`
+                            : "—"}
+                      </Field>
+                      <Field label="Difficulty">{task.difficulty ? `${task.difficulty}/5` : "—"}</Field>
+                      <Field label="Logged">{task.actualTime ? `${task.actualTime}h` : "—"}</Field>
+                    </div>
+                  </div>
+
+                  <div className="rounded-md border border-gray-200 p-3">
+                    <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Progress</h3>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={progress}
+                        onChange={(e) => setProgress(Number(e.target.value))}
+                        aria-label="Progress percentage"
+                        className="flex-1"
+                      />
+                      <span className="w-9 text-right text-[11px] text-gray-600">{progress}%</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={saveProgress}
+                      disabled={busy === "progress" || progress === (task.progress ?? 0)}
+                      className="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-md border border-gray-200 px-2.5 py-1.5 text-[11px] disabled:opacity-40"
+                    >
+                      {busy === "progress" ? <Loader2 size={12} className="animate-spin" aria-hidden /> : <Save size={12} aria-hidden />}
+                      Save progress
+                    </button>
+                  </div>
+                </aside>
+              </div>
+            ) : null}
           </motion.div>
         </motion.div>
       )}

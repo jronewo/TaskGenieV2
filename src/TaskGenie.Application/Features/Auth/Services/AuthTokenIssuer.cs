@@ -8,7 +8,8 @@ namespace TaskGenie.Application.Features.Auth.Services;
 public class AuthTokenIssuer(
     IUserRepository userRepository,
     IOrganizationRepository organizationRepository,
-    IJwtTokenService jwtTokenService) : IAuthTokenIssuer
+    IJwtTokenService jwtTokenService,
+    IRefreshTokenService refreshTokenService) : IAuthTokenIssuer
 {
     public async Task<AuthResponse> IssueAsync(User user, string message, CancellationToken ct = default)
     {
@@ -17,16 +18,20 @@ public class AuthTokenIssuer(
         var isOrgOwner = await organizationRepository.GetByOwnerIdAsync(user.UserId, ct) != null;
         var role = user.Role ?? "NORMAL_USER";
         var token = jwtTokenService.GenerateToken(user.UserId, user.Email, role);
+        var refreshToken = await refreshTokenService.IssueAsync(user.UserId, ct);
 
         return new AuthResponse(
             user.UserId,
             user.Name,
             user.Email,
             role,
+            user.Avatar,
             isFirstLogin,
             isOrgOwner,
             token.AccessToken,
             token.ExpiresAtUtc,
+            refreshToken.RawToken,
+            refreshToken.ExpiresAtUtc,
             message);
     }
 }

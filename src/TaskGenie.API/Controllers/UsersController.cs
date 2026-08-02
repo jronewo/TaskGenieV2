@@ -17,14 +17,16 @@ public class UsersController(IMediator mediator) : ControllerBase
     public async Task<IActionResult> GetById(int id)
         => Ok(await mediator.Send(new GetUserByIdQuery(id)));
 
-    [HttpPut("{id}/profile")]
-    public async Task<IActionResult> UpdateProfile(int id, [FromBody] UpdateProfileRequest request)
-        => Ok(await mediator.Send(new UpdateUserProfileCommand(id, request.Name, request.Avatar)));
+    // Identity endpoints act on the authenticated user only. They used to accept an arbitrary
+    // {id}, which let any caller rename, re-avatar or change the password of any account.
+    [HttpPut("me/profile")]
+    public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileRequest request)
+        => Ok(await mediator.Send(new UpdateUserProfileCommand(request.Name, request.Avatar)));
 
-    [HttpPost("{id}/avatar")]
-    public async Task<IActionResult> UploadAvatar(int id, IFormFile file)
+    [HttpPost("me/avatar")]
+    public async Task<IActionResult> UploadAvatar(IFormFile file)
     {
-        var url = await mediator.Send(new UploadAvatarCommand(id, file.OpenReadStream(), file.FileName));
+        var url = await mediator.Send(new UploadAvatarCommand(file.OpenReadStream(), file.FileName));
         return Ok(new { avatarUrl = url });
     }
 
@@ -35,11 +37,11 @@ public class UsersController(IMediator mediator) : ControllerBase
         return Ok(new { imageUrl = url });
     }
 
-    [HttpPut("{id}/change-password")]
-    public async Task<IActionResult> ChangePassword(int id, [FromBody] ChangePasswordRequest request)
+    [HttpPut("me/change-password")]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
     {
-        await mediator.Send(new ChangePasswordCommand(id, request.CurrentPassword, request.NewPassword));
-        return Ok(new { message = "Password changed successfully." });
+        await mediator.Send(new ChangePasswordCommand(request.CurrentPassword, request.NewPassword));
+        return Ok(new { message = "Password changed successfully. Please sign in again." });
     }
 }
 

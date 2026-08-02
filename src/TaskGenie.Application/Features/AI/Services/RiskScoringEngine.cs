@@ -23,7 +23,13 @@ public sealed record RiskScoringInput(
     DateTime? LatestProgressAt,
     double AverageActiveTaskCount,
     double AverageAvailableHours,
-    double? AverageDeadlineScore);
+    double? AverageDeadlineScore,
+    /// <summary>1–5 as stored on the task; null when nobody (and no AI pass) has estimated it.</summary>
+    int? Difficulty = null,
+    /// <summary>Low/Medium/High/Critical — stands in for difficulty when nobody has estimated one.</summary>
+    string? Priority = null,
+    /// <summary>The project's configured working day; null falls back to the platform default.</summary>
+    int? WorkingHoursPerDay = null);
 
 public sealed record RiskRuleDefinition(int? RuleId, string Code, double Weight, string Version);
 
@@ -54,11 +60,13 @@ public sealed class RiskScoringEngine
 
     public static readonly IReadOnlyList<RiskRuleDefinition> DefaultRules =
     [
-        new(null, RiskFactorCodes.Deadline, 0.30, DefaultVersion),
+        // Deadline leads: a date that has nearly arrived is the signal people actually act on, and
+        // spreading it thin across five factors kept "due tomorrow" reading as MEDIUM.
+        new(null, RiskFactorCodes.Deadline, 0.40, DefaultVersion),
         new(null, RiskFactorCodes.Progress, 0.25, DefaultVersion),
         new(null, RiskFactorCodes.Dependency, 0.20, DefaultVersion),
-        new(null, RiskFactorCodes.Workload, 0.15, DefaultVersion),
-        new(null, RiskFactorCodes.Historical, 0.10, DefaultVersion)
+        new(null, RiskFactorCodes.Workload, 0.10, DefaultVersion),
+        new(null, RiskFactorCodes.Historical, 0.05, DefaultVersion)
     ];
 
     public RiskScoringResult Calculate(RiskScoringInput input, IReadOnlyCollection<RiskRuleDefinition>? configuredRules = null)
@@ -86,16 +94,71 @@ public sealed class RiskScoringEngine
         }).ToList();
 
         var total = Math.Round(Math.Clamp(factors.Sum(f => f.Contribution), 0, 100), 2);
-        var level = GetRiskLevel(total);
+        var level = Escalate(GetRiskLevel(total), input);
         var highest = factors.OrderByDescending(f => f.Contribution).Take(3).ToList();
         var explanation = $"Risk {level} ({total:F2}/100). Main contributors: " +
                           string.Join(", ", highest.Select(f => $"{f.Code} {f.Score:F0}")) + ".";
+
+        // A level that was raised by a floor must say so, or the score and the badge look inconsistent.
+        if (level != GetRiskLevel(total))
+        {
+            var daysLeft = input.Deadline!.Value.DayNumber - input.Today.DayNumber;
+            var why = input.Difficulty is int d && d >= HardDifficulty
+                ? $"difficulty {d}/5"
+                : $"{input.Priority} priority";
+            explanation += daysLeft < 0
+                ? $" Raised to {level}: overdue by {-daysLeft} day(s) and not finished."
+                : $" Raised to {level}: due in {daysLeft} day(s) with {why}.";
+        }
 
         var mitigations = BuildMitigations(factors);
         var version = rules.Select(r => r.Version).FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)) ?? DefaultVersion;
 
         return new RiskScoringResult(total, level, version, factors, explanation, mitigations);
     }
+
+    /// <summary>How hard a task has to be before "due tomorrow" is treated as a red flag.</summary>
+    public const int HardDifficulty = 4;
+
+    /// <summary>Platform default working day, used when a project has not configured its own.</summary>
+    public const int DefaultWorkingHoursPerDay = 8;
+
+    /// <summary>
+    /// A weighted average can bury a deadline that is about to land, because four calm factors
+    /// outvote one alarming one. These floors say the quiet part outright: work that is overdue,
+    /// or hard and due within a day, is high risk regardless of what the average came to.
+    /// </summary>
+    internal static string Escalate(string level, RiskScoringInput input)
+    {
+        if (IsDone(input) || !input.Deadline.HasValue) return level;
+
+        var days = input.Deadline.Value.DayNumber - input.Today.DayNumber;
+
+        if (days < 0) return AtLeast(level, "HIGH");
+        if (days <= 1 && IsHard(input)) return AtLeast(level, "HIGH");
+        return level;
+    }
+
+    /// <summary>
+    /// Whether the task is heavy enough that an imminent deadline is alarming.
+    ///
+    /// Either signal is enough, and deliberately so. Difficulty is often an AI suggestion rather
+    /// than a human judgement — the estimate writes it — so letting a suggested 3 veto a priority
+    /// the author set to High by hand had the machine overruling the person. Priority alone also
+    /// has to count, because most tasks never get a difficulty at all.
+    /// </summary>
+    private static bool IsHard(RiskScoringInput input)
+    {
+        if (input.Difficulty is int difficulty && difficulty >= HardDifficulty) return true;
+
+        return string.Equals(input.Priority, "High", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(input.Priority, "Critical", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static readonly string[] LevelOrder = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
+
+    private static string AtLeast(string level, string floor) =>
+        Array.IndexOf(LevelOrder, level) >= Array.IndexOf(LevelOrder, floor) ? level : floor;
 
     public static string GetRiskLevel(double score) => score switch
     {
@@ -139,11 +202,20 @@ public sealed class RiskScoringEngine
             _ => 10
         };
 
-        var availableHours = Math.Max(days * 8, 1);
+        // Usable working days, not calendar days. With a deadline on the 5th and today the 3rd,
+        // only the 4th is a full day of work: today is already partly spent and the deadline day is
+        // when the work is handed over. So it is (days - 1) shifts of 8 hours, floored at one shift
+        // so a task due today or tomorrow still divides by something sensible.
+        var workingDays = Math.Max(days - 1, 1);
+        var hoursPerDay = input.WorkingHoursPerDay is int configured && configured is >= 1 and <= 24
+            ? configured
+            : DefaultWorkingHoursPerDay;
+        var availableHours = workingDays * hoursPerDay;
         var effortPressure = remainingHours <= 0 ? 0 : Math.Clamp(remainingHours / (double)availableHours * 100, 0, 100);
         var score = Math.Max(scheduleScore, effortPressure);
-        return (score, $"daysRemaining={days};remainingHours={remainingHours};availableHours={availableHours}",
-            "Deadline proximity and remaining-effort pressure.");
+        return (score,
+            $"daysRemaining={days};workingDays={workingDays};remainingHours={remainingHours};availableHours={availableHours}",
+            $"Deadline proximity and remaining effort against {workingDays} working day(s) of {hoursPerDay}h.");
     }
 
     private static (double Score, string Raw, string Evidence) CalculateProgress(RiskScoringInput input)

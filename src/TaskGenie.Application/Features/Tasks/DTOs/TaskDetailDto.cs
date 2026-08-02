@@ -15,6 +15,11 @@ public sealed class TaskDetailDto
     public int? AiEstimatedTime { get; init; }
     public int? ActualTime { get; init; }
     public int? Progress { get; init; }
+    /// <summary>1–5. Absent from this DTO until now, so the board and the risk panel never saw it.</summary>
+    public int? Difficulty { get; init; }
+    public int? TaskTypeId { get; init; }
+    public string? TaskTypeName { get; init; }
+    public string? TaskTypeColor { get; init; }
     public string? RiskLevel { get; init; }
     public string? AiSummary { get; init; }
     public DateTime? CreatedAt { get; init; }
@@ -43,6 +48,10 @@ public sealed class TaskDetailDto
         AiEstimatedTime = t.AiEstimatedTime,
         ActualTime = t.ActualTime,
         Progress = t.Progress,
+        Difficulty = t.Difficulty,
+        TaskTypeId = t.TaskTypeId,
+        TaskTypeName = t.TaskType?.Name,
+        TaskTypeColor = t.TaskType?.ColorHex,
         RiskLevel = t.RiskLevel,
         AiSummary = t.AiSummary,
         CreatedAt = t.CreatedAt,

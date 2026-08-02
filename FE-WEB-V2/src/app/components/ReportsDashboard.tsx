@@ -1,377 +1,300 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 import { motion } from "motion/react";
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, PieChart, Pie, Cell
+  BarChart, Bar, XAxis, YAxis, Tooltip, LabelList,
+  ResponsiveContainer, PieChart, Pie, Cell,
 } from "recharts";
-import { Sparkles, AlertTriangle, Users } from "lucide-react";
-import { tasks, teamMembers } from "../data/tmaiData";
+import { BarChart2, AlertTriangle, Loader2, FolderKanban, CalendarClock } from "lucide-react";
+import {
+  CHART_COLORS,
+  ChartEmpty,
+  ChartLegend,
+  ChartPanel,
+  ChartTooltip,
+  RISK_COLOR,
+  STATUS_COLOR,
+  axisProps,
+  shortLabel,
+} from "./charts/chartTheme";
+import { useWorkspace, summariseWorkspace } from "../hooks/useWorkspace";
 
-import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "./ui/accordion";
-
-const sprintData = [
-  { sprint: "S1", completed: 18, planned: 20, risk: 25 },
-  { sprint: "S2", completed: 22, planned: 25, risk: 30 },
-  { sprint: "S3", completed: 19, planned: 22, risk: 45 },
-  { sprint: "S4", completed: 28, planned: 28, risk: 35 },
-  { sprint: "S5", completed: 24, planned: 30, risk: 42 },
-  { sprint: "S6 (Current)", completed: 11, planned: 24, risk: 58 },
-];
-
-const burndownData = [
-  { day: "Day 1", remaining: 84, ideal: 84 },
-  { day: "Day 3", remaining: 76, ideal: 70 },
-  { day: "Day 5", remaining: 62, ideal: 56 },
-  { day: "Day 7", remaining: 55, ideal: 42 },
-  { day: "Day 9", remaining: 41, ideal: 28 },
-  { day: "Day 11", remaining: 30, fill: 14 },
-  { day: "Day 13", remaining: 25, ideal: 0 },
-];
-
-const riskTrend = [
-  { time: "Mon", score: 35 },
-  { time: "Tue", score: 42 },
-  { time: "Wed", score: 38 },
-  { time: "Thu", score: 55 },
-  { time: "Fri", score: 62 },
-  { time: "Sat", score: 48 },
-  { time: "Sun", score: 52 },
-];
-
-const riskDistribution = [
-  { name: "Safe", value: tasks.filter(t => t.risk === "safe").length, color: "#10B981" },
-  { name: "Medium", value: tasks.filter(t => t.risk === "medium").length, color: "#F59E0B" },
-  { name: "High", value: tasks.filter(t => t.risk === "high").length, color: "#EF4444" },
-  { name: "Critical", value: tasks.filter(t => t.risk === "critical").length, color: "#DC2626" },
-];
-
-const affectedTasks = tasks.filter(t => t.risk === "high" || t.risk === "critical");
-const criticalCount = tasks.filter(t => t.risk === "critical").length;
-const overallRisk: "Low" | "Medium" | "High" = criticalCount > 0 ? "High" : affectedTasks.length >= 2 ? "Medium" : "Low";
-const riskLevelStyle = {
-  Low: { text: "text-emerald-700", bg: "bg-emerald-50", border: "border-emerald-200", dot: "#10B981" },
-  Medium: { text: "text-amber-700", bg: "bg-amber-50", border: "border-amber-200", dot: "#F59E0B" },
-  High: { text: "text-red-700", bg: "bg-red-50", border: "border-red-200", dot: "#EF4444" },
-}[overallRisk];
-
-const WORKLOAD_CAPACITY = 30; // assumed story-point capacity per person per sprint
-const workloadByMember = teamMembers.map(member => {
-  const points = tasks.filter(t => t.assignee.id === member.id).reduce((acc, t) => acc + t.storyPoints, 0);
-  const pct = Math.round((points / WORKLOAD_CAPACITY) * 100);
-  return { member, points, pct, overloaded: pct > 80 };
-});
-
-const RADIAN = Math.PI / 180;
-const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
-  const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-  const x = cx + radius * Math.cos(-midAngle * RADIAN);
-  const y = cy + radius * Math.sin(-midAngle * RADIAN);
-  if (percent < 0.08) return null;
-  return (
-    <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight="bold" fontFamily="monospace">
-      {`${(percent * 100).toFixed(0)}%`}
-    </text>
-  );
+const STATUS_COLORS: Record<string, string> = {
+  Done: "#10B981",
+  InProgress: "#1E88E5",
+  Todo: "#94A3B8",
 };
 
-export const ReportsDashboard = () => {
-  return (
-    <div className="h-full overflow-y-auto p-4 space-y-4 bg-[#F8FAFC]">
-      {/* Title */}
-      <div className="flex items-center justify-between border-b border-gray-200 pb-3">
-        <div>
-          <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Analytics & Reports</h2>
-          <p className="text-[10px] text-gray-500 mt-0.5">Sprint performance & AI risk trends</p>
-        </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-purple-200 bg-purple-50/40 text-[11px] font-semibold text-purple-700">
-          <Sparkles size={12} />
-          <span>AI Analysis Active</span>
-        </div>
-      </div>
+const RISK_COLORS: Record<string, string> = {
+  HIGH: "#EF4444",
+  MEDIUM: "#F59E0B",
+  LOW: "#10B981",
+};
 
-      {/* Top metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {[
-          { label: "AVG VELOCITY", value: "84 pts", change: "+12%", trendUp: true },
-          { label: "ON-TIME RATE", value: "76%", change: "-4%", trendUp: false },
-          { label: "TEAM UTILIZATION", value: "89%", change: "+3%", trendUp: true },
-          { label: "AI ACCURACY", value: "91%", change: "+7%", trendUp: true },
-        ].map((metric, i) => (
-          <motion.div
-            key={`metric-card-id-${metric.label}`}
-            className="bg-white rounded-lg p-3.5 border border-gray-200 shadow-3xs flex flex-col justify-between gap-2"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.05 }}
+const ALL = "ALL";
+
+/**
+ * Reports for one project at a time, with an "all projects" roll-up still available.
+ *
+ * There is no reports endpoint on the API — these figures are derived from the same project and
+ * task rows the user is already authorised to read, so scoping to a project is a filter here
+ * rather than a new server-side query.
+ */
+export const ReportsDashboard = () => {
+  const { projects, tasks, loading, error } = useWorkspace();
+  const [scope, setScope] = useState<string>(ALL);
+
+  // A project that disappears (deleted, access revoked) must not strand the page on a dead filter.
+  const activeScope = scope !== ALL && projects.some((p) => String(p.projectId) === scope) ? scope : ALL;
+  const selected = projects.find((p) => String(p.projectId) === activeScope) ?? null;
+
+  const scopedProjects = useMemo(
+    () => (selected ? [selected] : projects),
+    [selected, projects]
+  );
+  const scopedTasks = useMemo(
+    () => (selected ? tasks.filter((t) => t.projectId === selected.projectId) : tasks),
+    [selected, tasks]
+  );
+
+  const s = summariseWorkspace(scopedProjects, scopedTasks);
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 p-6 text-xs text-gray-500">
+        <Loader2 size={14} className="animate-spin" aria-hidden /> Loading reports…
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div role="alert" className="m-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+        {error}
+      </div>
+    );
+  }
+
+  if (projects.length === 0) {
+    return (
+      <div className="p-10 text-center text-xs text-gray-500">
+        No projects yet — reports appear once you have data.
+      </div>
+    );
+  }
+
+  const statusData = [
+    { name: "Done", value: s.doneTasks },
+    { name: "InProgress", value: s.inProgressTasks },
+    { name: "Todo", value: s.todoTasks },
+  ].filter((d) => d.value > 0);
+
+  const riskCounts = scopedProjects.reduce<Record<string, number>>((acc, p) => {
+    const key = (p.riskLevel ?? "LOW").toUpperCase();
+    acc[key] = (acc[key] ?? 0) + 1;
+    return acc;
+  }, {});
+  const riskData = Object.entries(riskCounts).map(([name, value]) => ({ name, value }));
+
+  const perProject = scopedProjects.map((p) => ({
+    name: p.name.length > 14 ? `${p.name.slice(0, 13)}…` : p.name,
+    progress: p.progress,
+    tasks: tasks.filter((t) => t.projectId === p.projectId).length,
+  }));
+
+  // Only meaningful for one project: how its own tasks split by priority.
+  const priorityData = selected
+    ? Object.entries(
+        scopedTasks.reduce<Record<string, number>>((acc, t) => {
+          const key = t.priority ?? "Medium";
+          acc[key] = (acc[key] ?? 0) + 1;
+          return acc;
+        }, {})
+      ).map(([name, value]) => ({ name, value }))
+    : [];
+
+  return (
+    <div className="h-full overflow-y-auto p-4 space-y-4">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+            <BarChart2 size={16} className="text-[#1A237E]" aria-hidden /> Reports
+          </h1>
+          <p className="mt-0.5 text-[10px] text-gray-500">
+            {selected
+              ? `${selected.name} — ${s.totalTasks} task(s), ${selected.progress}% progress.`
+              : `Live figures across ${s.totalProjects} project(s) and ${s.totalTasks} task(s).`}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label htmlFor="report-project" className="flex items-center gap-1.5 text-[11px] text-gray-600">
+            <FolderKanban size={12} aria-hidden /> Project
+          </label>
+          <select
+            id="report-project"
+            value={activeScope}
+            onChange={(e) => setScope(e.target.value)}
+            className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-gray-800 outline-none focus:border-[#1A237E]"
           >
-            <div className="flex items-center justify-between w-full">
-              <span className="text-xs font-black text-[#000000] tracking-wider">{metric.label}</span>
-              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded font-mono ${
-                metric.trendUp ? "bg-green-50 text-green-600" : "bg-red-50 text-red-600"
-              }`}>
-                {metric.change}
-              </span>
-            </div>
-            <div className="text-xl font-extrabold text-[#0F172A] tracking-tight font-mono">{metric.value}</div>
+            <option value={ALL}>All projects</option>
+            {projects.map((p) => (
+              <option key={p.projectId} value={String(p.projectId)}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </header>
+
+      {selected && (
+        <section className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[11px] text-gray-600">
+          <span className="font-semibold text-gray-900">{selected.name}</span>
+          <span
+            className="rounded px-1.5 py-0.5 text-[10px] font-medium"
+            style={{ background: `${RISK_COLORS[(selected.riskLevel ?? "LOW").toUpperCase()] ?? "#94A3B8"}1A` }}
+          >
+            {(selected.riskLevel ?? "LOW").toUpperCase()} RISK
+          </span>
+          <span>{selected.status ?? "Planning"}</span>
+          {selected.deadline && (
+            <span className="inline-flex items-center gap-1">
+              <CalendarClock size={11} aria-hidden /> due {selected.deadline.slice(0, 10)}
+            </span>
+          )}
+          {selected.teamName && <span>Team: {selected.teamName}</span>}
+        </section>
+      )}
+
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        {[
+          { label: "Completion", value: `${s.completionRate}%` },
+          { label: "Avg progress", value: `${s.averageProgress}%` },
+          { label: "Tasks done", value: `${s.doneTasks}/${s.totalTasks}` },
+          { label: selected ? "Risk level" : "At-risk projects", value: selected ? (selected.riskLevel ?? "LOW").toUpperCase() : s.highRiskProjects },
+        ].map((card) => (
+          <motion.div
+            key={card.label}
+            className="rounded-lg border border-gray-200 bg-white p-3"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <p className="text-[10px] uppercase tracking-wide text-gray-500">{card.label}</p>
+            <p className="mt-1 text-lg font-semibold text-gray-900">{card.value}</p>
           </motion.div>
         ))}
       </div>
 
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Sprint Velocity */}
-        <div className="lg:col-span-2 bg-white rounded-lg p-4 border border-gray-200 shadow-3xs">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Sprint Velocity</h3>
-              <p className="text-[10px] text-gray-400 mt-0.5">Completed vs Planned tasks</p>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <ChartPanel title={selected ? "Progress" : "Progress by project"}>
+          {perProject.length === 0 ? (
+            <ChartEmpty message="Chưa có dự án nào." />
+          ) : (
+            <div style={{ height: Math.max(140, perProject.length * 34) }} className="text-gray-500">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={perProject.map((p) => ({ ...p, name: shortLabel(p.name, 18) }))}
+                  layout="vertical"
+                  margin={{ top: 4, right: 34, left: 4, bottom: 4 }}
+                >
+                  <XAxis type="number" domain={[0, 100]} hide />
+                  <YAxis type="category" dataKey="name" width={110} {...axisProps} />
+                  <Tooltip cursor={{ fill: "rgba(148,163,184,0.12)" }} content={ChartTooltip("%")} />
+                  <Bar dataKey="progress" fill={CHART_COLORS.brand} name="Tiến độ" radius={[0, 4, 4, 0]} barSize={16}>
+                    <LabelList
+                      dataKey="progress"
+                      position="right"
+                      formatter={(v: number) => `${v}%`}
+                      style={{ fontSize: 10, fill: "currentColor" }}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             </div>
-          </div>
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart id="tmai-velocity-bar-chart-stable" data={sprintData} barGap={4}>
-              <CartesianGrid key="grid-velocity" strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-              <XAxis key="xaxis-velocity" dataKey="sprint" tick={{ fontSize: 11, fill: "#000000", fontWeight: "bold", fontFamily: "monospace" }} axisLine={false} tickLine={false} />
-              <YAxis key="yaxis-velocity" tick={{ fontSize: 11, fill: "#000000", fontWeight: "bold", fontFamily: "monospace" }} axisLine={false} tickLine={false} />
-              <Tooltip
-                key="tooltip-velocity"
-                contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 11, fontFamily: "monospace" }}
-                cursor={{ fill: "rgba(0,0,0,0.02)" }}
+          )}
+        </ChartPanel>
+
+        <ChartPanel title="Task status">
+          {statusData.length === 0 ? (
+            <ChartEmpty message="Chưa có task nào." />
+          ) : (
+            <>
+              <div className="h-[188px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={statusData}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={46}
+                      outerRadius={70}
+                      paddingAngle={2}
+                      strokeWidth={0}
+                    >
+                      {statusData.map((d) => (
+                        <Cell key={d.name} fill={STATUS_COLOR[d.name] ?? CHART_COLORS.todo} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={ChartTooltip("task")} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <ChartLegend
+                items={statusData.map((d) => ({
+                  label: d.name,
+                  value: d.value,
+                  color: STATUS_COLOR[d.name] ?? CHART_COLORS.todo,
+                }))}
               />
-              <Bar key="bar-planned" dataKey="planned" fill="#E2E8F0" radius={[2, 2, 0, 0]} name="Planned" />
-              <Bar key="bar-completed" dataKey="completed" fill="#1A237E" radius={[2, 2, 0, 0]} name="Completed" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+            </>
+          )}
+        </ChartPanel>
 
-        {/* Risk Distribution */}
-        <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-3xs">
-          <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Risk Distribution</h3>
-          <p className="text-[10px] text-gray-400 mt-0.5 mb-3">AI risk classification</p>
-          <ResponsiveContainer width="100%" height={140}>
-            <PieChart id="tmai-risk-pie-chart-stable">
-              <Pie
-                key="pie-risk-core"
-                data={riskDistribution}
-                cx="50%" cy="50%"
-                labelLine={false}
-                label={renderCustomizedLabel}
-                outerRadius={64}
-                dataKey="value"
-                strokeWidth={1.5}
-                stroke="white"
-              >
-                {riskDistribution.map((entry, index) => (
-                  <Cell key={`pie-cell-item-${entry.name}-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip key="tooltip-pie-risk" contentStyle={{ borderRadius: 8, fontSize: 11, fontFamily: "monospace" }} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="flex flex-wrap gap-x-3 gap-y-1 justify-center mt-2 border-t border-gray-50 pt-2">
-            {riskDistribution.map(d => (
-              <div key={`legend-item-id-${d.name}`} className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full shrink-0" style={{ background: d.color }} />
-                <span className="text-[10px] text-black font-bold font-mono">{d.name} ({d.value})</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* AI Risk Trend + Burndown */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Risk Trend */}
-        <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-3xs">
-          <div className="mb-3">
-            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Weekly Risk Trend</h3>
-            <p className="text-[10px] text-gray-400 mt-0.5">AI-calculated risk scores</p>
-          </div>
-          <ResponsiveContainer width="100%" height={150}>
-            <LineChart id="tmai-risk-trend-line-chart-stable" data={riskTrend}>
-              <CartesianGrid key="grid-risk-trend" strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-              <XAxis key="xaxis-risk-trend" dataKey="time" tick={{ fontSize: 11, fill: "#000000", fontWeight: "bold", fontFamily: "monospace" }} axisLine={false} tickLine={false} />
-              <YAxis key="yaxis-risk-trend" domain={[0, 100]} tick={{ fontSize: 11, fill: "#000000", fontWeight: "bold", fontFamily: "monospace" }} axisLine={false} tickLine={false} />
-              <Tooltip key="tooltip-risk-trend" contentStyle={{ borderRadius: 8, fontSize: 11, fontFamily: "monospace" }} />
-              <Line key="line-risk-score" type="monotone" dataKey="score" stroke="#EF4444" strokeWidth={2} dot={{ fill: "#EF4444", r: 3 }} name="Risk Score" />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Burndown */}
-        <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-3xs">
-          <div className="mb-3">
-            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Sprint Burndown</h3>
-            <p className="text-[10px] text-gray-400 mt-0.5">Story points remaining</p>
-          </div>
-          <ResponsiveContainer width="100%" height={150}>
-            <LineChart id="tmai-burndown-line-chart-stable" data={burndownData}>
-              <CartesianGrid key="grid-burndown" strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-              <XAxis key="xaxis-burndown" dataKey="day" tick={{ fontSize: 11, fill: "#000000", fontWeight: "bold", fontFamily: "monospace" }} axisLine={false} tickLine={false} />
-              <YAxis key="yaxis-burndown" tick={{ fontSize: 11, fill: "#000000", fontWeight: "bold", fontFamily: "monospace" }} axisLine={false} tickLine={false} />
-              <Tooltip key="tooltip-burndown" contentStyle={{ borderRadius: 8, fontSize: 11, fontFamily: "monospace" }} />
-              <Line key="line-burndown-ideal" type="monotone" dataKey="ideal" stroke="#CBD5E1" strokeWidth={1.2} strokeDasharray="4 4" dot={false} name="Ideal" />
-              <Line key="line-burndown-actual" type="monotone" dataKey="remaining" stroke="#7C4DFF" strokeWidth={2} dot={{ fill: "#7C4DFF", r: 2.5 }} name="Actual" />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* AI Risk Analysis */}
-      <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-3xs">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
-              <Sparkles size={12} className="text-purple-500" /> AI Risk Analysis
-            </h3>
-            <p className="text-[10px] text-gray-400 mt-0.5">Portfolio-wide risk assessment across all tasks</p>
-          </div>
-          <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border ${riskLevelStyle.bg} ${riskLevelStyle.text} ${riskLevelStyle.border}`}>
-            {overallRisk} Risk
-          </span>
-        </div>
-
-        <p className="text-xs text-gray-600 leading-relaxed mb-3">
-          {affectedTasks.length} of {tasks.length} tasks are at elevated risk.{" "}
-          {criticalCount > 0
-            ? `${criticalCount} critical task${criticalCount > 1 ? "s" : ""} need immediate attention.`
-            : "No critical blockers right now — keep an eye on the items below."}
-        </p>
-
-        {affectedTasks.length > 0 ? (
-          <div className="space-y-2">
-            {affectedTasks.map(t => (
-              <div key={`risk-task-${t.id}`} className={`flex items-start gap-3 p-2.5 rounded-lg border ${t.risk === "critical" ? "bg-red-50/60 border-red-100" : "bg-amber-50/50 border-amber-100"}`}>
-                <AlertTriangle size={14} className={`mt-0.5 shrink-0 ${t.risk === "critical" ? "text-red-500" : "text-amber-500"}`} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-gray-800 truncate">{t.title}</span>
-                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ${t.risk === "critical" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
-                      {t.risk}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-gray-500 mt-0.5">Recommendation: {t.aiInsight}</p>
+        {selected ? (
+          <div className="lg:col-span-2">
+            <ChartPanel title="Tasks by priority">
+              {priorityData.length === 0 ? (
+                <ChartEmpty message="Dự án này chưa có task nào." />
+              ) : (
+                <div style={{ height: Math.max(120, priorityData.length * 34) }} className="text-gray-500">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={priorityData} layout="vertical" margin={{ top: 4, right: 28, left: 4, bottom: 4 }}>
+                      <XAxis type="number" allowDecimals={false} hide />
+                      <YAxis type="category" dataKey="name" width={78} {...axisProps} />
+                      <Tooltip cursor={{ fill: "rgba(148,163,184,0.12)" }} content={ChartTooltip("task")} />
+                      <Bar dataKey="value" name="Task" fill={CHART_COLORS.brand} radius={[0, 4, 4, 0]} barSize={16}>
+                        <LabelList dataKey="value" position="right" style={{ fontSize: 10, fill: "currentColor" }} />
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
-              </div>
-            ))}
+              )}
+            </ChartPanel>
           </div>
         ) : (
-          <div className="text-[11px] text-gray-400 p-3 text-center border border-dashed border-gray-200 rounded">No elevated-risk tasks right now.</div>
+          <div className="lg:col-span-2">
+            <ChartPanel title="Risk distribution">
+              {riskData.length === 0 ? (
+                <ChartEmpty message="Chưa có dữ liệu rủi ro." />
+              ) : (
+                <div style={{ height: Math.max(120, riskData.length * 34) }} className="text-gray-500">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={riskData} layout="vertical" margin={{ top: 4, right: 28, left: 4, bottom: 4 }}>
+                      <XAxis type="number" allowDecimals={false} hide />
+                      <YAxis type="category" dataKey="name" width={78} {...axisProps} />
+                      <Tooltip cursor={{ fill: "rgba(148,163,184,0.12)" }} content={ChartTooltip("dự án")} />
+                      <Bar dataKey="value" name="Dự án" radius={[0, 4, 4, 0]} barSize={16}>
+                        {riskData.map((d) => (
+                          <Cell key={d.name} fill={RISK_COLOR[d.name] ?? CHART_COLORS.todo} />
+                        ))}
+                        <LabelList dataKey="value" position="right" style={{ fontSize: 10, fill: "currentColor" }} />
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </ChartPanel>
+          </div>
         )}
-      </div>
-
-      {/* AI Workload Analysis */}
-      <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-3xs">
-        <div className="mb-3">
-          <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
-            <Users size={12} className="text-blue-500" /> AI Workload Analysis
-          </h3>
-          <p className="text-[10px] text-gray-400 mt-0.5">Assigned story points vs. estimated sprint capacity per person</p>
-        </div>
-
-        <div className="space-y-3">
-          {workloadByMember.map(({ member, points, pct, overloaded }) => (
-            <div key={`workload-${member.id}`} className="flex items-center gap-3">
-              <img src={member.avatar} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-medium text-gray-700 truncate">{member.name}</span>
-                  <span className={`text-[10px] font-bold ${overloaded ? "text-red-600" : "text-gray-500"}`}>
-                    {points} pts · {pct}% {overloaded && "· Overloaded"}
-                  </span>
-                </div>
-                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${overloaded ? "bg-red-500" : "bg-gray-700"}`}
-                    style={{ width: `${Math.min(pct, 100)}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Team Performance Audit */}
-      <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-3xs">
-        <div className="mb-3">
-          <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Team Performance Audit</h3>
-          <p className="text-[10px] text-gray-400 mt-0.5">Expand any team member to review completed and pending sprint tasks</p>
-        </div>
-
-        <Accordion type="multiple" className="space-y-2">
-          {teamMembers.map((member) => {
-            const memberTasks = tasks.filter(t => t.assignee.id === member.id);
-            const completedTasks = memberTasks.filter(t => t.status === "done");
-            const pendingTasks = memberTasks.filter(t => t.status !== "done");
-            const completion = memberTasks.length > 0 ? Math.round((completedTasks.length / memberTasks.length) * 100) : 0;
-
-            return (
-              <AccordionItem
-                value={member.id}
-                key={`audit-accordion-item-key-id-${member.id}`}
-                className="border border-gray-200 rounded overflow-hidden bg-white shadow-3xs"
-              >
-                <AccordionTrigger className="px-3 py-2.5 hover:bg-gray-50/50 transition-colors outline-none hover:no-underline text-xs flex items-center justify-between w-full font-medium">
-                  <div className="flex items-center gap-3 text-left">
-                    <img src={member.avatar} alt="" className="w-8 h-8 rounded object-cover border border-gray-100" />
-                    <div>
-                      <div className="font-bold text-gray-800">{member.name}</div>
-                      <div className="text-[10px] text-gray-400 font-normal">{member.role}</div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-4 shrink-0 mr-2">
-                    <div className="text-right w-24 hidden sm:block">
-                      <div className="text-[10px] text-gray-700 font-bold">{completion}% Performance</div>
-                      <div className="w-full h-1 bg-gray-100 rounded-full mt-1 overflow-hidden">
-                        <div className="h-full bg-gray-900" style={{ width: `${completion}%` }} />
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-bold bg-gray-50 text-gray-700 px-2 py-0.5 rounded border border-gray-200/60 font-mono">
-                      {completedTasks.length}/{memberTasks.length} Done
-                    </span>
-                  </div>
-                </AccordionTrigger>
-
-                <AccordionContent className="bg-gray-50/40 border-t border-gray-100 p-3 grid grid-cols-1 md:grid-cols-2 gap-4 text-[11px]">
-                  <div className="space-y-1.5">
-                    <div className="text-[9px] font-bold text-amber-600 uppercase tracking-wider mb-1 px-0.5 flex items-center gap-1">
-                      <div className="w-1 h-1 rounded-full bg-amber-500" /> Pending Tasks ({pendingTasks.length})
-                    </div>
-                    {pendingTasks.map(t => (
-                      <div key={`task-pending-item-key-${member.id}-${t.id}`} className="p-2 bg-white rounded border border-gray-200 flex justify-between items-center gap-3">
-                        <span className="text-gray-800 font-medium truncate flex-1">{t.title}</span>
-                        <span className={`text-[9px] font-bold px-1 rounded uppercase tracking-wide shrink-0 font-mono ${
-                          t.risk === "critical" ? "bg-red-50 text-red-600 border border-red-100 animate-pulse" : "bg-gray-100 text-gray-500"
-                        }`}>
-                          {t.status.replace("_", " ")} {t.risk === "critical" && "⚠"}
-                        </span>
-                      </div>
-                    ))}
-                    {pendingTasks.length === 0 && (
-                      <div className="text-[10px] text-gray-400 p-2 text-center border border-dashed border-gray-200 rounded">No pending tasks.</div>
-                    )}
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <div className="text-[9px] font-bold text-green-600 uppercase tracking-wider mb-1 px-0.5 flex items-center gap-1">
-                      <div className="w-1 h-1 rounded-full bg-green-500" /> Completed Tasks ({completedTasks.length})
-                    </div>
-                    {completedTasks.map(t => (
-                      <div key={`task-completed-item-key-${member.id}-${t.id}`} className="p-2 bg-white/60 rounded border border-gray-200/60 flex justify-between items-center gap-3 text-gray-400">
-                        <span className="line-through truncate flex-1 font-normal">{t.title}</span>
-                        <span className="text-[9px] font-bold px-1 rounded bg-green-50 text-green-600 border border-green-100 shrink-0 font-mono">DONE</span>
-                      </div>
-                    ))}
-                    {completedTasks.length === 0 && (
-                      <div className="text-[10px] text-gray-400 p-2 text-center border border-dashed border-gray-200 rounded">No completed tasks yet.</div>
-                    )}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            );
-          })}
-        </Accordion>
       </div>
     </div>
   );

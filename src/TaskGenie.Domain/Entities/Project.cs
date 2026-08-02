@@ -25,6 +25,13 @@ public class Project
 
     public int? Progress { get; internal set; }
 
+    /// <summary>
+    /// Hours a member is expected to work on this project per day. Drives the capacity side of the
+    /// risk estimate: a company project runs 8h days, a school project might be 2. Null means the
+    /// platform default.
+    /// </summary>
+    public int? WorkingHoursPerDay { get; internal set; }
+
     public DateOnly? PredictedEndDate { get; internal set; }
 
     public DateTime? CreatedAt { get; internal set; }
@@ -59,6 +66,16 @@ public class Project
     };
 
     public void SetTeamId(int teamId) => TeamId = teamId;
+
+    /// <summary>Only a project leader reaches this; the bounds keep a typo from making every task
+    /// look either impossible or effortless.</summary>
+    public void SetWorkingHoursPerDay(int hours)
+    {
+        if (hours is < 1 or > 24)
+            throw new ArgumentOutOfRangeException(nameof(hours), "Working hours per day must be between 1 and 24.");
+        WorkingHoursPerDay = hours;
+        UpdatedAt = DateTime.UtcNow;
+    }
 
     public void Update(string? name, string? description, string? status, int? teamId, DateOnly? deadline)
     {

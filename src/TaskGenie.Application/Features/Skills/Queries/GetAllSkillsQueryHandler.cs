@@ -10,7 +10,9 @@ public class GetAllSkillsQueryHandler(ISkillRepository skillRepository)
     public async Task<List<SkillDto>> Handle(GetAllSkillsQuery request, CancellationToken ct)
     {
         var skills = await skillRepository.GetAllAsync(ct);
-        return skills.Select(s => new SkillDto
+        // Ordinary users only ever see the live catalog; archived skills stay visible to admins
+        // through /api/skills/admin.
+        return skills.Where(s => s.IsActive).Select(s => new SkillDto
         {
             SkillId = s.SkillId,
             SkillName = s.SkillName ?? "Unknown Skill"

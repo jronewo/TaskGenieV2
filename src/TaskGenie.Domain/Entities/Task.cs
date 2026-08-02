@@ -29,6 +29,11 @@ public class Task
 
     public int? Difficulty { get; internal set; }
 
+    /// <summary>Which kind of work this is. Null on tasks created before types existed.</summary>
+    public int? TaskTypeId { get; internal set; }
+
+    public virtual TaskType? TaskType { get; internal set; }
+
     public int? CreatedBy { get; internal set; }
 
     public DateTime? CreatedAt { get; internal set; }
@@ -119,6 +124,18 @@ public class Task
             CompletedAt = DateTime.UtcNow;
         }
     }
+
+    /// <summary>
+    /// Records an estimated difficulty (1–5). Never overwrites a value a person set: the estimate
+    /// is a suggestion for tasks nobody has judged yet, and difficulty now drives the risk floor.
+    /// </summary>
+    public void SuggestDifficulty(int difficulty)
+    {
+        if (Difficulty.HasValue) return;
+        Difficulty = Math.Clamp(difficulty, 1, 5);
+    }
+
+    public void SetTaskType(int? taskTypeId) => TaskTypeId = taskTypeId;
 
     public void SetAiEstimatedTime(int hours)
     {

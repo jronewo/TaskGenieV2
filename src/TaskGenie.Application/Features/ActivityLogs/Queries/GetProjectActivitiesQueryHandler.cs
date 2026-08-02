@@ -1,16 +1,20 @@
 using MediatR;
 using TaskGenie.Application.Features.ActivityLogs;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
 
 namespace TaskGenie.Application.Features.ActivityLogs.Queries;
 
 public class GetProjectActivitiesQueryHandler(
+    IResourceAuthorizationService authorization,
     IActivityLogRepository activityLogRepository,
     IUserRepository userRepository)
     : IRequestHandler<GetProjectActivitiesQuery, List<ActivityLogDto>>
 {
     public async Task<List<ActivityLogDto>> Handle(GetProjectActivitiesQuery request, CancellationToken ct)
     {
+        await authorization.EnsureCanAccessProjectAsync(request.ProjectId, ct);
+
         var logs = await activityLogRepository.GetByProjectAsync(request.ProjectId, request.Limit, ct);
 
         var userIds = logs.Where(l => l.UserId.HasValue).Select(l => l.UserId!.Value).Distinct().ToList();

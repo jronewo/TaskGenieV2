@@ -1,8 +1,6 @@
 using FluentValidation;
 using MediatR;
-using Microsoft.Extensions.Options;
 using TaskGenie.Application.Common.Exceptions;
-using TaskGenie.Application.Common.Options;
 using TaskGenie.Application.Features.Payments.DTOs;
 using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Entities;
@@ -13,7 +11,6 @@ namespace TaskGenie.Application.Features.Payments.Commands;
 public sealed record CreateAiQuotaTopUpPaymentCommand(
     int OrganizationId,
     int RequestedByUserId,
-    string Provider,
     string PackageCode,
     string ReturnUrl,
     string CancelUrl) : IRequest<CreatePaymentResultDto>;
@@ -22,8 +19,6 @@ public sealed class CreateAiQuotaTopUpPaymentCommandValidator : AbstractValidato
 {
     public CreateAiQuotaTopUpPaymentCommandValidator()
     {
-        RuleFor(x => x.Provider).Must(p => p is PaymentProviders.PayOS or PaymentProviders.Momo)
-            .WithMessage("Provider must be 'PayOS' or 'Momo'.");
         RuleFor(x => x.PackageCode).Must(code => PaymentCatalog.AiQuotaPackages.ContainsKey(code))
             .WithMessage($"PackageCode must be one of: {string.Join(", ", PaymentCatalog.AiQuotaPackages.Keys)}.");
         RuleFor(x => x.ReturnUrl).NotEmpty();
@@ -34,9 +29,7 @@ public sealed class CreateAiQuotaTopUpPaymentCommandValidator : AbstractValidato
 public sealed class CreateAiQuotaTopUpPaymentCommandHandler(
     IOrganizationRepository organizationRepo,
     IPaymentRepository paymentRepo,
-    IPayOSService payOSService,
-    IMomoService momoService,
-    IOptions<AppUrlOptions> appUrlOptions
+    IPayOSService payOSService
 ) : IRequestHandler<CreateAiQuotaTopUpPaymentCommand, CreatePaymentResultDto>
 {
     public async Task<CreatePaymentResultDto> Handle(CreateAiQuotaTopUpPaymentCommand request, CancellationToken ct)
@@ -55,7 +48,6 @@ public sealed class CreateAiQuotaTopUpPaymentCommandHandler(
         var payment = Payment.Create(
             orderCode,
             org.OrganizationId,
-            request.Provider,
             PaymentPurposes.AiQuotaTopUp,
             packageCode: request.PackageCode,
             amount,
@@ -64,23 +56,9 @@ public sealed class CreateAiQuotaTopUpPaymentCommandHandler(
 
         await paymentRepo.AddAsync(payment, ct);
 
-        string checkoutUrl;
-        string? qrCode = null;
+        var result = await payOSService.CreatePaymentLinkAsync(
+            orderCode, amount, description, request.ReturnUrl, request.CancelUrl, ct);
 
-        if (request.Provider == PaymentProviders.PayOS)
-        {
-            var result = await payOSService.CreatePaymentLinkAsync(
-                orderCode, amount, description, request.ReturnUrl, request.CancelUrl, ct);
-            checkoutUrl = result.CheckoutUrl;
-            qrCode = result.QrCode;
-        }
-        else
-        {
-            var ipnUrl = $"{appUrlOptions.Value.BackendBaseUrl.TrimEnd('/')}/api/payments/webhook/momo";
-            checkoutUrl = await momoService.CreatePaymentUrlAsync(
-                orderCode.ToString(), amount, description, request.ReturnUrl, ipnUrl, ct: ct);
-        }
-
-        return new CreatePaymentResultDto(orderCode, checkoutUrl, qrCode);
+        return new CreatePaymentResultDto(orderCode, result.CheckoutUrl, result.QrCode);
     }
 }

@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Mvc;
 using TaskGenie.API.Extensions;
 using TaskGenie.Application.Features.Payments.Commands;
 using TaskGenie.Application.Features.Payments.Queries;
-using TaskGenie.Application.Interfaces;
 
 namespace TaskGenie.API.Controllers;
 
@@ -12,29 +11,29 @@ namespace TaskGenie.API.Controllers;
 [ApiController]
 public class PaymentsController(IMediator mediator) : ControllerBase
 {
-    /// <summary>Starts a payment to upgrade an organization from Free to Pro.</summary>
+    /// <summary>Starts a payOS payment to upgrade an organization from Free to Pro.</summary>
     [HttpPost("organizations/{orgId}/upgrade")]
     public async Task<IActionResult> CreateUpgradePayment(int orgId, [FromBody] CreateUpgradePaymentRequest request)
     {
         var userId = HttpContext.GetCurrentUserId();
         var result = await mediator.Send(new CreateOrganizationUpgradePaymentCommand(
-            orgId, userId, request.Provider, request.ReturnUrl, request.CancelUrl));
+            orgId, userId, request.ReturnUrl, request.CancelUrl));
         return Ok(result);
     }
 
-    /// <summary>Starts a payment to top up an organization's AI usage quota.</summary>
+    /// <summary>Starts a payOS payment to top up an organization's AI usage quota.</summary>
     [HttpPost("organizations/{orgId}/ai-topup")]
     public async Task<IActionResult> CreateAiQuotaTopUpPayment(int orgId, [FromBody] CreateAiTopUpPaymentRequest request)
     {
         var userId = HttpContext.GetCurrentUserId();
         var result = await mediator.Send(new CreateAiQuotaTopUpPaymentCommand(
-            orgId, userId, request.Provider, request.PackageCode, request.ReturnUrl, request.CancelUrl));
+            orgId, userId, request.PackageCode, request.ReturnUrl, request.CancelUrl));
         return Ok(result);
     }
 
     /// <summary>
-    /// Polled by the frontend after the user is redirected back from the gateway, since the
-    /// return-URL redirect itself is never treated as proof of payment — only the webhook is.
+    /// Polled by the frontend after the user is redirected back from payOS, since the return-URL
+    /// redirect itself is never treated as proof of payment — only the webhook is.
     /// </summary>
     [HttpGet("{orderCode:long}/status")]
     public async Task<IActionResult> GetStatus(long orderCode)
@@ -61,17 +60,7 @@ public class PaymentsController(IMediator mediator) : ControllerBase
         var accepted = await mediator.Send(new HandlePayOSWebhookCommand(rawBody));
         return accepted ? Ok(new { success = true }) : BadRequest(new { success = false });
     }
-
-    /// <summary>MoMo server-to-server IPN callback — see remarks on <see cref="PayOSWebhook"/>.</summary>
-    [HttpPost("webhook/momo")]
-    [AllowAnonymous]
-    public async Task<IActionResult> MomoWebhook([FromBody] MomoIpnPayload payload)
-    {
-        var accepted = await mediator.Send(new HandleMomoWebhookCommand(payload));
-        // MoMo expects a fast 204 response; it retries on anything else.
-        return accepted ? NoContent() : BadRequest();
-    }
 }
 
-public record CreateUpgradePaymentRequest(string Provider, string ReturnUrl, string CancelUrl);
-public record CreateAiTopUpPaymentRequest(string Provider, string PackageCode, string ReturnUrl, string CancelUrl);
+public record CreateUpgradePaymentRequest(string ReturnUrl, string CancelUrl);
+public record CreateAiTopUpPaymentRequest(string PackageCode, string ReturnUrl, string CancelUrl);

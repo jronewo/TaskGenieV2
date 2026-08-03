@@ -2,19 +2,28 @@ using System;
 
 namespace TaskGenie.Domain.Entities;
 
-
+/// <summary>
+/// Well-known values for <see cref="Payment.Provider"/>. Only payOS is supported today; kept as a
+/// named constant (rather than a hardcoded literal scattered around) so a future gateway is a
+/// small diff, not a search-and-replace.
+/// </summary>
 public static class PaymentProviders
 {
     public const string PayOS = "PayOS";
-    public const string Momo = "Momo";
 }
 
+/// <summary>
+/// Well-known values for <see cref="Payment.Purpose"/>.
+/// </summary>
 public static class PaymentPurposes
 {
     public const string OrganizationUpgrade = "OrganizationUpgrade";
     public const string AiQuotaTopUp = "AiQuotaTopUp";
 }
 
+/// <summary>
+/// Well-known values for <see cref="Payment.Status"/>.
+/// </summary>
 public static class PaymentStatuses
 {
     public const string Pending = "Pending";
@@ -30,20 +39,23 @@ public class Payment
 
     public int PaymentId { get; internal set; }
 
-  
+    /// <summary>
+    /// Unique order code sent to payOS. Used to correlate the webhook callback back to this record.
+    /// </summary>
     public long OrderCode { get; internal set; }
 
     public int OrganizationId { get; internal set; }
 
-    /// <summary>"PayOS" or "Momo" — see <see cref="PaymentProviders"
+    /// <summary>Always "PayOS" today — see <see cref="PaymentProviders"/>.</summary>
     public string Provider { get; internal set; } = null!;
 
     /// <summary>"OrganizationUpgrade" or "AiQuotaTopUp" — see <see cref="PaymentPurposes"/>.</summary>
     public string Purpose { get; internal set; } = null!;
 
-
+    /// <summary>Optional catalog code, e.g. "PRO_MONTHLY" or "AI_QUOTA_200" — see PaymentCatalog.</summary>
     public string? PackageCode { get; internal set; }
 
+    /// <summary>Amount in VND (no decimals — VND has no minor unit).</summary>
     public long Amount { get; internal set; }
 
     /// <summary>Pending / Paid / Failed / Cancelled / Expired — see <see cref="PaymentStatuses"/>.</summary>
@@ -51,6 +63,7 @@ public class Payment
 
     public string? ProviderTransactionId { get; internal set; }
 
+    /// <summary>Raw webhook payload, kept for reconciliation/audit.</summary>
     public string? RawWebhookPayload { get; internal set; }
 
     public int RequestedByUserId { get; internal set; }
@@ -68,7 +81,6 @@ public class Payment
     public static Payment Create(
         long orderCode,
         int organizationId,
-        string provider,
         string purpose,
         string? packageCode,
         long amount,
@@ -77,7 +89,7 @@ public class Payment
     {
         OrderCode = orderCode,
         OrganizationId = organizationId,
-        Provider = provider,
+        Provider = PaymentProviders.PayOS,
         Purpose = purpose,
         PackageCode = packageCode,
         Amount = amount,

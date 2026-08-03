@@ -18,8 +18,6 @@ public static class DependencyInjection
     {
         services.Configure<JwtSettings>(configuration.GetSection(JwtSettings.SectionName));
         services.Configure<PayOSOptions>(configuration.GetSection(PayOSOptions.SectionName));
-        services.Configure<MomoOptions>(configuration.GetSection(MomoOptions.SectionName));
-        services.Configure<AppUrlOptions>(configuration.GetSection(AppUrlOptions.SectionName));
 
         services.AddDbContext<AppDbContext>(options =>
         {
@@ -62,7 +60,6 @@ public static class DependencyInjection
         services.AddHttpClient<ITextGenerationService, TextGenerationService>();
         services.AddHttpClient<IClassificationService, ClassificationService>();
         services.AddHttpClient<IPayOSService, PayOSService>();
-        services.AddHttpClient<IMomoService, MomoService>();
         services.AddSingleton<ICloudinaryService, CloudinaryService>();
         services.AddScoped<IGoogleAuthService, GoogleAuthService>();
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();

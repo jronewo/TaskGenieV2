@@ -1,16 +1,12 @@
 import React, { useMemo } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import { PieChart as PieIcon } from "lucide-react";
 import { ProjectDto, TaskSummaryDto } from "../services/projectApi";
-import { ChartEmpty, ChartLegend, ChartPanel, ChartTooltip, STATUS_COLOR } from "./charts/chartTheme";
+import {
+  ChartEmpty, ChartLegend, ChartPanel, ChartTooltip, STATUS_COLOR, STATUS_LABELS,
+} from "./charts/chartTheme";
 
 const STATUS_ORDER = ["Todo", "InProgress", "InReview", "Done"] as const;
-
-const STATUS_LABELS: Record<string, string> = {
-  Todo: "To do",
-  InProgress: "In progress",
-  InReview: "In review",
-  Done: "Done",
-};
 
 interface Props {
   projects: ProjectDto[];
@@ -20,6 +16,10 @@ interface Props {
 /**
  * Charts over the workspace the signed-in user can actually see. Every figure is derived from the
  * rows the API returned — there is no sample series here, so an empty workspace renders empty.
+ *
+ * Deliberately one panel: the per-project breakdown and the risk bars were removed earlier because
+ * they repeated what the project grid below already shows, and the guard test in
+ * `__tests__/DashboardCharts.test.tsx` keeps them from creeping back.
  */
 export const DashboardCharts = ({ projects, tasks }: Props) => {
   const statusData = useMemo(
@@ -39,7 +39,11 @@ export const DashboardCharts = ({ projects, tasks }: Props) => {
 
   return (
     <div className="p-4 pb-0">
-      <ChartPanel title="Task status" subtitle={`${tasks.length} task trong các dự án của bạn`}>
+      <ChartPanel
+        title="Task status"
+        subtitle={`${tasks.length} task trong các dự án của bạn`}
+        icon={<PieIcon size={14} strokeWidth={1.9} />}
+      >
         {statusData.length === 0 ? (
           <ChartEmpty message="Chưa có task nào." />
         ) : (
@@ -65,8 +69,10 @@ export const DashboardCharts = ({ projects, tasks }: Props) => {
                 </PieChart>
               </ResponsiveContainer>
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-lg font-semibold text-gray-900">{completion}%</span>
-                <span className="text-[9px] text-gray-500">
+                <span className="font-display text-xl font-bold text-strong tabular-nums">
+                  {completion}%
+                </span>
+                <span className="text-[9px] text-subtle tabular-nums">
                   {doneCount}/{tasks.length} xong
                 </span>
               </div>
@@ -81,7 +87,6 @@ export const DashboardCharts = ({ projects, tasks }: Props) => {
           </>
         )}
       </ChartPanel>
-
     </div>
   );
 };

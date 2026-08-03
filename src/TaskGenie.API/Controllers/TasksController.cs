@@ -106,6 +106,14 @@ public class TasksController(IMediator mediator) : ControllerBase
     public async Task<IActionResult> SuggestEstimate(int id)
         => Ok(await mediator.Send(new SuggestEstimatedTimeCommand(id)));
 
+    /// <summary>Assigns the task directly. A null userId clears the assignee.</summary>
+    [HttpPost("{id}/assign")]
+    public async Task<IActionResult> Assign(int id, [FromBody] AssignTaskRequest request)
+    {
+        await mediator.Send(new AssignTaskCommand(id, request.UserId));
+        return Ok(await mediator.Send(new GetTaskByIdQuery(id)));
+    }
+
     [HttpPost("{id}/dependencies")]
     public async Task<IActionResult> AddDependency(int id, [FromBody] AddDependencyRequest request)
     {
@@ -151,3 +159,6 @@ public record UpdateProgressRequest(
     int? ActualTime);
 
 public record AddDependencyRequest(int DependsOnTaskId);
+
+/// <summary>Null clears the assignee rather than assigning nobody-in-particular.</summary>
+public record AssignTaskRequest(int? UserId);

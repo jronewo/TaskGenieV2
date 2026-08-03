@@ -3,10 +3,11 @@ import React from "react";
 /**
  * Shared chart styling.
  *
- * recharts renders its default tooltip and axes straight into the SVG with hardcoded light colours,
- * so every chart in the app arrived as a white box floating over a dark page with axis labels that
- * overlapped as soon as a project had a long name. These pieces are the fix, in one place, so a new
- * chart inherits the look instead of re-deriving it.
+ * recharts renders its tooltip and axes straight into the SVG with hardcoded light colours, so every
+ * chart used to arrive as a white box floating over a dark page. These pieces are the fix, in one
+ * place, so a new chart inherits the look instead of re-deriving it. Everything reads from the brand
+ * tokens in `styles/brand.css`, which means light and dark are defined together rather than patched
+ * apart afterwards.
  */
 
 /** One palette, so the same thing is the same colour on every chart. */
@@ -37,6 +38,13 @@ export const RISK_COLOR: Record<string, string> = {
   CRITICAL: CHART_COLORS.critical,
 };
 
+export const STATUS_LABELS: Record<string, string> = {
+  Todo: "To do",
+  InProgress: "In progress",
+  InReview: "In review",
+  Done: "Done",
+};
+
 /** Axis ticks read from the theme rather than recharts' hardcoded near-black. */
 export const axisTick = { fontSize: 10, fill: "currentColor" } as const;
 
@@ -56,7 +64,7 @@ interface TooltipEntry {
 
 /**
  * Tooltip drawn as normal DOM, which means it inherits the page theme instead of fighting it.
- * Pass `unit` to label the number ("task", "dự án") — a bare count in a floating box is a riddle.
+ * Pass `unit` to label the number ("task", "project") — a bare count in a floating box is a riddle.
  */
 export const ChartTooltip =
   (unit?: string) =>
@@ -64,19 +72,19 @@ export const ChartTooltip =
     if (!active || !payload || payload.length === 0) return null;
 
     return (
-      <div className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 shadow-lg">
+      <div className="rounded-lg border border-line bg-surface-raised px-2.5 py-1.5 shadow-brand-lg">
         {label != null && label !== "" && (
-          <p className="mb-1 text-[10px] font-semibold text-gray-900">{label}</p>
+          <p className="mb-1 text-[10px] font-semibold text-strong">{label}</p>
         )}
         {payload.map((entry, i) => (
-          <p key={i} className="flex items-center gap-1.5 text-[10px] text-gray-600">
+          <p key={i} className="flex items-center gap-1.5 text-[10px] text-muted">
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full"
               style={{ background: entry.color }}
               aria-hidden
             />
             {entry.name != null && <span>{entry.name}:</span>}
-            <span className="font-semibold text-gray-900">
+            <span className="font-semibold text-strong tabular-nums">
               {entry.value}
               {unit ? ` ${unit}` : ""}
             </span>
@@ -95,37 +103,58 @@ export const ChartLegend = ({
 }: {
   items: { label: string; value: number | string; color: string }[];
 }) => (
-  <ul className="mt-2 flex flex-wrap justify-center gap-x-3 gap-y-1">
+  <ul className="mt-3 flex flex-wrap justify-center gap-x-3.5 gap-y-1.5">
     {items.map((item) => (
-      <li key={item.label} className="flex items-center gap-1.5 text-[10px] text-gray-600">
+      <li key={item.label} className="flex items-center gap-1.5 text-[10px] text-muted">
         <span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: item.color }} aria-hidden />
         {item.label}
-        <span className="font-semibold text-gray-900">{item.value}</span>
+        <span className="font-semibold text-strong tabular-nums">{item.value}</span>
       </li>
     ))}
   </ul>
 );
 
-/** A titled chart card — one frame for every panel so the dashboard reads as one grid. */
+/**
+ * A titled chart card — one frame for every panel so the dashboard reads as one grid.
+ * `action` takes a control (a filter, a toggle) that belongs to this panel rather than the page.
+ */
 export const ChartPanel = ({
   title,
   subtitle,
+  icon,
+  action,
+  className = "",
   children,
 }: {
   title: string;
   subtitle?: string;
+  icon?: React.ReactNode;
+  action?: React.ReactNode;
+  className?: string;
   children: React.ReactNode;
 }) => (
-  <section className="tg-chart rounded-xl border border-gray-200 bg-white p-4">
-    <h3 className="text-xs font-semibold text-gray-900">{title}</h3>
-    {subtitle && <p className="mt-0.5 text-[10px] text-gray-500">{subtitle}</p>}
-    <div className="mt-3">{children}</div>
+  <section
+    className={`tg-chart rounded-xl border border-line bg-surface-raised p-4 transition-shadow hover:shadow-brand-md ${className}`}
+  >
+    <header className="flex items-start gap-2.5">
+      {icon && (
+        <span className="w-7 h-7 rounded-lg bg-surface-inset text-brand flex items-center justify-center shrink-0 mt-0.5">
+          {icon}
+        </span>
+      )}
+      <div className="min-w-0 flex-1">
+        <h3 className="font-display text-[13px] font-semibold text-strong leading-tight">{title}</h3>
+        {subtitle && <p className="mt-0.5 text-[10px] text-subtle">{subtitle}</p>}
+      </div>
+      {action && <div className="shrink-0">{action}</div>}
+    </header>
+    <div className="mt-4">{children}</div>
   </section>
 );
 
 /** Shown instead of an axis-only chart frame when there is genuinely nothing to plot. */
 export const ChartEmpty = ({ message }: { message: string }) => (
-  <p className="py-10 text-center text-[11px] text-gray-500">{message}</p>
+  <p className="py-10 text-center text-[11px] text-subtle">{message}</p>
 );
 
 /** Truncates a label to fit an axis without turning the chart into overlapping mush. */

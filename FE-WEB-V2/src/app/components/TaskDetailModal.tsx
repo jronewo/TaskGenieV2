@@ -21,6 +21,7 @@ import { taskApi, commentApi, TaskDetailDto, TaskCommentDto, TaskStatusValue } f
 import { ApiError } from "../services/apiClient";
 import { useConfirm } from "./ConfirmDialog";
 import { AiAssignmentPanel } from "./AiAssignmentPanel";
+import { ManualAssignPanel } from "./ManualAssignPanel";
 import { AiTaskInsights } from "./AiTaskInsights";
 import { TaskPlanningPanel } from "./TaskPlanningPanel";
 import { useAuth } from "../auth/AuthContext";
@@ -269,6 +270,19 @@ export const TaskDetailModal = ({ taskId, projectName, onClose, onChanged }: Tas
                     <AiAssignmentPanel
                       taskId={task.taskId}
                       projectId={task.projectId}
+                      onAssigned={() => {
+                        void load();
+                        onChanged?.();
+                      }}
+                    />
+                  )}
+
+                  {/* …and the plain way, for when the leader already knows who is taking it. */}
+                  {task.projectId != null && (
+                    <ManualAssignPanel
+                      taskId={task.taskId}
+                      projectId={task.projectId}
+                      assignees={task.assignees}
                       onAssigned={() => {
                         void load();
                         onChanged?.();

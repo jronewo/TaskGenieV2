@@ -1,0 +1,149 @@
+/*
+ * Brand layer.
+ *
+ * Semantic tokens for the marketing surface and the redesigned app chrome. Every value has a
+ * dark-mode counterpart below, so a component written against these never needs a `.dark:` variant
+ * of its own — which is what kept the old palette from drifting apart between themes.
+ */
+
+:root {
+  /* Core identity */
+  --brand-600: #2563EB;
+  --brand-500: #3B82F6;
+  --brand-400: #60A5FA;
+  --brand-700: #1D4ED8;
+  --brand-on: #FFFFFF;
+
+  /* Accent — reserved for conversion moments (primary CTA, success, completion) */
+  --accent-600: #059669;
+  --accent-500: #10B981;
+  --accent-on: #FFFFFF;
+
+  /* Surfaces: a slate-blue-biased neutral, not a pure grey */
+  --surface-base: #F8FAFC;
+  --surface-raised: #FFFFFF;
+  --surface-sunken: #F1F5F9;
+  --surface-inset: #E2E8F0;
+
+  /* Text */
+  --text-strong: #0F172A;
+  --text-default: #334155;
+  --text-muted: #64748B;
+  --text-subtle: #94A3B8;
+
+  /* Lines */
+  --line-soft: #E9EEF6;
+  --line-default: #E2E8F0;
+  --line-strong: #CBD5E1;
+
+  /* Type */
+  --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  --font-body: 'DM Sans', 'Inter', system-ui, sans-serif;
+
+  /* Elevation — one scale, used everywhere */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 12px -2px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 12px 32px -8px rgba(15, 23, 42, 0.14), 0 4px 8px -4px rgba(15, 23, 42, 0.06);
+  --shadow-brand: 0 8px 24px -6px rgba(37, 99, 235, 0.35);
+}
+
+.dark {
+  --brand-600: #60A5FA;
+  --brand-500: #3B82F6;
+  --brand-400: #93C5FD;
+  --brand-700: #2563EB;
+  --brand-on: #08111F;
+
+  --accent-600: #34D399;
+  --accent-500: #10B981;
+  --accent-on: #062018;
+
+  --surface-base: #0B1016;
+  --surface-raised: #141A23;
+  --surface-sunken: #10161E;
+  --surface-inset: #1C242F;
+
+  --text-strong: #F1F5F9;
+  --text-default: #CBD5E1;
+  --text-muted: #94A3B8;
+  --text-subtle: #64748B;
+
+  --line-soft: #1E2733;
+  --line-default: #263140;
+  --line-strong: #33415A;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 12px 32px -8px rgba(0, 0, 0, 0.6), 0 4px 8px -4px rgba(0, 0, 0, 0.4);
+  --shadow-brand: 0 8px 24px -6px rgba(96, 165, 250, 0.28);
+}
+
+/* ── Utilities ──────────────────────────────────────────────────────────────── */
+
+.font-display { font-family: var(--font-display); letter-spacing: -0.018em; }
+.font-body    { font-family: var(--font-body); }
+
+.bg-surface        { background-color: var(--surface-base); }
+.bg-surface-raised { background-color: var(--surface-raised); }
+.bg-surface-sunken { background-color: var(--surface-sunken); }
+.bg-surface-inset  { background-color: var(--surface-inset); }
+
+.text-strong  { color: var(--text-strong); }
+.text-default { color: var(--text-default); }
+.text-muted   { color: var(--text-muted); }
+.text-subtle  { color: var(--text-subtle); }
+
+.text-brand   { color: var(--brand-600); }
+.text-accent  { color: var(--accent-600); }
+.bg-brand     { background-color: var(--brand-600); color: var(--brand-on); }
+.bg-accent    { background-color: var(--accent-600); color: var(--accent-on); }
+
+.border-soft    { border-color: var(--line-soft); }
+.border-line    { border-color: var(--line-default); }
+.border-strong  { border-color: var(--line-strong); }
+
+.shadow-brand-md { box-shadow: var(--shadow-md); }
+.shadow-brand-lg { box-shadow: var(--shadow-lg); }
+.shadow-brand-cta { box-shadow: var(--shadow-brand); }
+
+/* A tinted wash used behind hero and section breaks; readable on both themes. */
+.brand-wash {
+  background:
+    radial-gradient(60rem 30rem at 12% -10%, color-mix(in srgb, var(--brand-600) 14%, transparent), transparent 70%),
+    radial-gradient(48rem 26rem at 92% 8%, color-mix(in srgb, var(--accent-600) 11%, transparent), transparent 70%);
+}
+
+.brand-gradient-text {
+  background-image: linear-gradient(115deg, var(--brand-600), var(--accent-600));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Grid texture for the hero — sits under content, never over it. */
+.brand-grid {
+  background-image:
+    linear-gradient(to right, var(--line-soft) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--line-soft) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(50rem 34rem at 50% 0%, #000 20%, transparent 78%);
+}
+
+/* Motion is opt-in per element and always yields to the OS setting. */
+@media (prefers-reduced-motion: reduce) {
+  .brand-rise,
+  .brand-fade {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+@keyframes brandRise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.brand-rise {
+  animation: brandRise 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}

@@ -145,6 +145,16 @@ export const taskApi = {
       body: JSON.stringify(payload),
     }),
 
+  /**
+   * Assigns the task straight to someone, bypassing the AI recommender — the accept-recommendation
+   * endpoint only takes users it had just suggested. Pass null to clear the assignee.
+   */
+  assign: (taskId: number, userId: number | null) =>
+    apiRequest<TaskDetailDto>(`/tasks/${taskId}/assign`, {
+      method: "POST",
+      body: JSON.stringify({ userId }),
+    }),
+
   /** Reads hours and a 1–5 difficulty off the description; returns the whole updated task. */
   estimate: (taskId: number) =>
     apiRequest<TaskDetailDto>(`/tasks/${taskId}/estimate`, { method: "POST" }),

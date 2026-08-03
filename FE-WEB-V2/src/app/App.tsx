@@ -5,6 +5,7 @@ import { Header } from "./components/Header";
 import { MobileDashboard } from "./components/MobileDashboard";
 import { ReportsDashboard } from "./components/ReportsDashboard";
 import { AuthModule } from "./components/AuthModule";
+import { LandingPage } from "./components/LandingPage";
 import { TeamManagement } from "./components/TeamManagement";
 import { EvaluationCenter } from "./components/EvaluationCenter";
 import { AdministrationCenter } from "./components/AdministrationCenter";
@@ -28,6 +29,7 @@ import { CreateTaskModal } from "./components/CreateTaskModal";
 import { ImportTasksModal } from "./components/ImportTasksModal";
 import { useWorkspace, summariseWorkspace, WorkspaceSnapshot } from "./hooks/useWorkspace";
 import { DashboardCharts } from "./components/DashboardCharts";
+import { MyTasksPanel } from "./components/MyTasksPanel";
 import {
   AlertTriangle, CheckCircle, TrendingUp, Layers, ChevronRight, LogOut,
   Loader2,
@@ -170,13 +172,25 @@ const ProjectGrid = ({
  * The dashboard reads the workspace once and shares it with the bar, the charts and the grid —
  * they used to fetch independently, which fanned out the per-project task calls three times.
  */
-const DashboardPage = ({ onSelectProject }: { onSelectProject: (projectId: number) => void }) => {
+const DashboardPage = ({
+  onSelectProject,
+  onOpenTask,
+  showMyTasks,
+}: {
+  onSelectProject: (projectId: number) => void;
+  onOpenTask: (taskId: number) => void;
+  /** Administrators have no assigned work of their own, so the queue would always be empty. */
+  showMyTasks: boolean;
+}) => {
   const { projects, tasks, loading, error } = useWorkspace();
 
   return (
     <>
       <DashboardSummaryBar projects={projects} tasks={tasks} loading={loading} />
       <div className="flex-1 overflow-y-auto">
+        {/* Mounted straight away: the user's own queue reads from one endpoint and must not wait
+            for the workspace fan-out (one task request per project) to finish first. */}
+        {showMyTasks && <MyTasksPanel projects={projects} onOpenTask={onOpenTask} />}
         {!loading && !error && <DashboardCharts projects={projects} tasks={tasks} />}
         <ProjectGrid
           projects={projects}
@@ -272,6 +286,8 @@ export default function App() {
   const { isMobile, isNarrow } = useViewport();
   const { user, accessToken, isAuthenticated, isReady, logout } = useAuth();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  // Signed-out visitors land on the marketing page; the sign-in form is one step behind it.
+  const [showAuth, setShowAuth] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
   // Narrowing the window collapses the sidebar; widening restores whatever the user last chose.
@@ -412,7 +428,21 @@ export default function App() {
     return (
       <>
         <Toaster position="top-right" richColors />
-        <AuthModule />
+        {showAuth ? (
+          <div className="relative">
+            {/* Overlaid so the auth screens themselves stay untouched. */}
+            <button
+              type="button"
+              onClick={() => setShowAuth(false)}
+              className="absolute top-5 right-5 z-20 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted hover:text-strong bg-surface-raised border border-line rounded-lg transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-600)]"
+            >
+              <ChevronRight size={13} className="rotate-180" /> Back to home
+            </button>
+            <AuthModule />
+          </div>
+        ) : (
+          <LandingPage onEnter={() => setShowAuth(true)} />
+        )}
       </>
     );
   }
@@ -481,6 +511,8 @@ export default function App() {
                       transition={{ duration: 0.15 }}
                     >
                       <DashboardPage
+                        showMyTasks={!canAccessAdministration}
+                        onOpenTask={setSelectedTaskId}
                         onSelectProject={(projectId) => {
                           setActiveProject(String(projectId));
                           setActivePage("board");

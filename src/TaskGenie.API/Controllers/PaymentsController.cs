@@ -31,6 +31,16 @@ public class PaymentsController(IMediator mediator) : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>Starts a payOS payment for a user buying their own Pro plan, independent of any Organization.</summary>
+    [HttpPost("upgrade")]
+    public async Task<IActionResult> CreateUserUpgradePayment([FromBody] CreateUserUpgradePaymentRequest request)
+    {
+        var userId = HttpContext.GetCurrentUserId();
+        var result = await mediator.Send(new CreateUserUpgradePaymentCommand(
+            userId, request.PackageCode, request.ReturnUrl, request.CancelUrl));
+        return Ok(result);
+    }
+
     /// <summary>
     /// Polled by the frontend after the user is redirected back from payOS, since the return-URL
     /// redirect itself is never treated as proof of payment — only the webhook is.
@@ -64,3 +74,4 @@ public class PaymentsController(IMediator mediator) : ControllerBase
 
 public record CreateUpgradePaymentRequest(string ReturnUrl, string CancelUrl);
 public record CreateAiTopUpPaymentRequest(string PackageCode, string ReturnUrl, string CancelUrl);
+public record CreateUserUpgradePaymentRequest(string PackageCode, string ReturnUrl, string CancelUrl);

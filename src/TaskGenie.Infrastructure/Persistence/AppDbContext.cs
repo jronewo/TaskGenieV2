@@ -507,10 +507,6 @@ public partial class AppDbContext : DbContext
                 .HasColumnType("datetime")
                 .HasColumnName("updated_at");
             entity.Property(e => e.TeamId).HasColumnName("team_id");
-            entity.Property(e => e.ProjectType)
-                .HasMaxLength(20)
-                .HasDefaultValue("Team")
-                .HasColumnName("project_type");
 
             entity.HasOne(d => d.Team).WithMany(p => p.Projects)
                 .HasForeignKey(d => d.TeamId)
@@ -787,6 +783,16 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.UpdatedAt)
                 .HasColumnType("datetime")
                 .HasColumnName("updated_at");
+            entity.Property(e => e.Plan)
+                .HasMaxLength(20)
+                .HasDefaultValue("Free")
+                .HasColumnName("plan");
+            entity.Property(e => e.PlanExpiresAt)
+                .HasColumnType("datetime")
+                .HasColumnName("plan_expires_at");
+            entity.Property(e => e.AiQuota)
+                .HasDefaultValue(Organization.DefaultFreeAiQuota)
+                .HasColumnName("ai_quota");
         });
 
         modelBuilder.Entity<UserAvailability>(entity =>

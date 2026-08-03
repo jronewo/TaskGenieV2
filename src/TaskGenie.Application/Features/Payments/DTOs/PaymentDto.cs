@@ -6,7 +6,7 @@ public sealed class PaymentDto
 {
     public int PaymentId { get; init; }
     public long OrderCode { get; init; }
-    public int OrganizationId { get; init; }
+    public int? OrganizationId { get; init; }
     public string Provider { get; init; } = null!;
     public string Purpose { get; init; } = null!;
     public string? PackageCode { get; init; }

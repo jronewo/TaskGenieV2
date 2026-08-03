@@ -19,6 +19,7 @@ public static class PaymentPurposes
 {
     public const string OrganizationUpgrade = "OrganizationUpgrade";
     public const string AiQuotaTopUp = "AiQuotaTopUp";
+    public const string UserUpgrade = "UserUpgrade";
 }
 
 /// <summary>
@@ -44,12 +45,13 @@ public class Payment
     /// </summary>
     public long OrderCode { get; internal set; }
 
-    public int OrganizationId { get; internal set; }
+    /// <summary>Null for a <see cref="PaymentPurposes.UserUpgrade"/> payment — those belong to a user directly, not an organization.</summary>
+    public int? OrganizationId { get; internal set; }
 
     /// <summary>Always "PayOS" today — see <see cref="PaymentProviders"/>.</summary>
     public string Provider { get; internal set; } = null!;
 
-    /// <summary>"OrganizationUpgrade" or "AiQuotaTopUp" — see <see cref="PaymentPurposes"/>.</summary>
+    /// <summary>"OrganizationUpgrade" / "AiQuotaTopUp" / "UserUpgrade" — see <see cref="PaymentPurposes"/>.</summary>
     public string Purpose { get; internal set; } = null!;
 
     /// <summary>Optional catalog code, e.g. "PRO_MONTHLY" or "AI_QUOTA_200" — see PaymentCatalog.</summary>
@@ -80,7 +82,7 @@ public class Payment
 
     public static Payment Create(
         long orderCode,
-        int organizationId,
+        int? organizationId,
         string purpose,
         string? packageCode,
         long amount,

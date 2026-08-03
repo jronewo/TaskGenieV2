@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Entities;
@@ -8,10 +9,12 @@ namespace TaskGenie.API.Controllers;
 
 [Route("api/plans")]
 [ApiController]
+[AllowAnonymous]
 public class PlansController(IPlanRepository planRepo) : ControllerBase
 {
-    /// <summary>Public catalog — active plans only. Prices come from the database, never hardcoded
-    /// in the client.</summary>
+    /// <summary>Public catalog — active plans only, reachable by signed-out visitors (the landing
+    /// page pricing section) as well as signed-in users. Prices come from the database, never
+    /// hardcoded in the client.</summary>
     [HttpGet]
     public async Task<IActionResult> GetPlans([FromQuery] string? audience)
     {

@@ -8,6 +8,7 @@ using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
 using TaskGenie.Infrastructure.Export;
 using TaskGenie.Infrastructure.ExternalServices;
+using TaskGenie.Infrastructure.ExternalServices.PayOs;
 using TaskGenie.Infrastructure.Persistence;
 using TaskGenie.Infrastructure.Persistence.Repositories;
 using TaskGenie.Infrastructure.Persistence.Services;
@@ -103,6 +104,12 @@ public static class DependencyInjection
             services.AddScoped<IEmailSender, LoggingEmailSender>();
         }
 
+        // Bound unconditionally: PayOsWebhookController must be able to verify a webhook signature
+        // whenever PayOS credentials are present, independently of which IPaymentProvider currently
+        // handles checkout (e.g. Testing/UAT can run FakePaymentProvider for checkout while still
+        // exercising real PayOS webhook verification against sandbox credentials).
+        services.Configure<PayOsOptions>(configuration.GetSection(PayOsOptions.SectionName));
+
         // Payment provider is environment-gated. The simulated gateway must never be reachable in
         // Production — fail fast at startup rather than silently exposing fake checkout.
         var isProduction = string.Equals(environmentName, "Production", StringComparison.OrdinalIgnoreCase);
@@ -113,7 +120,23 @@ public static class DependencyInjection
                 "FakePaymentProvider cannot be enabled in Production. Configure a real IPaymentProvider.");
 
         if (useFakePayments)
+        {
             services.AddScoped<IPaymentProvider, FakePaymentProvider>();
+        }
+        else
+        {
+            var payOsOptions = configuration.GetSection(PayOsOptions.SectionName).Get<PayOsOptions>() ?? new PayOsOptions();
+            if (!payOsOptions.IsConfigured)
+                throw new InvalidOperationException(
+                    "Payments:UseFakeProvider is false but PayOS:ClientId/ApiKey/ChecksumKey are not configured. "
+                    + "Set them via user-secrets or environment variables before starting this environment.");
+
+            services.AddHttpClient<IPaymentProvider, PayOsPaymentProvider>(client =>
+            {
+                client.BaseAddress = new Uri(payOsOptions.ApiBaseUrl);
+            });
+        }
+
         services.AddSingleton<ITokenRevocationService, InMemoryTokenRevocationService>();
         services.AddSingleton<TaskGenie.Application.Features.AI.Services.RiskScoringEngine>();
         services.AddSingleton<TaskGenie.Application.Features.AI.Services.AssignmentScoringEngine>();

@@ -153,6 +153,9 @@ public sealed class BillingService(
 
     private async Task EnsureCallerOwnsPaymentAsync(PaymentTransaction payment, CancellationToken ct)
     {
+        // A gateway webhook has no JWT at all — it is authenticated by its own signature/secret
+        // check before SettlePaymentAsync is ever reached, not by owning the payment as a user.
+        if (!currentUser.IsAuthenticated) return;
         if (currentUser.IsPlatformAdmin) return;
 
         if (payment.OrganizationId is int orgId)

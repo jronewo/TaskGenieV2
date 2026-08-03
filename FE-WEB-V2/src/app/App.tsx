@@ -30,6 +30,7 @@ import { ImportTasksModal } from "./components/ImportTasksModal";
 import { useWorkspace, summariseWorkspace, WorkspaceSnapshot } from "./hooks/useWorkspace";
 import { DashboardCharts } from "./components/DashboardCharts";
 import { MyTasksPanel } from "./components/MyTasksPanel";
+import { ChartEmpty, ChartPanel, RISK_COLOR } from "./components/charts/chartTheme";
 import {
   AlertTriangle, CheckCircle, TrendingUp, Layers, ChevronRight, LogOut,
   Loader2,
@@ -108,63 +109,83 @@ const ProjectGrid = ({
 }: Pick<WorkspaceSnapshot, "projects" | "tasks" | "loading" | "error"> & {
   onSelect: (projectId: number) => void;
 }) => {
-  if (loading) {
-    return (
-      <div className="flex items-center gap-2 p-4 text-xs text-gray-500">
-        <Loader2 size={13} className="animate-spin" /> Loading projects…
-      </div>
-    );
-  }
-  if (error) {
-    return <div role="alert" className="p-4 text-xs text-red-600">{error}</div>;
-  }
-  if (projects.length === 0) {
-    return (
-      <div className="p-8 text-center text-xs text-gray-500">
-        No projects yet. Create one from the Projects page to get started.
-      </div>
-    );
-  }
+  const body = () => {
+    if (loading) {
+      return (
+        <p className="flex items-center justify-center gap-2 py-10 text-[11px] text-subtle">
+          <Loader2 size={13} className="animate-spin" /> Loading projects…
+        </p>
+      );
+    }
+    if (error) {
+      return (
+        <p role="alert" className="py-10 text-center text-[11px] text-red-600 dark:text-red-400">
+          {error}
+        </p>
+      );
+    }
+    if (projects.length === 0) {
+      return <ChartEmpty message="No projects yet. Create one from the Projects page to get started." />;
+    }
 
-  return (
-    <div className="p-4">
-      <div className="mb-3">
-        <h2 className="text-sm font-semibold text-gray-900">Projects Overview</h2>
-        <p className="text-[10px] text-gray-500 mt-0.5">{projects.length} project(s) · click one to open it</p>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+    /* One per row: this is a dashboard column now, not the full page width. */
+    return (
+      <div className="flex flex-col gap-2.5">
         {projects.map((project, i) => {
           const projectTasks = tasks.filter((t) => t.projectId === project.projectId);
           const done = projectTasks.filter((t) => t.status === "Done").length;
           const risk = (project.riskLevel ?? "LOW").toUpperCase();
-          const riskCls =
-            risk === "HIGH" ? "bg-red-50 text-red-700" : risk === "MEDIUM" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700";
 
           return (
             <motion.button
               key={project.projectId}
               type="button"
               onClick={() => onSelect(project.projectId)}
-              className="text-left rounded-lg border border-gray-200 bg-white p-3 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A237E]"
+              className="text-left rounded-lg border border-line bg-surface p-3 hover:border-strong hover:shadow-brand-md transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-600)]"
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.03 }}
             >
               <div className="flex items-start justify-between gap-2 mb-1.5">
-                <p className="text-xs font-semibold text-gray-900 leading-snug flex-1">{project.name}</p>
-                <span className={`text-[9px] px-1.5 py-0.5 rounded ${riskCls}`}>{risk}</span>
+                <p className="text-[12px] font-medium text-strong leading-snug flex-1 line-clamp-2">{project.name}</p>
+                {RISK_COLOR[risk] && (
+                  <span
+                    className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 tracking-wide"
+                    style={{
+                      color: RISK_COLOR[risk],
+                      background: `color-mix(in srgb, ${RISK_COLOR[risk]} 14%, transparent)`,
+                    }}
+                  >
+                    {risk}
+                  </span>
+                )}
               </div>
-              {project.description && <p className="text-[10px] text-gray-500 line-clamp-2 mb-2">{project.description}</p>}
-              <div className="flex items-center justify-between text-[10px] text-gray-400">
-                <span>{done}/{projectTasks.length} tasks</span>
-                <span>{project.progress}%</span>
+              {project.description && <p className="text-[10px] text-subtle line-clamp-2 mb-2">{project.description}</p>}
+              <div className="flex items-center justify-between text-[10px] text-subtle">
+                <span className="tabular-nums">{done}/{projectTasks.length} tasks</span>
+                <span className="tabular-nums">{project.progress}%</span>
+              </div>
+              <div className="mt-1.5 h-1 rounded-full bg-surface-inset overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-[var(--brand-600)] transition-[width] duration-500"
+                  style={{ width: `${Math.min(100, Math.max(0, project.progress ?? 0))}%` }}
+                />
               </div>
             </motion.button>
           );
         })}
       </div>
-    </div>
+    );
+  };
+
+  return (
+    <ChartPanel
+      title="Projects Overview"
+      subtitle={loading ? "Loading…" : `${projects.length} project(s) · click one to open it`}
+      icon={<Layers size={14} strokeWidth={1.9} />}
+    >
+      {body()}
+    </ChartPanel>
   );
 };
 
@@ -188,17 +209,31 @@ const DashboardPage = ({
     <>
       <DashboardSummaryBar projects={projects} tasks={tasks} loading={loading} />
       <div className="flex-1 overflow-y-auto">
-        {/* Mounted straight away: the user's own queue reads from one endpoint and must not wait
-            for the workspace fan-out (one task request per project) to finish first. */}
-        {showMyTasks && <MyTasksPanel projects={projects} onOpenTask={onOpenTask} />}
-        {!loading && !error && <DashboardCharts projects={projects} tasks={tasks} />}
-        <ProjectGrid
-          projects={projects}
-          tasks={tasks}
-          loading={loading}
-          error={error}
-          onSelect={onSelectProject}
-        />
+        {/* Three columns side by side rather than one tall stack, so the whole dashboard fits a
+            desktop screen without scrolling. They collapse to two and then one as width runs out. */}
+        <div className="p-4 grid gap-4 items-start grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
+          {/* Mounted straight away: the user's own queue reads from one endpoint and must not wait
+              for the workspace fan-out (one task request per project) to finish first. */}
+          {showMyTasks && (
+            <div className="min-w-0">
+              <MyTasksPanel projects={projects} onOpenTask={onOpenTask} />
+            </div>
+          )}
+          {!loading && !error && (
+            <div className="min-w-0">
+              <DashboardCharts projects={projects} tasks={tasks} />
+            </div>
+          )}
+          <div className="min-w-0">
+            <ProjectGrid
+              projects={projects}
+              tasks={tasks}
+              loading={loading}
+              error={error}
+              onSelect={onSelectProject}
+            />
+          </div>
+        </div>
       </div>
     </>
   );
@@ -303,6 +338,9 @@ export default function App() {
   const [canManageBoardTasks, setCanManageBoardTasks] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [boardRefresh, setBoardRefresh] = useState(0);
+  // Bumped when the set of projects itself changed (a project was closed), so the sidebar's own
+  // workspace snapshot refetches instead of keeping a project that is no longer active.
+  const [workspaceRefresh, setWorkspaceRefresh] = useState(0);
   // The sidebar tracks ids as strings; the API is numeric.
   const activeProjectId = Number.isFinite(Number(activeProject)) && activeProject ? Number(activeProject) : null;
 
@@ -385,10 +423,13 @@ export default function App() {
   // Organization tools are only meaningful once the user belongs to an organization or holds an
   // organization plan. Hiding the nav is tidiness only — the backend still enforces 403.
   const [canAccessOrganizations, setCanAccessOrganizations] = useState(false);
+  /** The AI assistant ships with the paid plans; the endpoint refuses a free caller regardless. */
+  const [canUseAssistant, setCanUseAssistant] = useState(false);
 
   const refreshOrganizationAccess = useCallback(async () => {
     if (!user) {
       setCanAccessOrganizations(false);
+      setCanUseAssistant(false);
       return;
     }
     try {
@@ -397,8 +438,10 @@ export default function App() {
       // `sources` carries an "organization:<id>:<plan>" entry only for an ACTIVE paid subscription.
       const onPaidOrgPlan = (entitlement?.sources ?? []).some((src) => src.startsWith("organization:"));
       setCanAccessOrganizations(onPaidOrgPlan);
+      setCanUseAssistant(entitlement?.isPremium ?? false);
     } catch {
       setCanAccessOrganizations(false);
+      setCanUseAssistant(false);
     }
   }, [user]);
 
@@ -472,6 +515,7 @@ export default function App() {
               user={user}
               canAccessAdministration={canAccessAdministration}
               canAccessOrganizations={canAccessOrganizations}
+              refreshToken={workspaceRefresh}
             />
           </motion.div>
 
@@ -536,6 +580,14 @@ export default function App() {
                         }}
                         onImportTasks={() => setShowImportModal(true)}
                         onOpenTask={setSelectedTaskId}
+                        onProjectClosed={() => {
+                          // The board it was showing no longer exists as active work, so leave it
+                          // rather than sitting on a project the lists have just dropped.
+                          setActiveProject("");
+                          setBoardProjectName(null);
+                          setActivePage("projects");
+                          setWorkspaceRefresh((n) => n + 1);
+                        }}
                       />
                       <div className="flex-1 overflow-hidden">
                         <KanbanBoard
@@ -738,8 +790,9 @@ export default function App() {
       />
 
 
-      {/* Docked assistant; scoped to the open board when there is one. */}
-      {!canAccessAdministration && (
+      {/* Docked assistant; scoped to the open board when there is one. A paid-plan feature, so a
+          free account gets no launcher at all rather than a button that answers with a 403. */}
+      {!canAccessAdministration && canUseAssistant && (
         <AssistantChat projectId={activePage === "board" ? activeProjectId : null} />
       )}
 

@@ -166,7 +166,7 @@ export const MyTasksPanel = ({
       <select
         value={projectFilter}
         onChange={(e) => setProjectFilter(e.target.value)}
-        className="text-[11px] rounded-lg border border-line bg-surface text-default px-2 py-1.5 max-w-[180px] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-600)]"
+        className="text-[11px] rounded-lg border border-line bg-surface text-default px-2 py-1.5 max-w-[130px] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-600)]"
       >
         <option value={ALL}>All projects</option>
         {filterOptions.map((o) => (
@@ -200,8 +200,10 @@ export const MyTasksPanel = ({
       return <ChartEmpty message="No open tasks in this project." />;
     }
 
+    /* Stacked, not side by side: the panel is one column of the dashboard now, so two
+       inner columns would leave the cards too narrow to read a task title in. */
     return (
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="flex flex-col gap-4">
         {STATUS_GROUPS.map((group) => {
           const rows = visible.filter((t) => (t.status ?? "Todo") === group.key);
           return (
@@ -242,19 +244,17 @@ export const MyTasksPanel = ({
   };
 
   return (
-    <div className="p-4 pb-0">
-      <ChartPanel
-        title="My tasks"
-        subtitle={
-          loading
-            ? "Loading…"
-            : `${visible.length} open task${visible.length === 1 ? "" : "s"} · To do and In progress only`
-        }
-        icon={<ListChecks size={14} strokeWidth={1.9} />}
-        action={filterOptions.length > 0 ? filterControl : undefined}
-      >
-        {body()}
-      </ChartPanel>
-    </div>
+    <ChartPanel
+      title="My tasks"
+      subtitle={
+        loading
+          ? "Loading…"
+          : `${visible.length} open task${visible.length === 1 ? "" : "s"} · To do and In progress only`
+      }
+      icon={<ListChecks size={14} strokeWidth={1.9} />}
+      action={filterOptions.length > 0 ? filterControl : undefined}
+    >
+      {body()}
+    </ChartPanel>
   );
 };

@@ -1,12 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Clock, ShieldAlert, Loader2, X, CalendarDays, Users, Layers, AlertTriangle, FileSpreadsheet, Network,
+  Archive,
 } from "lucide-react";
 import { coreAiApi, RiskAssessment } from "../services/coreAiApi";
 import { projectApi, ProjectDto } from "../services/projectApi";
 import { TaskDependencyGraph } from "./TaskDependencyGraph";
 import { TaskDetailDto } from "../services/taskApi";
 import { ApiError } from "../services/apiClient";
+import { useConfirm } from "./ConfirmDialog";
+import { toast } from "sonner";
 
 function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
@@ -35,6 +38,8 @@ interface Props {
   onImportTasks?: () => void;
   /** Lets the dependency diagram open a task, so it is a way in rather than a dead end. */
   onOpenTask?: (taskId: number) => void;
+  /** Fired once the project has been ended, so the shell can drop it from the workspace. */
+  onProjectClosed?: (projectId: number) => void;
 }
 
 /** Project context plus an on-demand risk sweep across the board's tasks. */
@@ -46,7 +51,11 @@ const isValidHours = (value: string) => {
   return Number.isInteger(n) && n >= 1 && n <= 24;
 };
 
-export const ProjectBoardHeader = ({ projectId, tasks, onProjectLoaded, onImportTasks, onOpenTask }: Props) => {
+export const ProjectBoardHeader = ({
+  projectId, tasks, onProjectLoaded, onImportTasks, onOpenTask, onProjectClosed,
+}: Props) => {
+  const confirm = useConfirm();
+  const [closing, setClosing] = useState(false);
   // Loaded here rather than in the shell: the shell renders before sign-in, and an authenticated
   // fetch from there would fire without a token and trip the 401 handler.
   const [project, setProject] = useState<ProjectDto | null>(null);
@@ -71,6 +80,46 @@ export const ProjectBoardHeader = ({ projectId, tasks, onProjectLoaded, onImport
       setError(errorMessage(err));
     } finally {
       setSavingHours(false);
+    }
+  };
+
+  /**
+   * Ending a project cannot be undone from the UI and it awards the closure scores, so the
+   * confirmation spells out both — and names the unfinished tasks, which is the thing someone
+   * closing a project by mistake would have missed.
+   */
+  const closeProject = async () => {
+    if (projectId == null || closing) return;
+
+    const unfinished = tasks.filter((t) => (t.status ?? "Todo") !== "Done").length;
+    const ok = await confirm({
+      title: `Đóng dự án "${project?.name ?? ""}"?`,
+      description:
+        (unfinished > 0
+          ? `Dự án còn ${unfinished} công việc chưa hoàn thành. `
+          : "Tất cả công việc đã hoàn thành. ") +
+        "Dự án sẽ chuyển sang trạng thái đã kết thúc, biến mất khỏi danh sách dự án đang hoạt động " +
+        "và điểm tổng kết sẽ được ghi cho các thành viên. Bạn vẫn xem lại được ở mục " +
+        "“Dự án đã xong” trong trang cá nhân. Thao tác này không thể hoàn tác.",
+      confirmLabel: "Đóng dự án",
+      cancelLabel: "Huỷ",
+      tone: "danger",
+    });
+    if (!ok) return;
+
+    setClosing(true);
+    setError(null);
+    try {
+      const summary = await projectApi.close(projectId);
+      toast.success(
+        `Đã đóng dự án "${summary.projectName ?? project?.name ?? ""}" — ` +
+          `${summary.doneTasks}/${summary.totalTasks} công việc hoàn thành.`
+      );
+      onProjectClosed?.(projectId);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setClosing(false);
     }
   };
 
@@ -220,6 +269,19 @@ export const ProjectBoardHeader = ({ projectId, tasks, onProjectLoaded, onImport
           {scanning ? <Loader2 size={13} className="animate-spin" aria-hidden /> : <ShieldAlert size={13} aria-hidden />}
           {scanning ? `Scanning ${progress.done}/${progress.total}…` : "Risk estimate"}
         </button>
+        {/* Ending a project is a leader's call, so it sits behind the same permission as the
+            other management controls. Last in the row because it is the terminal action. */}
+        {project.canManageTasks && (
+          <button
+            type="button"
+            onClick={closeProject}
+            disabled={closing}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+          >
+            {closing ? <Loader2 size={13} className="animate-spin" aria-hidden /> : <Archive size={13} aria-hidden />}
+            {closing ? "Đang đóng…" : "Đóng dự án"}
+          </button>
+        )}
         </div>
       </div>
 

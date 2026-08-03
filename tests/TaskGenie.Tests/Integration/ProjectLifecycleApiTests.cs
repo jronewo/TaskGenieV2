@@ -259,6 +259,33 @@ public sealed class ProjectLifecycleApiFactory : WebApplicationFactory<Program>
         return project;
     }
 
+    /// <summary>
+    /// A task inside the project with one row in each of the tables that used to survive a project
+    /// delete. Returns the task id so a test can assert every child is gone.
+    /// </summary>
+    public async Task<int> SeedTaskWithChildrenAsync(int projectId, int userId)
+    {
+        using var scope = Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var task = TaskGenie.Domain.Entities.Task.Create(projectId, $"Task {Guid.NewGuid():N}", null, createdBy: userId);
+        context.Tasks.Add(task);
+        var blocker = TaskGenie.Domain.Entities.Task.Create(projectId, $"Blocker {Guid.NewGuid():N}", null, createdBy: userId);
+        context.Tasks.Add(blocker);
+        await context.SaveChangesAsync();
+
+        context.TaskAssignees.Add(TaskAssignee.Create(task.TaskId, userId));
+        context.TaskComments.Add(TaskComment.Create(task.TaskId, userId, "comment", null));
+        context.TaskLogs.Add(TaskLog.Create(task.TaskId, 10, "note", "LOW"));
+        context.TaskDependencies.Add(TaskDependency.Create(task.TaskId, blocker.TaskId));
+        context.UserScores.Add(UserScore.CreateReward(userId, 5, "task score", taskId: task.TaskId));
+        context.UserScores.Add(UserScore.CreateReward(userId, 7, "project score", projectId: projectId));
+        context.ActivityLogs.Add(ActivityLog.Create(userId, "TASK_CREATED", "TASK", task.TaskId));
+        await context.SaveChangesAsync();
+
+        return task.TaskId;
+    }
+
     public async Task SeedInvitationAsync(int teamId, string email)
     {
         using var scope = Services.CreateScope();

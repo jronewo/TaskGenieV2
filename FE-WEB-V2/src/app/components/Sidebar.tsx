@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   LayoutDashboard, ChevronRight, Zap, BarChart2, Kanban,
@@ -24,6 +24,9 @@ interface SidebarProps {
   unreadCount?: number;
   /** Organization tools only appear once the user actually belongs to one or holds an org plan. */
   canAccessOrganizations?: boolean;
+  /** Bumped by the shell when the project list changed elsewhere — closing a project, for
+   *  instance — since the sidebar holds its own workspace snapshot. */
+  refreshToken?: number;
 }
 
 /** The sidebar's view of a project, mapped from the API's ProjectDto. */
@@ -160,7 +163,7 @@ const navItems = [
 export const Sidebar = ({
   activeProject, setActiveProject, activePage, setActivePage, collapsed,
   onSelectProject, onLogout, user, canAccessAdministration, unreadCount = 0,
-  canAccessOrganizations = false,
+  canAccessOrganizations = false, refreshToken = 0,
 }: SidebarProps) => {
   const { t } = usePreferences();
 
@@ -180,6 +183,20 @@ export const Sidebar = ({
   const adminMode = canAccessAdministration;
 
   const workspace = useWorkspace();
+
+  // Skips the first render: the hook has already fetched by then, and refetching would double
+  // every sidebar load.
+  const firstRefresh = useRef(true);
+  useEffect(() => {
+    if (firstRefresh.current) {
+      firstRefresh.current = false;
+      return;
+    }
+    workspace.reload();
+    // `reload` is a stable useCallback; depending on the whole workspace object would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshToken]);
+
   const sidebarProjects = workspace.projects.map((p) =>
     toSidebarProject(p, workspace.tasks.filter((t) => t.projectId === p.projectId).length)
   );
@@ -187,7 +204,10 @@ export const Sidebar = ({
   const accountBlock = (
     <div className={`p-3 border-t border-white/10 flex gap-2 ${collapsed ? "flex-col items-center" : ""} ${adminMode ? "border-b border-t-0" : ""}`}>
       {!collapsed ? (
-        <div className="flex items-center gap-2 flex-1">
+        // min-w-0 on both the row and the name column: without it a long display name grows the
+        // flex row past the sidebar and pushes the log-out button off the visible edge instead of
+        // truncating.
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <span className="h-7 w-7 shrink-0 overflow-hidden rounded-md ring-1 ring-slate-400/40">
             {user?.avatar ? (
               <img src={user.avatar} alt="" className="h-full w-full object-cover" />
@@ -197,14 +217,17 @@ export const Sidebar = ({
               </span>
             )}
           </span>
-          <div className="flex-1 min-w-0">
-            <div className="text-white text-xs font-semibold truncate">
+          <div className="min-w-0 flex-1">
+            <div
+              className="truncate text-xs font-semibold text-white"
+              title={user?.name ?? user?.email ?? undefined}
+            >
               {user?.name ?? user?.email ?? "Unknown user"}
             </div>
-            <div className="text-slate-400 text-[10px] truncate">{user?.role ?? ""}</div>
+            <div className="truncate text-[10px] text-slate-400">{user?.role ?? ""}</div>
           </div>
           <motion.button
-            className="text-blue-400 hover:text-white"
+            className="shrink-0 text-blue-400 hover:text-white"
             whileTap={{ scale: 0.9 }}
             onClick={onLogout}
             aria-label="Log out"

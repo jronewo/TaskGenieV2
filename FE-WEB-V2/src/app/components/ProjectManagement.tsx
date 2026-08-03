@@ -11,8 +11,10 @@ import {
   Trash2,
   X,
   Loader2,
+  Archive,
 } from "lucide-react";
 import { projectApi, ProjectDto, TaskSummaryDto } from "../services/projectApi";
+import { billingApi, EntitlementDto } from "../services/billingApi";
 import { ApiError } from "../services/apiClient";
 
 interface ProjectFormState {
@@ -48,6 +50,9 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  /** Personal project quota, read from the plan — never hardcoded in the UI. */
+  const [entitlement, setEntitlement] = useState<EntitlementDto | null>(null);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<ProjectFormState>(EMPTY_FORM);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -57,6 +62,16 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+
+  const loadEntitlement = useCallback(async () => {
+    try {
+      setEntitlement(await billingApi.entitlement());
+    } catch {
+      // The quota line is informational; failing to read it must not break the page.
+      setEntitlement(null);
+    }
+  }, []);
 
   const selectProject = useCallback(
     (projectId: number | null) => {
@@ -105,6 +120,7 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
 
   useEffect(() => {
     loadProjects();
+    void loadEntitlement();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -114,6 +130,11 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
       if (!Number.isNaN(parsed)) setSelectedProjectId(parsed);
     }
   }, [selectedProjectIdProp]);
+
+  const quotaExhausted =
+    entitlement != null &&
+    entitlement.projectLimit !== null &&
+    entitlement.projectUsage >= entitlement.projectLimit;
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.projectId === selectedProjectId) ?? null,
@@ -216,11 +237,35 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
       await projectApi.remove(selectedProject.projectId);
       setShowDeleteConfirm(false);
       await loadProjects(null);
+      await loadEntitlement();
       setFeedback({ type: "success", message: "Project removed successfully." });
     } catch (err) {
       setFeedback({ type: "error", message: errorMessage(err) });
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  /**
+   * Ends the project. Unlike Remove this keeps every task and score — the project simply stops
+   * being active work and moves to the finished list on the profile.
+   */
+  const handleCloseProject = async () => {
+    if (!selectedProject) return;
+    setIsClosing(true);
+    try {
+      const summary = await projectApi.close(selectedProject.projectId);
+      setShowCloseConfirm(false);
+      await loadProjects(null);
+      await loadEntitlement();
+      setFeedback({
+        type: "success",
+        message: `Đã đóng "${summary.projectName ?? selectedProject.name}" — ${summary.doneTasks}/${summary.totalTasks} công việc hoàn thành. Xem lại ở mục "Dự án đã xong" trong trang cá nhân.`,
+      });
+    } catch (err) {
+      setFeedback({ type: "error", message: errorMessage(err) });
+    } finally {
+      setIsClosing(false);
     }
   };
 
@@ -298,6 +343,16 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
             <div>
               <h3 className="text-sm font-semibold text-slate-900">Projects</h3>
               <p className="text-xs text-slate-500">{projects.length} active projects</p>
+              {/* The quota comes from the plan, not from a constant here — a closed project still
+                  occupies a slot, so the count is deliberately usage, not "active projects". */}
+              {entitlement && (
+                <p className={`mt-0.5 text-[11px] ${quotaExhausted ? "font-medium text-rose-600" : "text-slate-400"}`}>
+                  {entitlement.projectLimit === null
+                    ? `Gói ${entitlement.planName}: không giới hạn dự án`
+                    : `Tối đa ${entitlement.projectLimit} dự án · đã dùng ${entitlement.projectUsage}` +
+                      (quotaExhausted ? " · đã hết" : ` · còn ${entitlement.projectLimit - entitlement.projectUsage}`)}
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-2 py-1.5">
               <Search size={13} className="text-slate-400" />
@@ -360,8 +415,24 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
                   >
                     <Pencil size={14} /> Edit
                   </button>
+                  {/* Ending keeps the data; Remove destroys it. Leader-only, mirroring what the
+                      endpoint enforces — the UI guard is tidiness, not authorization. */}
+                  {selectedProject.canManageTasks !== false && (
+                    <button
+                      onClick={() => {
+                        setShowDeleteConfirm(false);
+                        setShowCloseConfirm(true);
+                      }}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100"
+                    >
+                      <Archive size={14} /> End project
+                    </button>
+                  )}
                   <button
-                    onClick={() => setShowDeleteConfirm(true)}
+                    onClick={() => {
+                      setShowCloseConfirm(false);
+                      setShowDeleteConfirm(true);
+                    }}
                     className="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100"
                   >
                     <Trash2 size={14} /> Remove
@@ -369,10 +440,41 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
                 </div>
               </div>
 
+              {showCloseConfirm && (
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-sm text-amber-900">
+                    Đóng dự án <strong>{selectedProject.name}</strong>?
+                  </p>
+                  <p className="mt-1 text-xs text-amber-800">
+                    Dự án sẽ chuyển sang trạng thái đã kết thúc và biến mất khỏi danh sách đang hoạt động.
+                    Điểm tổng kết được ghi cho các thành viên. Toàn bộ công việc vẫn được giữ và xem lại
+                    được ở mục “Dự án đã xong” trong trang cá nhân. Thao tác này không thể hoàn tác.
+                  </p>
+                  <div className="mt-3 flex justify-end gap-2">
+                    <button type="button" onClick={() => setShowCloseConfirm(false)} disabled={isClosing} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 disabled:opacity-60">
+                      Huỷ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCloseProject}
+                      disabled={isClosing}
+                      className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isClosing && <Loader2 size={14} className="animate-spin" />} Đóng dự án
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+
               {showDeleteConfirm && (
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3">
                   <p className="text-sm text-rose-700">
                     Delete <strong>{selectedProject.name}</strong>? This action cannot be undone.
+                  </p>
+                  <p className="mt-1 text-xs text-rose-700">
+                    Xoá vĩnh viễn toàn bộ dữ liệu của dự án: công việc, phân công, bình luận, tệp đính kèm,
+                    phụ thuộc, phân tích AI, lịch sử rủi ro, điểm và cuộc họp. Muốn giữ lại dữ liệu thì
+                    dùng <strong>End project</strong>.
                   </p>
                   <div className="mt-3 flex justify-end gap-2">
                     <button type="button" onClick={() => setShowDeleteConfirm(false)} disabled={isDeleting} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 disabled:opacity-60">

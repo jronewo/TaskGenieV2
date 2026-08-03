@@ -30,6 +30,37 @@ export interface TaskSummaryDto {
   priority?: string | null;
 }
 
+export interface ProjectMemberScoreDto {
+  userId: number;
+  userName?: string | null;
+  avatar?: string | null;
+  level: string;
+  taskScore: number;
+  closureScore: number;
+  totalProjectScore: number;
+}
+
+/** What closing a project returns: the closure report the API computed and persisted. */
+export interface ProjectSummaryDto {
+  projectId: number;
+  projectName?: string | null;
+  deadline?: string | null;
+  closedAt: string;
+  /** "Early" | "OnTime" | "Late" */
+  projectCompletionStatus: string;
+  /** Positive = days early, negative = days late. */
+  daysVsDeadline: number;
+  totalTasks: number;
+  doneTasks: number;
+  inProgressTasks: number;
+  todoTasks: number;
+  onTimeTaskRate: number;
+  projectClosureScorePerMember: number;
+  /** "REWARD" | "PENALTY" */
+  projectClosureScoreType: string;
+  memberScores: ProjectMemberScoreDto[];
+}
+
 export interface CreateProjectRequest {
   name: string;
   description?: string;
@@ -54,7 +85,18 @@ export const projectApi = {
       body: JSON.stringify({ workingHoursPerDay }),
     }),
 
+  /** Active projects only — a closed project is finished work and drops out of the workspace. */
   list: () => apiRequest<ProjectDto[]>("/projects"),
+
+  /** The projects that have been ended, for the finished-work list on the profile. */
+  listClosed: () => apiRequest<ProjectDto[]>("/projects?closed=true"),
+
+  /**
+   * Ends the project: status becomes "Completed", it leaves every active list, and the API awards
+   * the closure scores. Irreversible from the UI, so always confirm first.
+   */
+  close: (projectId: number) =>
+    apiRequest<ProjectSummaryDto>(`/projects/${projectId}/close`, { method: "POST" }),
 
   getById: (projectId: number) => apiRequest<ProjectDto>(`/projects/${projectId}`),
 

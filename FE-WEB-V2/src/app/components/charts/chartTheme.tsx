@@ -97,22 +97,38 @@ export const ChartTooltip =
 /**
  * Legend as a plain list, since recharts' own legend cannot show the figure beside the label —
  * and a colour swatch whose number you have to hover for is half a legend.
+ *
+ * `layout="stack"` puts one item per row with the figure right-aligned — for panels too narrow to
+ * wrap a row of labels cleanly, such as a column in the three-column dashboard.
  */
 export const ChartLegend = ({
   items,
+  layout = "inline",
 }: {
   items: { label: string; value: number | string; color: string }[];
-}) => (
-  <ul className="mt-3 flex flex-wrap justify-center gap-x-3.5 gap-y-1.5">
-    {items.map((item) => (
-      <li key={item.label} className="flex items-center gap-1.5 text-[10px] text-muted">
-        <span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: item.color }} aria-hidden />
-        {item.label}
-        <span className="font-semibold text-strong tabular-nums">{item.value}</span>
-      </li>
-    ))}
-  </ul>
-);
+  layout?: "inline" | "stack";
+}) =>
+  layout === "stack" ? (
+    <ul className="mt-3 flex flex-col gap-1.5">
+      {items.map((item) => (
+        <li key={item.label} className="flex items-center gap-1.5 text-[10px] text-muted">
+          <span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: item.color }} aria-hidden />
+          <span className="truncate">{item.label}</span>
+          <span className="ml-auto font-semibold text-strong tabular-nums">{item.value}</span>
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <ul className="mt-3 flex flex-wrap justify-center gap-x-3.5 gap-y-1.5">
+      {items.map((item) => (
+        <li key={item.label} className="flex items-center gap-1.5 text-[10px] text-muted">
+          <span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: item.color }} aria-hidden />
+          {item.label}
+          <span className="font-semibold text-strong tabular-nums">{item.value}</span>
+        </li>
+      ))}
+    </ul>
+  );
 
 /**
  * A titled chart card — one frame for every panel so the dashboard reads as one grid.

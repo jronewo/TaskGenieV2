@@ -77,6 +77,24 @@ public class Project
         UpdatedAt = DateTime.UtcNow;
     }
 
+    /// <summary>The single status a closed project carries. Anything that lists or filters
+    /// projects compares against this rather than repeating the literal.</summary>
+    public const string ClosedStatus = "Completed";
+
+    public bool IsClosed => Status == ClosedStatus;
+
+    /// <summary>
+    /// Ends the project. It stays readable — the profile lists it under finished work — but drops
+    /// out of the active project lists. <see cref="UpdatedAt"/> is the closure timestamp; there is
+    /// no separate column for it.
+    /// </summary>
+    public void Close()
+    {
+        if (IsClosed) throw new InvalidOperationException("Dự án đã được đóng.");
+        Status = ClosedStatus;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
     public void Update(string? name, string? description, string? status, int? teamId, DateOnly? deadline)
     {
         if (name is not null) Name = name;

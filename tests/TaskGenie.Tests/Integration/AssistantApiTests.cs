@@ -80,12 +80,35 @@ public sealed class AssistantApiTests
             $"Expected 403/404 but got {(int)response.StatusCode}.");
     }
 
+    /// <summary>
+    /// The assistant ships with the paid plans. Hiding the launcher in the UI is presentation only,
+    /// so the endpoint itself must refuse a free account.
+    /// </summary>
+    [Fact]
+    public async Task Ask_OnAFreePlan_IsRefusedWithPlanUpgradeRequired()
+    {
+        await using var factory = new AssistantApiFactory();
+        using var client = factory.CreateClient();
+        var user = await factory.SeedUserAsync();
+        var projectId = await factory.SeedProjectAsync(user, "Free plan project");
+        await factory.AuthenticateAsync(client, user, "NORMAL_USER");
+
+        var response = await client.PostAsJsonAsync(
+            "/api/ai-analysis/assistant",
+            new { question = "How is this project going?", projectId });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("PLAN_UPGRADE_REQUIRED", body);
+    }
+
     [Fact]
     public async Task Ask_OwnProject_AnswersFromRealRowsWhenProviderIsDown()
     {
         await using var factory = new AssistantApiFactory();
         using var client = factory.CreateClient();
         var owner = await factory.SeedUserAsync();
+        await factory.SeedPremiumSubscriptionAsync(owner);
         var projectId = await factory.SeedProjectAsync(owner, "Website Revamp");
         await factory.SeedTaskAsync(projectId, "Fix the login redirect", "Todo");
         await factory.SeedTaskAsync(projectId, "Ship the pricing page", "Done");
@@ -111,6 +134,7 @@ public sealed class AssistantApiTests
         using var client = factory.CreateClient();
         var owner = await factory.SeedUserAsync();
         var outsider = await factory.SeedUserAsync();
+        await factory.SeedPremiumSubscriptionAsync(outsider);
         var projectId = await factory.SeedProjectAsync(owner, "Private roadmap");
         await factory.SeedTaskAsync(projectId, "Secret task", "Todo");
         await factory.AuthenticateAsync(client, outsider, "NORMAL_USER");
@@ -162,6 +186,28 @@ public sealed class AssistantApiFactory : WebApplicationFactory<Program>
         context.Users.Add(user);
         await context.SaveChangesAsync();
         return user.UserId;
+    }
+
+    /// <summary>
+    /// Puts the user on an ACTIVE paid personal plan. The assistant is a paid feature, so every
+    /// test that expects an answer rather than a 403 has to grant the entitlement first.
+    /// </summary>
+    public async Task SeedPremiumSubscriptionAsync(int userId)
+    {
+        using var scope = Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await context.Database.EnsureCreatedAsync();
+
+        var plan = Plan.Create(
+            $"PRO_PERSONAL_{Guid.NewGuid():N}", "Pro", "PERSONAL", "MONTHLY",
+            priceMinor: 99_000, currency: "VND", projectLimit: null, memberLimit: null);
+        context.Plans.Add(plan);
+        await context.SaveChangesAsync();
+
+        var subscription = Subscription.CreateForUser(plan.PlanId, userId);
+        subscription.Activate(DateTime.UtcNow.AddDays(30));
+        context.Subscriptions.Add(subscription);
+        await context.SaveChangesAsync();
     }
 
     public async Task<int> SeedProjectAsync(int ownerId, string name)

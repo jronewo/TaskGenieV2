@@ -34,6 +34,7 @@ public sealed class AskAssistantQueryValidator : AbstractValidator<AskAssistantQ
 public sealed class AskAssistantQueryHandler(
     ICurrentUser currentUser,
     IResourceAuthorizationService authz,
+    IEntitlementService entitlements,
     IProjectRepository projectRepo,
     ITaskRepository taskRepo,
     ITextGenerationService textGeneration
@@ -44,6 +45,17 @@ public sealed class AskAssistantQueryHandler(
     public async System.Threading.Tasks.Task<AssistantAnswer> Handle(AskAssistantQuery query, CancellationToken ct)
     {
         var userId = currentUser.UserId;
+
+        // The assistant is a paid feature. Hiding the launcher in the UI is presentation only —
+        // the endpoint is what actually has to refuse a free caller.
+        var entitlement = await entitlements.GetForUserAsync(userId, ct);
+        if (!entitlement.IsPremium)
+        {
+            throw new PlanUpgradeRequiredException(
+                "AI chatbot chỉ có trong gói trả phí. Nâng cấp để sử dụng trợ lý.",
+                limit: null,
+                usage: 0);
+        }
 
         List<TaskEntity> tasks;
         int projectCount;

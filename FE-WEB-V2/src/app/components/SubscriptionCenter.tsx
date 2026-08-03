@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { CreditCard, Check, Loader2, Sparkles, Receipt, AlertTriangle, Building2, User } from "lucide-react";
+import { CreditCard, Check, X, Loader2, Sparkles, Receipt, AlertTriangle, Building2, User } from "lucide-react";
 import {
   billingApi,
   formatMoney,
@@ -349,6 +349,19 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
                           {plan.memberLimit} members
                         </li>
                       )}
+                      {/* Listed on every plan, not only the paid ones: a feature that is missing
+                          from the free card reads as an oversight rather than as the difference
+                          you are paying for. */}
+                      <li
+                        className={`flex items-center gap-2 ${plan.priceMinor === 0 ? "text-gray-400 line-through" : ""}`}
+                      >
+                        {plan.priceMinor === 0 ? (
+                          <X className="h-3.5 w-3.5 text-gray-300" aria-hidden />
+                        ) : (
+                          <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden />
+                        )}
+                        Trợ lý AI chatbot
+                      </li>
                     </ul>
                     {plan.priceMinor > 0 && !isCurrent && (
                       <button

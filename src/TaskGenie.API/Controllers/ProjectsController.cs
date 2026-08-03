@@ -11,9 +11,13 @@ namespace TaskGenie.API.Controllers;
 [ApiController]
 public class ProjectsController(IMediator mediator) : ControllerBase
 {
+    /// <summary>
+    /// The caller's active projects. Pass <c>?closed=true</c> for the ones that have been ended —
+    /// they are excluded by default so a finished project stops filling the workspace.
+    /// </summary>
     [HttpGet]
-    public async Task<IActionResult> GetAll()
-        => Ok(await mediator.Send(new GetProjectsByUserQuery(HttpContext.GetCurrentUserId())));
+    public async Task<IActionResult> GetAll([FromQuery] bool closed = false)
+        => Ok(await mediator.Send(new GetProjectsByUserQuery(HttpContext.GetCurrentUserId(), closed)));
 
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(int id)

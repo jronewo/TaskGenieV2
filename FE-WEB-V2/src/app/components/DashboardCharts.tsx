@@ -38,55 +38,56 @@ export const DashboardCharts = ({ projects, tasks }: Props) => {
   if (projects.length === 0) return null;
 
   return (
-    <div className="p-4 pb-0">
-      <ChartPanel
-        title="Task status"
-        subtitle={`${tasks.length} task trong các dự án của bạn`}
-        icon={<PieIcon size={14} strokeWidth={1.9} />}
-      >
+    <ChartPanel
+      title="Task status"
+      subtitle={`${tasks.length} task trong các dự án của bạn`}
+      icon={<PieIcon size={14} strokeWidth={1.9} />}
+    >
         {statusData.length === 0 ? (
-          <ChartEmpty message="Chưa có task nào." />
-        ) : (
-          <>
-            {/* The donut hole carries the number people came for, instead of leaving a blank. */}
-            <div className="relative h-40">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={statusData}
-                    dataKey="value"
-                    nameKey="name"
-                    innerRadius={48}
-                    outerRadius={70}
-                    paddingAngle={2}
-                    strokeWidth={0}
-                  >
-                    {statusData.map((slice) => (
-                      <Cell key={slice.status} fill={STATUS_COLOR[slice.status]} />
-                    ))}
-                  </Pie>
-                  <Tooltip content={ChartTooltip("task")} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                <span className="font-display text-xl font-bold text-strong tabular-nums">
-                  {completion}%
-                </span>
-                <span className="text-[9px] text-subtle tabular-nums">
-                  {doneCount}/{tasks.length} xong
-                </span>
-              </div>
+        <ChartEmpty message="Chưa có task nào." />
+      ) : (
+        <>
+          {/* The donut hole carries the number people came for, instead of leaving a blank. */}
+          <div className="relative h-44">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={statusData}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius={52}
+                  outerRadius={76}
+                  paddingAngle={2}
+                  strokeWidth={0}
+                >
+                  {statusData.map((slice) => (
+                    <Cell key={slice.status} fill={STATUS_COLOR[slice.status]} />
+                  ))}
+                </Pie>
+                <Tooltip content={ChartTooltip("task")} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+              <span className="font-display text-xl font-bold text-strong tabular-nums">
+                {completion}%
+              </span>
+              <span className="text-[9px] text-subtle tabular-nums">
+                {doneCount}/{tasks.length} xong
+              </span>
             </div>
-            <ChartLegend
-              items={statusData.map((s) => ({
-                label: s.name,
-                value: s.value,
-                color: STATUS_COLOR[s.status],
-              }))}
-            />
-          </>
-        )}
-      </ChartPanel>
-    </div>
+          </div>
+          {/* One item per row: the panel is a third of the page wide now, so a wrapped
+              horizontal legend would break mid-label. */}
+          <ChartLegend
+            layout="stack"
+            items={statusData.map((s) => ({
+              label: s.name,
+              value: s.value,
+              color: STATUS_COLOR[s.status],
+            }))}
+          />
+        </>
+      )}
+    </ChartPanel>
   );
 };

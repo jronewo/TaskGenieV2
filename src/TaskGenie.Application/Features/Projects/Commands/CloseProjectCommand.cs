@@ -21,7 +21,7 @@ public class CloseProjectCommandHandler(
     {
         var project = await authz.EnsureCanManageProjectAsync(request.ProjectId, ct);
 
-        if (project.Status == "Completed")
+        if (project.IsClosed)
             throw new InvalidOperationException("Dự án đã được đóng.");
 
         // Load tasks with assignees
@@ -95,7 +95,7 @@ public class CloseProjectCommandHandler(
         }
 
         // ── Close the project ─────────────────────────────────────────────────
-        project.Update(null, null, "Completed", null, null);
+        project.Close();
         await projectRepo.UpdateAsync(project, ct);
 
         // ── Award closure scores to all team members ──────────────────────────

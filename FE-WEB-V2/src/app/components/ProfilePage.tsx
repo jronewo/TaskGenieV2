@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { User, Sparkles, FolderKanban, Loader2, Plus, Trash2, Save, Mail, Shield, Camera, Building2 } from "lucide-react";
+import { User, Sparkles, FolderKanban, Loader2, Plus, Trash2, Save, Mail, Shield, Camera, Building2, Archive } from "lucide-react";
+import { ClosedProjectModal } from "./ClosedProjectModal";
+import { exportProjectReport } from "../lib/projectReport";
 import { skillApi } from "../services/adminApi";
 import { projectApi, ProjectDto } from "../services/projectApi";
 import { userApi } from "../services/userApi";
@@ -48,6 +50,9 @@ export const ProfilePage = () => {
   const [catalog, setCatalog] = useState<{ skillId: number; skillName: string }[]>([]);
   const [mySkills, setMySkills] = useState<MySkill[]>([]);
   const [projects, setProjects] = useState<ProjectDto[]>([]);
+  /** Ended projects: gone from the workspace, kept here as the record of finished work. */
+  const [closedProjects, setClosedProjects] = useState<ProjectDto[]>([]);
+  const [openedProject, setOpenedProject] = useState<ProjectDto | null>(null);
 
   const [name, setName] = useState(user?.name ?? "");
   const [addForm, setAddForm] = useState({ skillId: "", level: "3" });
@@ -61,14 +66,16 @@ export const ProfilePage = () => {
     setLoading(true);
     setError(null);
     try {
-      const [cat, mine, projectList] = await Promise.all([
+      const [cat, mine, projectList, closedList] = await Promise.all([
         skillApi.catalog(),
         skillApi.mine(),
         projectApi.list().catch(() => [] as ProjectDto[]),
+        projectApi.listClosed().catch(() => [] as ProjectDto[]),
       ]);
       setCatalog(cat);
       setMySkills(mine);
       setProjects(projectList);
+      setClosedProjects(closedList);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -400,6 +407,55 @@ export const ProfilePage = () => {
           </div>
         )}
       </section>
+
+      {/* Finished work. These no longer appear anywhere in the workspace, so this list is the only
+          way back to them — clicking one opens the board it ended with, read-only. */}
+      <section className="rounded-lg border border-gray-200 bg-white p-4">
+        <h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-gray-900">
+          <Archive size={13} className="text-[#1A237E]" aria-hidden /> Dự án đã xong ({closedProjects.length})
+        </h2>
+        {loading ? (
+          <p className="py-6 text-center text-xs text-gray-500">Loading…</p>
+        ) : closedProjects.length === 0 ? (
+          <p className="py-6 text-center text-xs text-gray-500">Chưa có dự án nào được đóng.</p>
+        ) : (
+          <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+            {closedProjects.map((p) => (
+              <li key={p.projectId}>
+                <button
+                  type="button"
+                  onClick={() => setOpenedProject(p)}
+                  className="w-full cursor-pointer rounded-lg border border-gray-200 bg-white p-3 text-left hover:border-gray-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A237E]"
+                >
+                  <div className="mb-1 flex items-start justify-between gap-2">
+                    <p className="line-clamp-2 flex-1 text-sm font-medium text-gray-900">{p.name}</p>
+                    <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[9px] font-semibold text-gray-600">
+                      ĐÃ KẾT THÚC
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-500">
+                    {p.organizationName ? `${p.organizationName} · ` : "Cá nhân · "}
+                    {p.updatedAt ? `đóng ${String(p.updatedAt).slice(0, 10)}` : "—"}
+                  </p>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {openedProject && (
+        <ClosedProjectModal
+          project={openedProject}
+          onClose={() => setOpenedProject(null)}
+          onExport={(project, tasks, teamMembers) => {
+            const opened = exportProjectReport(project, tasks, teamMembers);
+            if (!opened) {
+              setError("Trình duyệt đã chặn cửa sổ in. Cho phép pop-up cho trang này rồi thử lại.");
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

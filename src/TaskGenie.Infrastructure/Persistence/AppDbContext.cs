@@ -799,13 +799,15 @@ public partial class AppDbContext : DbContext
 
             // Plan catalog is reference/configuration data (same treatment as RiskRules), not demo
             // business data. Admins edit it through the admin plan API; prices are never hardcoded
-            // in the client.
+            // in the client. Priced in VND (whole đồng — VND has no minor subdivision) because PayOS,
+            // the production payment provider, settles VND only; see migration
+            // UpdatePlanCatalogToVnd for the USD -> VND cutover.
             var catalogSeededAt = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
             entity.HasData(
-                new { PlanId = 1, Code = "FREE_PERSONAL", Name = "Free", Audience = "PERSONAL", BillingInterval = "NONE", PriceMinor = 0, Currency = "USD", ProjectLimit = (int?)2, MemberLimit = (int?)null, IsActive = true, SortOrder = 1, CreatedAt = catalogSeededAt },
-                new { PlanId = 2, Code = "PRO_PERSONAL", Name = "Pro", Audience = "PERSONAL", BillingInterval = "MONTHLY", PriceMinor = 999, Currency = "USD", ProjectLimit = (int?)null, MemberLimit = (int?)null, IsActive = true, SortOrder = 2, CreatedAt = catalogSeededAt },
-                new { PlanId = 3, Code = "FREE_ORGANIZATION", Name = "Organization Free", Audience = "ORGANIZATION", BillingInterval = "NONE", PriceMinor = 0, Currency = "USD", ProjectLimit = (int?)2, MemberLimit = (int?)5, IsActive = true, SortOrder = 1, CreatedAt = catalogSeededAt },
-                new { PlanId = 4, Code = "PRO_ORGANIZATION", Name = "Organization Pro", Audience = "ORGANIZATION", BillingInterval = "MONTHLY", PriceMinor = 4999, Currency = "USD", ProjectLimit = (int?)null, MemberLimit = (int?)null, IsActive = true, SortOrder = 2, CreatedAt = catalogSeededAt });
+                new { PlanId = 1, Code = "FREE_PERSONAL", Name = "Free", Audience = "PERSONAL", BillingInterval = "NONE", PriceMinor = 0, Currency = "VND", ProjectLimit = (int?)2, MemberLimit = (int?)null, IsActive = true, SortOrder = 1, CreatedAt = catalogSeededAt },
+                new { PlanId = 2, Code = "PRO_PERSONAL", Name = "Pro", Audience = "PERSONAL", BillingInterval = "MONTHLY", PriceMinor = 249000, Currency = "VND", ProjectLimit = (int?)null, MemberLimit = (int?)null, IsActive = true, SortOrder = 2, CreatedAt = catalogSeededAt },
+                new { PlanId = 3, Code = "FREE_ORGANIZATION", Name = "Organization Free", Audience = "ORGANIZATION", BillingInterval = "NONE", PriceMinor = 0, Currency = "VND", ProjectLimit = (int?)2, MemberLimit = (int?)5, IsActive = true, SortOrder = 1, CreatedAt = catalogSeededAt },
+                new { PlanId = 4, Code = "PRO_ORGANIZATION", Name = "Organization Pro", Audience = "ORGANIZATION", BillingInterval = "MONTHLY", PriceMinor = 1199000, Currency = "VND", ProjectLimit = (int?)null, MemberLimit = (int?)null, IsActive = true, SortOrder = 2, CreatedAt = catalogSeededAt });
         });
 
         modelBuilder.Entity<Subscription>(entity =>

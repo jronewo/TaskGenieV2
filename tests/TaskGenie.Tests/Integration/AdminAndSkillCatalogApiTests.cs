@@ -221,7 +221,7 @@ public sealed class AdminAndSkillCatalogApiTests
         Assert.Equal(1, analytics.GetProperty("activeSubscriptions").GetInt32());
         // Simulated money must never be counted as real revenue.
         Assert.Equal(0, analytics.GetProperty("totalRevenueMinor").GetInt32());
-        Assert.Equal(999, analytics.GetProperty("testRevenueMinor").GetInt32());
+        Assert.Equal(249000, analytics.GetProperty("testRevenueMinor").GetInt32());
     }
 
     // ── Skill catalog ────────────────────────────────────────────────────────────────

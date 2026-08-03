@@ -15,7 +15,10 @@ Slice 7 = PROD-0601/0602 · Slice 8 = PROD-0102/0302/0303/0603 · Slice 9-11 = P
 
 Chú thích: `[x]` xong · `[~]` đang làm/làm một phần · `[ ]` chưa làm · `⚠️` đã audit, phát hiện vấn đề cần xử lý.
 
-Cập nhật lần cuối: 2026-08-02 — **backend 274 · component 41 · E2E 19 trên Edge** đều xanh; FE production build pass; mock data đã xoá hoàn toàn.
+Cập nhật lần cuối: 2026-08-04 — PROD-0504 (PayOS thật) xong; **backend 402 · component 179** đều xanh; FE
+production build pass. Số E2E Edge trong bảng bên dưới (19/25) chưa re-run trong phiên này — không đổi vì
+phiên này không chạm code UI đã có E2E, chỉ thêm route/trang mới (landing pricing, PayOS redirect) chưa có
+E2E riêng.
 
 ---
 
@@ -84,7 +87,24 @@ Cập nhật lần cuối: 2026-08-02 — **backend 274 · component 41 · E2E 1
 - [x] PROD-0501 — `plans`/`subscriptions`/`payment_transactions` + XOR check + unique idempotency key — **đã apply vào UAT DB**, catalog 4 plan seed thật
 - [x] PROD-0502 — `GET /api/plans` + admin plan CRUD/archive + `SubscriptionCenter.tsx` (giá lấy từ API, không hardcode)
 - [x] PROD-0503 — `FakePaymentProvider` + `/api/billing/*` + simulate endpoint + UI checkout — E2E PAY-P-01/03 ghi payment thật vào SQL
-- [ ] PROD-0504 — Production payment provider thật
+- [x] PROD-0504 — `PayOsPaymentProvider` (PayOS, VND) thay `IPaymentProvider` thật khi `Payments:UseFakeProvider=false`;
+      `PayOsWebhookController` (`POST /api/webhooks/payos`) verify HMAC-SHA256 checksum trên toàn bộ field `data`
+      (không phải shared-secret tĩnh như webhook generic cũ), settle qua `IBillingService.SettlePaymentAsync` —
+      không bao giờ activate từ return URL. Plan catalog đổi USD → VND thật (PayOS chỉ nhận VND nguyên, không thập
+      phân): Free 0đ, Pro Personal 249,000đ/tháng, Org Free 0đ, Org Pro 1,199,000đ/tháng — migration
+      `UpdatePlanCatalogToVnd` đã generate, **chưa apply** vào DB thật (chờ xác nhận). `PlansController` chuyển
+      `[AllowAnonymous]` để landing page (chưa đăng nhập) đọc được catalog thật — trước đó bị chặn bởi fallback
+      auth policy dù comment ghi "Public catalog". `LandingPage.tsx` bỏ giá `$` hardcode, gọi `/api/plans` thật;
+      `SubscriptionCenter.tsx` redirect sang `checkoutUrl` khi provider trả về (thay vì panel simulate, panel đó
+      giờ chỉ còn hiện với Fake). Sửa 1 lỗi có sẵn phát hiện trong phiên này: `BillingService.SettlePaymentAsync`
+      luôn 403 với caller ẩn danh (webhook không JWT → `UserId` mặc định 0 ≠ chủ thanh toán thật) — chưa từng bị
+      bắt vì webhook generic cũ không có test happy-path; đã thêm regression test cho cả 2 webhook.
+      Backend **402/402 pass** (13 test PayOS mới + 1 regression webhook cũ), build sạch 4 project.
+      FE component **179/179 pass** (20 file), Vite production build pass.
+      ⚠️ Còn cần chủ dự án: nạp `PayOS:ClientId/ApiKey/ChecksumKey` thật qua user-secrets (không đưa vào chat/git),
+      apply migration `UpdatePlanCatalogToVnd` lên UAT DB, gọi PayOS `POST /confirm-webhook` để đăng ký
+      `https://<domain-thật>/api/webhooks/payos` một lần khi đã có domain public, và set
+      `Payments:UseFakeProvider=false` ở UAT/Production sau khi có domain HTTPS công khai cho webhook.
 - [x] PROD-0505 — `IEntitlementService` + quota free 2 project + `PLAN_UPGRADE_REQUIRED` + premium inheritance động
 
 ## Phase 6 — Admin, Skill, AI và Reports
@@ -181,6 +201,12 @@ Verify: **backend 280/280 · component 77/77 (11 file) · E2E Edge 25/25 · buil
   Token vẫn tạo/verify đúng trong DB; cần cắm SMTP/provider trước khi production.
 - **PROD-0002/0003** (API versioning, error envelope chuẩn, OpenAPI client, Docker Compose,
   health endpoints, CORS allowlist) — hạ tầng, chưa làm.
+- **PayOS (PROD-0504) chưa live**: cần nạp `PayOS:ClientId`/`PayOS:ApiKey`/`PayOS:ChecksumKey` thật qua
+  `dotnet user-secrets`/biến môi trường (không dán vào chat hay commit git), apply migration
+  `UpdatePlanCatalogToVnd` lên UAT DB, gọi PayOS API `POST /confirm-webhook` để đăng ký
+  `https://<domain-thật>/api/webhooks/payos` (cần domain HTTPS public trước — PayOS không gọi được
+  `localhost`), rồi set `Payments:UseFakeProvider=false` cho UAT/Production. Plumbing (provider, webhook,
+  signature, UI redirect) đã sẵn sàng và có test; chỉ còn thao tác vận hành cần credentials/domain thật.
 
 ## Cách chạy lại toàn bộ
 

@@ -81,4 +81,30 @@ public sealed class PaymentWebhookApiTests
         // A gateway inventing a status must not put a payment into a state nothing understands.
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
+
+    [Fact]
+    public async Task WithAValidSecret_SettlesAPaymentTheCallerHasNoJwtOwnershipOf()
+    {
+        // Regression: SettlePaymentAsync used to run its "caller owns this payment" check even for
+        // an anonymous webhook caller (UserId defaults to 0), so a real gateway callback always
+        // 403'd against the actual owner's payment. Signature/secret verification IS the auth here.
+        await using var factory = new BillingApiFactory();
+        using var checkoutClient = factory.CreateClient();
+        var user = await factory.SeedUserAsync();
+        await factory.AuthenticateAsync(checkoutClient, user);
+        var planId = await factory.GetPlanIdAsync("PRO_PERSONAL");
+        var checkout = await checkoutClient.PostAsJsonAsync("/api/billing/checkout-sessions",
+            new { planId, organizationId = (int?)null, idempotencyKey = (string?)null });
+        var paymentId = (await checkout.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>())
+            .GetProperty("paymentTransactionId").GetInt32();
+
+        using var client = CreateClient(factory, Secret);
+        client.DefaultRequestHeaders.Add(PaymentWebhookController.SignatureHeader, Secret);
+        var response = await client.PostAsJsonAsync("/api/payment-webhook/settle",
+            new { paymentId, status = "SUCCEEDED" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await factory.WithDbAsync(db =>
+            Assert.Equal("ACTIVE", db.Subscriptions.Single(s => s.UserId == user).Status));
+    }
 }

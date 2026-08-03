@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Clock, ShieldAlert, Loader2, X, CalendarDays, Users, Layers, AlertTriangle, FileSpreadsheet } from "lucide-react";
+  Clock, ShieldAlert, Loader2, X, CalendarDays, Users, Layers, AlertTriangle, FileSpreadsheet, Network,
+} from "lucide-react";
 import { coreAiApi, RiskAssessment } from "../services/coreAiApi";
 import { projectApi, ProjectDto } from "../services/projectApi";
+import { TaskDependencyGraph } from "./TaskDependencyGraph";
 import { TaskDetailDto } from "../services/taskApi";
 import { ApiError } from "../services/apiClient";
 
@@ -31,6 +33,8 @@ interface Props {
   onProjectLoaded?: (name: string | null, canManageTasks: boolean) => void;
   /** Shown only to someone who may add tasks here. */
   onImportTasks?: () => void;
+  /** Lets the dependency diagram open a task, so it is a way in rather than a dead end. */
+  onOpenTask?: (taskId: number) => void;
 }
 
 /** Project context plus an on-demand risk sweep across the board's tasks. */
@@ -42,12 +46,13 @@ const isValidHours = (value: string) => {
   return Number.isInteger(n) && n >= 1 && n <= 24;
 };
 
-export const ProjectBoardHeader = ({ projectId, tasks, onProjectLoaded, onImportTasks }: Props) => {
+export const ProjectBoardHeader = ({ projectId, tasks, onProjectLoaded, onImportTasks, onOpenTask }: Props) => {
   // Loaded here rather than in the shell: the shell renders before sign-in, and an authenticated
   // fetch from there would fire without a token and trip the 401 handler.
   const [project, setProject] = useState<ProjectDto | null>(null);
   const [hours, setHours] = useState("8");
   const [savingHours, setSavingHours] = useState(false);
+  const [graphOpen, setGraphOpen] = useState(false);
 
   // Kept in a ref so a parent passing an inline arrow doesn't re-trigger the fetch every render.
   const onLoadedRef = useRef(onProjectLoaded);
@@ -188,6 +193,14 @@ export const ProjectBoardHeader = ({ projectId, tasks, onProjectLoaded, onImport
             </button>
           </div>
         )}
+        {/* Visible to everyone: knowing what is waiting on what is not an administrative act. */}
+        <button
+          type="button"
+          onClick={() => setGraphOpen(true)}
+          className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+        >
+          <Network size={13} aria-hidden /> Sơ đồ phụ thuộc
+        </button>
         {onImportTasks && project.canManageTasks && (
           <button
             type="button"
@@ -270,6 +283,17 @@ export const ProjectBoardHeader = ({ projectId, tasks, onProjectLoaded, onImport
           </div>
         </div>
       )}
+
+      <TaskDependencyGraph
+        open={graphOpen}
+        projectId={projectId}
+        projectName={project?.name}
+        onClose={() => setGraphOpen(false)}
+        onOpenTask={(taskId) => {
+          setGraphOpen(false);
+          onOpenTask?.(taskId);
+        }}
+      />
     </>
   );
 };

@@ -21,6 +21,15 @@ public class TaskDependencyRepository : ITaskDependencyRepository
             .FirstOrDefaultAsync(d => d.DependencyId == dependencyId, ct);
     }
 
+    public async Task<List<TaskDependency>> GetByProjectIdAsync(int projectId, CancellationToken ct = default)
+    {
+        // Joined through the dependent task, so a dependency is only returned when the task that
+        // owns it belongs to the project — the same scoping the graph query authorises against.
+        return await _context.TaskDependencies
+            .Where(d => _context.Tasks.Any(t => t.TaskId == d.TaskId && t.ProjectId == projectId))
+            .ToListAsync(ct);
+    }
+
     public async Task<List<TaskDependency>> GetByTaskIdAsync(int taskId, CancellationToken ct = default)
     {
         return await _context.TaskDependencies

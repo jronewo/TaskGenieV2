@@ -178,3 +178,20 @@
 .dark .tg-column .bg-white { background-color: #242932; }
 .dark .tg-column .hover\:bg-gray-50:hover { background-color: #2C323D; }
 .dark .tg-column .hover\:bg-white:hover { background-color: #2C323D; }
+
+/*
+ * Dependency diagram.
+ *
+ * The node fills are chosen against a light surface; on a dark one the same pastels glare and the
+ * dark label text inside them disappears. Each state keeps its hue and swaps to a dark-surface step
+ * — the icon and the written label carry the meaning either way.
+ */
+.dark .tg-depgraph rect[fill="#FEE2E2"] { fill: rgba(239, 68, 68, 0.20); stroke: #F87171; }
+.dark .tg-depgraph rect[fill="#D1FAE5"] { fill: rgba(16, 185, 129, 0.18); stroke: #34D399; }
+.dark .tg-depgraph rect[fill="#DBEAFE"] { fill: rgba(59, 130, 246, 0.20); stroke: #60A5FA; }
+.dark .tg-depgraph rect[fill="#F1F5F9"] { fill: #232833; stroke: #4C5566; }
+
+/* Label ink, not series colour: one readable value on every card. */
+.dark .tg-depgraph text { fill: #E6E8EC; }
+.dark .tg-depgraph path[stroke="#94A3B8"] { stroke: #6B7488; }
+.dark .tg-depgraph path[stroke="#1A237E"] { stroke: #A5B4FC; }

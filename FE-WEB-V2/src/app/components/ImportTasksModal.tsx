@@ -10,6 +10,7 @@ import {
   buildTemplateCsv,
   parseTaskCsv,
   resolveSkillIds,
+  resolveTypeId,
 } from "../lib/taskImport";
 
 function errorMessage(err: unknown): string {
@@ -33,6 +34,8 @@ interface RowResult {
   row: ParsedTaskRow;
   status: "pending" | "created" | "failed";
   detail?: string;
+  /** Filled in once the task exists, so the dependency pass can find it. */
+  taskId?: number;
 }
 
 /**
@@ -44,6 +47,7 @@ interface RowResult {
  */
 export const ImportTasksModal = ({ open, projectId, onClose, onImported }: Props) => {
   const [catalog, setCatalog] = useState<{ skillId: number; skillName: string }[]>([]);
+  const [types, setTypes] = useState<{ taskTypeId: number; name: string }[]>([]);
   const [rows, setRows] = useState<RowResult[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -58,6 +62,8 @@ export const ImportTasksModal = ({ open, projectId, onClose, onImported }: Props
     setError(null);
     setDone(false);
     void skillApi.catalog().then(setCatalog).catch(() => setCatalog([]));
+    // The Type column is validated against the live catalog, so a typo is caught before import.
+    void taskApi.types().then(setTypes).catch(() => setTypes([]));
   }, [open]);
 
   const downloadTemplate = () => {
@@ -76,7 +82,7 @@ export const ImportTasksModal = ({ open, projectId, onClose, onImported }: Props
     setFileName(file.name);
     try {
       const text = await file.text();
-      const parsed = parseTaskCsv(text);
+      const parsed = parseTaskCsv(text, types.map((t) => t.name));
       if (parsed.length === 0) setError("That file has no task rows.");
       setRows(parsed.map((row) => ({ row, status: "pending" })));
     } catch {
@@ -95,6 +101,10 @@ export const ImportTasksModal = ({ open, projectId, onClose, onImported }: Props
     const next = [...rows];
     let created = 0;
 
+    // The file's own ID column mapped onto the ids the API hands back. Dependencies can only be
+    // wired once both ends exist, which is why this is a second pass rather than one loop.
+    const idMap = new Map<string, number>();
+
     for (let i = 0; i < next.length; i += 1) {
       const entry = next[i];
       if (entry.row.errors.length > 0 || entry.status === "created") continue;
@@ -105,10 +115,13 @@ export const ImportTasksModal = ({ open, projectId, onClose, onImported }: Props
           title: entry.row.title,
           description: entry.row.description || null,
           priority: entry.row.priority,
-          deadline: null,
+          deadline: entry.row.deadline || null,
           // Difficulty is left for the AI estimate rather than guessed from a spreadsheet.
           difficulty: null,
+          taskTypeId: resolveTypeId(entry.row.typeName, types),
         });
+
+        if (entry.row.localId) idMap.set(entry.row.localId.toLowerCase(), task.taskId);
 
         const { resolved, unknown } = resolveSkillIds(entry.row.skills, catalog);
         if (resolved.length > 0) {
@@ -118,12 +131,47 @@ export const ImportTasksModal = ({ open, projectId, onClose, onImported }: Props
         next[i] = {
           ...entry,
           status: "created",
-          detail: unknown.length > 0 ? `Created. Unknown skill(s) skipped: ${unknown.join(", ")}` : "Created.",
+          detail: unknown.length > 0 ? `Đã tạo. Bỏ qua kỹ năng không có: ${unknown.join(", ")}` : "Đã tạo.",
+          taskId: task.taskId,
         };
         created += 1;
       } catch (err) {
         next[i] = { ...entry, status: "failed", detail: errorMessage(err) };
       }
+      setRows([...next]);
+    }
+
+    // Second pass: the dependencies, now that every row has a real id.
+    for (let i = 0; i < next.length; i += 1) {
+      const entry = next[i];
+      if (entry.status !== "created" || entry.row.dependsOn.length === 0) continue;
+
+      const taskId = entry.taskId;
+      if (taskId == null) continue;
+
+      const failed: string[] = [];
+      let linked = 0;
+      for (const ref of entry.row.dependsOn) {
+        const dependsOnTaskId = idMap.get(ref.toLowerCase());
+        if (dependsOnTaskId == null) {
+          // The referenced row failed to create, so there is nothing to point at.
+          failed.push(ref);
+          continue;
+        }
+        try {
+          await taskApi.addDependency(taskId, dependsOnTaskId);
+          linked += 1;
+        } catch {
+          failed.push(ref);
+        }
+      }
+
+      next[i] = {
+        ...next[i],
+        detail:
+          `${next[i].detail ?? ""} Nối ${linked}/${entry.row.dependsOn.length} phụ thuộc.` +
+          (failed.length > 0 ? ` Không nối được: ${failed.join(", ")}.` : ""),
+      };
       setRows([...next]);
     }
 
@@ -160,11 +208,23 @@ export const ImportTasksModal = ({ open, projectId, onClose, onImported }: Props
               </button>
             </div>
 
-            <p className="mb-3 text-[11px] text-gray-500">
-              Columns: <span className="font-medium text-gray-700">{IMPORT_COLUMNS.join(" · ")}</span>. Write skills as
-              <span className="font-medium text-gray-700"> React:4, SQL</span> — the number is the level the assignee
-              should have (1–5, default 3). Difficulty is left to the AI estimate.
-            </p>
+            <div className="mb-3 space-y-1 text-[11px] text-gray-500">
+              <p>
+                Cột: <span className="font-medium text-gray-700">{IMPORT_COLUMNS.join(" · ")}</span>
+              </p>
+              <p>
+                <span className="font-medium text-gray-700">ID</span> là mã bạn tự đặt, chỉ dùng bên trong tệp
+                (1, 2, 3 hay T1, T2… đều được). Cột{" "}
+                <span className="font-medium text-gray-700">Depends on</span> ghi ID của những dòng phải xong
+                trước, cách nhau bằng dấu phẩy — ví dụ <span className="font-medium text-gray-700">2, 3</span>.
+                Đây không phải ID task trong hệ thống.
+              </p>
+              <p>
+                Kỹ năng viết dạng <span className="font-medium text-gray-700">React:4, SQL</span> — số là mức
+                người nhận việc cần có (1–5, mặc định 3). Hạn ghi theo{" "}
+                <span className="font-medium text-gray-700">yyyy-mm-dd</span>. Độ khó do AI ước tính, không cần điền.
+              </p>
+            </div>
 
             {projectId == null && (
               <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">

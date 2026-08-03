@@ -65,6 +65,36 @@ export interface TaskTypeDto {
   isActive: boolean;
 }
 
+export interface DependencyGraphNode {
+  id: string;
+  title: string;
+  status?: string | null;
+  priority?: string | null;
+  deadline?: string | null;
+  assigneeName?: string | null;
+  /** 0 can start now; each step waits on everything below it. */
+  level: number;
+  blockedByCount: number;
+  blocksCount: number;
+  isReady: boolean;
+  inCycle: boolean;
+}
+
+export interface DependencyGraphEdge {
+  id: string;
+  /** The prerequisite — must finish first. */
+  source: string;
+  target: string;
+  isBlocking: boolean;
+}
+
+export interface DependencyGraphDto {
+  nodes: DependencyGraphNode[];
+  edges: DependencyGraphEdge[];
+  hasCycle: boolean;
+  levelCount: number;
+}
+
 export interface CreateTaskPayload {
   projectId: number;
   title: string;
@@ -118,6 +148,10 @@ export const taskApi = {
   /** Reads hours and a 1–5 difficulty off the description; returns the whole updated task. */
   estimate: (taskId: number) =>
     apiRequest<TaskDetailDto>(`/tasks/${taskId}/estimate`, { method: "POST" }),
+
+  /** The project's tasks laid out by what has to finish first. */
+  dependencyGraph: (projectId: number) =>
+    apiRequest<DependencyGraphDto>(`/tasks/project/${projectId}/dependency-graph`),
 
   addDependency: (taskId: number, dependsOnTaskId: number) =>
     apiRequest<void>(`/tasks/${taskId}/dependencies`, {

@@ -503,6 +503,7 @@ export default function App() {
                           setCanManageBoardTasks(canManage);
                         }}
                         onImportTasks={() => setShowImportModal(true)}
+                        onOpenTask={setSelectedTaskId}
                       />
                       <div className="flex-1 overflow-hidden">
                         <KanbanBoard

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TaskGenie.Domain")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+bb0d71917f7d4b17d089f192dbd7335d171d4bbf")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+578bf8004e91ae9cd2dbcfe3deaef964af4a8317")]
 [assembly: System.Reflection.AssemblyProductAttribute("TaskGenie.Domain")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TaskGenie.Domain")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

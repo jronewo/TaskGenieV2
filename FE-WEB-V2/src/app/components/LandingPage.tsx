@@ -5,6 +5,7 @@ import {
   LayoutGrid, FileSpreadsheet, Check, Sun, Moon, Menu, X, TrendingUp,
 } from "lucide-react";
 import { usePreferences } from "../settings/PreferencesContext";
+import { billingApi, formatMoney, PlanDto } from "../services/billingApi";
 
 /**
  * Marketing surface. Sits in front of the console for signed-out visitors; the only way forward is
@@ -68,32 +69,30 @@ const CAPABILITIES = [
   },
 ];
 
-const PLANS = [
-  {
-    name: "Free",
-    price: "$0",
-    cadence: "forever",
+/** Marketing copy per plan code — the only things NOT sourced from the API, since they're prose,
+ * not numbers. Price, cadence and "current" state all come from the real catalog below. */
+const PLAN_COPY: Record<string, { audience: string; highlight: boolean; features: string[] }> = {
+  FREE_PERSONAL: {
     audience: "Personal",
     highlight: false,
     features: ["Up to 2 active projects", "Kanban board & task detail", "AI risk analysis", "Realtime notifications"],
   },
-  {
-    name: "Pro",
-    price: "$9.99",
-    cadence: "per month",
+  PRO_PERSONAL: {
     audience: "Personal",
     highlight: true,
     features: ["Unlimited projects", "Everything in Free", "AI assignment recommendations", "Dependency graph & planning", "XLSX / PDF export"],
   },
-  {
-    name: "Organization",
-    price: "$49.99",
-    cadence: "per month",
+  PRO_ORGANIZATION: {
     audience: "Teams",
     highlight: false,
     features: ["Unlimited members & projects", "Everything in Pro", "Organization workspace", "Member evaluations & reports", "Centralised skill catalogue"],
   },
-];
+};
+
+const PLAN_DISPLAY_ORDER = ["FREE_PERSONAL", "PRO_PERSONAL", "PRO_ORGANIZATION"];
+
+const cadenceLabel = (billingInterval: PlanDto["billingInterval"]) =>
+  billingInterval === "MONTHLY" ? "per month" : billingInterval === "YEARLY" ? "per year" : "forever";
 
 const chipClass = (tone: "danger" | "brand" | "accent" | "neutral") => {
   const base = "text-[10px] font-semibold px-2 py-0.5 rounded-md tracking-wide";
@@ -207,6 +206,7 @@ const Wordmark = () => (
 export const LandingPage = ({ onEnter }: { onEnter: () => void }) => {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [plans, setPlans] = useState<PlanDto[]>([]);
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 8);
@@ -214,6 +214,25 @@ export const LandingPage = ({ onEnter }: { onEnter: () => void }) => {
     window.addEventListener("scroll", handler, { passive: true });
     return () => window.removeEventListener("scroll", handler);
   }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [personal, org] = await Promise.all([
+          billingApi.plans("PERSONAL"),
+          billingApi.plans("ORGANIZATION"),
+        ]);
+        setPlans([...personal, ...org]);
+      } catch {
+        // Public marketing page: if the catalog can't be reached, the pricing section simply
+        // renders nothing rather than falling back to a stale hardcoded price.
+      }
+    })();
+  }, []);
+
+  const pricedPlans = PLAN_DISPLAY_ORDER
+    .map((code) => ({ plan: plans.find((p) => p.code === code), copy: PLAN_COPY[code] }))
+    .filter((entry): entry is { plan: PlanDto; copy: (typeof PLAN_COPY)[string] } => entry.plan != null);
 
   const jumpTo = (id: string) => {
     setMenuOpen(false);
@@ -475,56 +494,62 @@ export const LandingPage = ({ onEnter }: { onEnter: () => void }) => {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-4">
-            {PLANS.map((plan) => (
-              <div
-                key={plan.name}
-                className={`relative rounded-xl border p-6 flex flex-col ${
-                  plan.highlight
-                    ? "border-[var(--brand-600)] bg-surface shadow-brand-md"
-                    : "border-line bg-surface"
-                }`}
-              >
-                {plan.highlight && (
-                  <span className="absolute -top-2.5 left-6 px-2.5 py-0.5 rounded-md bg-brand text-[10px] font-bold tracking-wide">
-                    MOST POPULAR
-                  </span>
-                )}
-
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-subtle mb-2">
-                  {plan.audience}
-                </p>
-                <h3 className="font-display text-[19px] font-bold text-strong mb-3">{plan.name}</h3>
-                <p className="flex items-baseline gap-1.5 mb-6">
-                  <span className="font-display text-[32px] font-bold text-strong tabular-nums">
-                    {plan.price}
-                  </span>
-                  <span className="text-[12px] text-subtle">{plan.cadence}</span>
-                </p>
-
-                <ul className="flex flex-col gap-2.5 mb-7 flex-1">
-                  {plan.features.map((f) => (
-                    <li key={f} className="flex items-start gap-2 text-[13px] text-default">
-                      <Check size={14} className="text-accent mt-[3px] shrink-0" strokeWidth={2.4} />
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-
-                <button
-                  type="button"
-                  onClick={onEnter}
-                  className={`w-full py-2.5 text-[13px] font-semibold rounded-lg transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--brand-600)] ${
-                    plan.highlight
-                      ? "bg-brand hover:opacity-90 shadow-brand-cta"
-                      : "border border-line text-default hover:border-strong bg-surface-raised"
+          {pricedPlans.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-line p-10 text-center text-sm text-muted">
+              Loading pricing…
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-3 gap-4">
+              {pricedPlans.map(({ plan, copy }) => (
+                <div
+                  key={plan.planId}
+                  className={`relative rounded-xl border p-6 flex flex-col ${
+                    copy.highlight
+                      ? "border-[var(--brand-600)] bg-surface shadow-brand-md"
+                      : "border-line bg-surface"
                   }`}
                 >
-                  {plan.price === "$0" ? "Create an account" : `Choose ${plan.name}`}
-                </button>
-              </div>
-            ))}
-          </div>
+                  {copy.highlight && (
+                    <span className="absolute -top-2.5 left-6 px-2.5 py-0.5 rounded-md bg-brand text-[10px] font-bold tracking-wide">
+                      MOST POPULAR
+                    </span>
+                  )}
+
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-subtle mb-2">
+                    {copy.audience}
+                  </p>
+                  <h3 className="font-display text-[19px] font-bold text-strong mb-3">{plan.name}</h3>
+                  <p className="flex items-baseline gap-1.5 mb-6">
+                    <span className="font-display text-[32px] font-bold text-strong tabular-nums">
+                      {plan.priceMinor === 0 ? "Free" : formatMoney(plan.priceMinor, plan.currency)}
+                    </span>
+                    <span className="text-[12px] text-subtle">{cadenceLabel(plan.billingInterval)}</span>
+                  </p>
+
+                  <ul className="flex flex-col gap-2.5 mb-7 flex-1">
+                    {copy.features.map((f) => (
+                      <li key={f} className="flex items-start gap-2 text-[13px] text-default">
+                        <Check size={14} className="text-accent mt-[3px] shrink-0" strokeWidth={2.4} />
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+
+                  <button
+                    type="button"
+                    onClick={onEnter}
+                    className={`w-full py-2.5 text-[13px] font-semibold rounded-lg transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--brand-600)] ${
+                      copy.highlight
+                        ? "bg-brand hover:opacity-90 shadow-brand-cta"
+                        : "border border-line text-default hover:border-strong bg-surface-raised"
+                    }`}
+                  >
+                    {plan.priceMinor === 0 ? "Create an account" : `Choose ${plan.name}`}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

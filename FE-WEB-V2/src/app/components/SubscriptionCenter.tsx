@@ -85,6 +85,10 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
       setEntitlement(ent);
       setSubscription(sub);
       setPayments(history);
+      // Rehydrate the simulate box after a reload/navigation — otherwise a fake payment left
+      // PENDING becomes unreachable from the UI (no PayOS webhook will ever resolve it).
+      const stillPending = history.find((p) => p.provider === "FAKE" && p.status === "PENDING");
+      setPendingPaymentId(stillPending?.paymentTransactionId ?? null);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -99,6 +103,37 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
     }
     void load();
   }, [load, scope, organizationId]);
+
+  // Returning from PayOS's hosted checkout page (?paymentId=...&canceled=1). The subscription
+  // only ever activates from the webhook, never from this redirect, so poll briefly rather than
+  // trusting the return itself — the webhook is usually near-instant but not synchronous with it.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const returnedPaymentId = params.get("paymentId");
+    if (!returnedPaymentId) return;
+
+    const canceled = params.get("canceled") === "1";
+    setNotice(
+      canceled
+        ? "Payment was canceled."
+        : "Payment received — confirming with the gateway. This can take a few seconds."
+    );
+
+    params.delete("paymentId");
+    params.delete("canceled");
+    const rest = params.toString();
+    window.history.replaceState(null, "", window.location.pathname + (rest ? `?${rest}` : ""));
+
+    if (canceled) return;
+
+    let attempts = 0;
+    const poll = setInterval(() => {
+      attempts += 1;
+      void load();
+      if (attempts >= 5) clearInterval(poll);
+    }, 2000);
+    return () => clearInterval(poll);
+  }, [load]);
 
   const run = async (key: string, action: () => Promise<void>, successMessage?: string) => {
     if (busy) return; // double-submit guard
@@ -118,6 +153,12 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
   const handleCheckout = (plan: PlanDto) =>
     run(`checkout-${plan.planId}`, async () => {
       const result = await billingApi.checkout(plan.planId, orgScopeId, null);
+      if (result.redirectUrl) {
+        // Real gateway (PayOS): hand off to its hosted checkout page. The subscription only
+        // activates once PayOS calls the webhook back — never from this redirect alone.
+        window.location.href = result.redirectUrl;
+        return;
+      }
       setPendingPaymentId(result.paymentTransactionId);
       await load();
     });

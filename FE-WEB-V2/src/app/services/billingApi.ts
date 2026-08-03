@@ -63,9 +63,18 @@ export interface CheckoutResultDto {
   requiresManualSimulation: boolean;
 }
 
+/** Currencies with no minor subdivision — the integer amount itself is the whole unit. */
+const ZERO_DECIMAL_CURRENCIES = new Set(["VND", "JPY", "KRW"]);
+
 /** Prices arrive in integer minor units — format, never compute, on the client. */
-export const formatMoney = (amountMinor: number, currency: string): string =>
-  new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amountMinor / 100);
+export const formatMoney = (amountMinor: number, currency: string): string => {
+  const isZeroDecimal = ZERO_DECIMAL_CURRENCIES.has(currency.toUpperCase());
+  return new Intl.NumberFormat(currency.toUpperCase() === "VND" ? "vi-VN" : undefined, {
+    style: "currency",
+    currency,
+    maximumFractionDigits: isZeroDecimal ? 0 : undefined,
+  }).format(isZeroDecimal ? amountMinor : amountMinor / 100);
+};
 
 export const billingApi = {
   plans: (audience?: PlanAudience) =>

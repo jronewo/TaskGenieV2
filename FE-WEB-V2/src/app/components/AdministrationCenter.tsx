@@ -246,12 +246,13 @@ export const AdministrationCenter = ({ section }: AdministrationCenterProps = {}
                 <div className="rounded-lg border border-gray-200 bg-white p-3">
                   <p className="text-[10px] uppercase tracking-wide text-gray-500">Revenue</p>
                   <p className="mt-1 text-lg font-semibold text-gray-900">
-                    {formatMoney(analytics?.totalRevenueMinor ?? 0, "USD")}
+                    {/* The plan catalog is VND-only (PayOS settles VND exclusively). */}
+                    {formatMoney(analytics?.totalRevenueMinor ?? 0, "VND")}
                   </p>
                   {(analytics?.testRevenueMinor ?? 0) > 0 && (
                     <p className="mt-1 flex items-center gap-1 text-[10px] text-amber-600">
                       <AlertTriangle size={11} aria-hidden />
-                      {formatMoney(analytics!.testRevenueMinor, "USD")} from the simulated gateway — excluded above.
+                      {formatMoney(analytics!.testRevenueMinor, "VND")} from the simulated gateway — excluded above.
                     </p>
                   )}
                 </div>

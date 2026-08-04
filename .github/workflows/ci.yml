@@ -109,6 +109,12 @@ jobs:
       - name: Restore .NET tools
         run: dotnet tool restore
 
+      # The EF tooling reads project metadata, which needs obj/project.assets.json to exist. A
+      # developer machine always has one from an earlier build, so a missing restore here only
+      # shows up on a clean runner (NETSDK1004).
+      - name: Restore packages
+        run: dotnet restore src/TaskGenie.slnx
+
       # Catches the commonest migration mistake: changing an entity and forgetting to generate the
       # migration. The model snapshot then disagrees with the entities and the next deploy fails
       # against a real database — this turns that into a failed build instead.

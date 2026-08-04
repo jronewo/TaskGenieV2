@@ -4,12 +4,11 @@ import { NavigationContainer, DefaultTheme, useNavigationContainerRef } from '@r
 import * as Notifications from 'expo-notifications';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Home, Bell, Sparkles, CreditCard, User } from 'lucide-react-native';
+import { Home, Bell, Sparkles, User } from 'lucide-react-native';
 
 import HomeScreen from '../screens/HomeScreen';
 import InboxScreen from '../screens/InboxScreen';
 import AssistantScreen from '../screens/AssistantScreen';
-import PlanScreen from '../screens/PlanScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import NotificationScreen from '../screens/NotificationScreen';
 import ProjectTasksScreen from '../screens/ProjectTasksScreen';
@@ -26,16 +25,19 @@ const Stack = createNativeStackNavigator();
 /**
  * Four tabs, deliberately.
  *
- * The web console also has Analytics, Team, Evaluations, Organizations and Administration. On a
- * phone those are either reporting nobody acts on while walking, or platform administration that
- * has no business on a device — so they stay on the web. What is left is the work itself, what
- * changed, the assistant, and billing.
+ * The web console also has Analytics, Team, Evaluations, Organizations, Administration and
+ * billing. On a phone those are either reporting nobody acts on while walking, platform
+ * administration that has no business on a device, or a checkout flow the web already does
+ * properly — so they stay on the web. What is left is the work itself, what changed, the
+ * assistant, and the profile.
  */
 const TABS = [
   { name: 'Home', title: 'Việc của tôi', component: HomeScreen, icon: Home },
   { name: 'Inbox', title: 'Thông báo', component: InboxScreen, icon: Bell },
   { name: 'Assistant', title: 'Trợ lý', component: AssistantScreen, icon: Sparkles },
-  { name: 'Plan', title: 'Gói', component: PlanScreen, icon: CreditCard },
+  // Billing lives on the web only. Buying a plan needs the PayOS checkout page, and putting a
+  // payment flow on the phone means shipping an app-store payment review for something the web
+  // console already does — so the tab is gone rather than half-working.
   { name: 'Profile', title: 'Hồ sơ', component: ProfileScreen, icon: User },
 ];
 

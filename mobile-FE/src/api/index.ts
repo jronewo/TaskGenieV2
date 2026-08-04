@@ -1,7 +1,7 @@
 import { apiRequest } from './client';
 import {
-  CommentDto, EntitlementDto, NotificationDto, PaymentDto, PlanDto,
-  MySkillDto, ProjectDto, SkillDto, SubscriptionDto, TaskDto, TeamMemberDto,
+  CommentDto, NotificationDto,
+  MySkillDto, ProjectDto, SkillDto, TaskDto, TeamMemberDto,
 } from './types';
 
 /** Every call here hits the same API and database the web console uses — no mock layer. */
@@ -133,41 +133,6 @@ export const skillApi = {
     apiRequest<void>(`/skills/user/${userSkillId}`, { method: 'DELETE' }),
 };
 
-export const billingApi = {
-  plans: (audience?: 'PERSONAL' | 'ORGANIZATION') =>
-    apiRequest<PlanDto[]>(`/plans${audience ? `?audience=${audience}` : ''}`),
-
-  entitlement: (organizationId?: number | null) =>
-    apiRequest<EntitlementDto>(
-      `/billing/entitlement${organizationId ? `?organizationId=${organizationId}` : ''}`
-    ),
-
-  subscription: (organizationId?: number | null) =>
-    apiRequest<SubscriptionDto | null>(
-      `/billing/subscription${organizationId ? `?organizationId=${organizationId}` : ''}`
-    ),
-
-  payments: (organizationId?: number | null) =>
-    apiRequest<PaymentDto[]>(
-      `/billing/payments${organizationId ? `?organizationId=${organizationId}` : ''}`
-    ),
-
-  checkout: (planId: number, organizationId: number | null, idempotencyKey: string) =>
-    apiRequest<any>('/billing/checkout-sessions', {
-      method: 'POST',
-      body: JSON.stringify({ planId, organizationId, idempotencyKey }),
-    }),
-
-  /**
-   * Development/UAT only — the route answers 404 in production. A real gateway confirms through
-   * POST /api/payment-webhook/settle instead, and nothing else in the flow changes.
-   */
-  simulate: (paymentId: number, status: 'SUCCEEDED' | 'FAILED' | 'CANCELED') =>
-    apiRequest<any>(`/test-payments/${paymentId}/simulate`, {
-      method: 'POST',
-      body: JSON.stringify({ status }),
-    }),
-};
 
 export const invitationApi = {
   mine: (email: string) => apiRequest<any[]>(`/invitations/user/${encodeURIComponent(email)}`),

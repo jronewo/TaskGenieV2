@@ -30,4 +30,19 @@ public class LoggingEmailSender(ILogger<LoggingEmailSender> logger) : IEmailSend
             toEmail, teamName, invitedByName, respondUrl);
         return System.Threading.Tasks.Task.CompletedTask;
     }
+
+    public System.Threading.Tasks.Task SendSubscriptionExpiryEmailAsync(
+        string toEmail,
+        string planName,
+        int daysRemaining,
+        DateTime periodEnd,
+        string manageUrl,
+        CancellationToken ct = default)
+    {
+        logger.LogInformation(
+            "Subscription notice for {Email}: plan {PlanName} {State} on {PeriodEnd:yyyy-MM-dd}. Manage at {ManageUrl}. "
+            + "No email provider is configured; the in-app notification is the working channel until one is.",
+            toEmail, planName, daysRemaining <= 0 ? "has expired" : $"expires in {daysRemaining} day(s)", periodEnd, manageUrl);
+        return System.Threading.Tasks.Task.CompletedTask;
+    }
 }

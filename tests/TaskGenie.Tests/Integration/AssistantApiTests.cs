@@ -200,7 +200,9 @@ public sealed class AssistantApiFactory : WebApplicationFactory<Program>
 
         var plan = Plan.Create(
             $"PRO_PERSONAL_{Guid.NewGuid():N}", "Pro", "PERSONAL", "MONTHLY",
-            priceMinor: 99_000, currency: "VND", projectLimit: null, memberLimit: null);
+            priceMinor: 99_000, currency: "VND", projectLimit: null, memberLimit: null,
+            // The assistant is gated on the plan's own flag, not on the price.
+            sortOrder: 0, aiChatbotEnabled: true);
         context.Plans.Add(plan);
         await context.SaveChangesAsync();
 

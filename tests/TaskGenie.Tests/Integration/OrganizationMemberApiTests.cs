@@ -505,7 +505,12 @@ public sealed class OrganizationMemberApiFactory : WebApplicationFactory<Program
         return (user.UserId, email);
     }
 
-    public async Task<int> SeedOrganizationAsync(int ownerId)
+    /// <summary>
+    /// Organizations are a paid-only feature — there is no free organization tier — so a seeded
+    /// organization carries an active paid subscription by default. Pass
+    /// <paramref name="withActiveSubscription"/> = false to build the unpaid case on purpose.
+    /// </summary>
+    public async Task<int> SeedOrganizationAsync(int ownerId, bool withActiveSubscription = true)
     {
         using var scope = Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -513,7 +518,27 @@ public sealed class OrganizationMemberApiFactory : WebApplicationFactory<Program
         var org = Organization.Create($"Org {Guid.NewGuid():N}", null, ownerId);
         context.Organizations.Add(org);
         await context.SaveChangesAsync();
+
+        if (withActiveSubscription)
+            await SeedOrganizationSubscriptionAsync(context, org.OrganizationId);
+
         return org.OrganizationId;
+    }
+
+    /// <summary>An ACTIVE organization plan with a period end well in the future.</summary>
+    private static async Task SeedOrganizationSubscriptionAsync(AppDbContext context, int organizationId)
+    {
+        var plan = Plan.Create(
+            $"PRO_ORG_{Guid.NewGuid():N}", "Organization Pro", "ORGANIZATION", "MONTHLY",
+            priceMinor: 1_199_000, currency: "VND", projectLimit: null, memberLimit: null,
+            sortOrder: 0, aiChatbotEnabled: true);
+        context.Plans.Add(plan);
+        await context.SaveChangesAsync();
+
+        var subscription = Subscription.CreateForOrganization(plan.PlanId, organizationId);
+        subscription.Activate(DateTime.UtcNow.AddDays(30));
+        context.Subscriptions.Add(subscription);
+        await context.SaveChangesAsync();
     }
 
     public async Task<int> SeedMembershipAsync(int organizationId, int userId, string role)

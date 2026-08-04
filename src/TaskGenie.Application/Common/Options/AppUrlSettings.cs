@@ -12,6 +12,12 @@ public class AppUrlSettings
     /// person accepts or declines while signed in as themselves.</summary>
     public string NotificationsPath { get; set; } = "/?page=notifications";
 
+    /// <summary>Where an expiry email sends someone to renew.</summary>
+    public string SubscriptionPath { get; set; } = "/?page=subscription";
+
     public string BuildNotificationsUrl()
         => $"{BaseUrl.TrimEnd('/')}{NotificationsPath}";
+
+    public string BuildSubscriptionUrl()
+        => $"{BaseUrl.TrimEnd('/')}{SubscriptionPath}";
 }

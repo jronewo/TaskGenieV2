@@ -17,4 +17,17 @@ public interface IEmailSender
         string invitedByName,
         string respondUrl,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Warns that a subscription is about to lapse, or tells the owner it already has.
+    /// <paramref name="daysRemaining"/> is 0 once the period has ended, which is what selects the
+    /// "already expired" wording — the two cases share one method so they cannot drift apart.
+    /// </summary>
+    System.Threading.Tasks.Task SendSubscriptionExpiryEmailAsync(
+        string toEmail,
+        string planName,
+        int daysRemaining,
+        DateTime periodEnd,
+        string manageUrl,
+        CancellationToken ct = default);
 }

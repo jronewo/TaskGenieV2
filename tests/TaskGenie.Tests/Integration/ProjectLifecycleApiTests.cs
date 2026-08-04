@@ -286,6 +286,55 @@ public sealed class ProjectLifecycleApiFactory : WebApplicationFactory<Program>
         return task.TaskId;
     }
 
+    /// <summary>An organization, optionally with an ACTIVE paid subscription.</summary>
+    public async Task<int> SeedOrganizationAsync(int ownerId, bool activeSubscription)
+    {
+        using var scope = Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await context.Database.EnsureCreatedAsync();
+
+        var organization = Organization.Create($"Org {Guid.NewGuid():N}", null, ownerId);
+        context.Organizations.Add(organization);
+        await context.SaveChangesAsync();
+
+        if (activeSubscription)
+        {
+            var plan = Plan.Create(
+                $"PRO_ORG_{Guid.NewGuid():N}", "Organization Pro", "ORGANIZATION", "MONTHLY",
+                priceMinor: 1_199_000, currency: "VND", projectLimit: null, memberLimit: null,
+                sortOrder: 0, aiChatbotEnabled: true);
+            context.Plans.Add(plan);
+            await context.SaveChangesAsync();
+
+            var subscription = Subscription.CreateForOrganization(plan.PlanId, organization.OrganizationId);
+            subscription.Activate(DateTime.UtcNow.AddDays(30));
+            context.Subscriptions.Add(subscription);
+            await context.SaveChangesAsync();
+        }
+
+        return organization.OrganizationId;
+    }
+
+    public async Task<int> SeedOrganizationProjectAsync(int createdBy, int organizationId)
+    {
+        using var scope = Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var project = Project.Create($"Org project {Guid.NewGuid():N}", null, createdBy, organizationId);
+        context.Projects.Add(project);
+        await context.SaveChangesAsync();
+        return project.ProjectId;
+    }
+
+    /// <summary>Ends the organization's paid period, exactly as the lifecycle sweep would.</summary>
+    public async Task ExpireOrganizationSubscriptionAsync(int organizationId)
+    {
+        using var scope = Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var subscription = await context.Subscriptions.SingleAsync(s => s.OrganizationId == organizationId);
+        subscription.Expire();
+        await context.SaveChangesAsync();
+    }
+
     public async Task SeedInvitationAsync(int teamId, string email)
     {
         using var scope = Services.CreateScope();

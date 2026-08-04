@@ -66,11 +66,14 @@ function mockLoadedAs(role: "OWNER" | "MEMBER") {
 describe("OrganizationCenter", () => {
   beforeEach(() => vi.clearAllMocks());
 
+  /// The placeholder is shaped like the page rather than a centred spinner, so it is announced
+  /// through its role instead of a caption — a spinner in an empty box made the page jump the
+  /// moment the data arrived.
   it("shows a loading state before the organization list resolves", () => {
     api.mine.mockReturnValue(new Promise(() => {})); // never settles
     render(<OrganizationCenter />);
 
-    expect(screen.getByText(/loading organizations/i)).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: /đang tải danh sách tổ chức/i })).toBeInTheDocument();
   });
 
   it("points users at Subscription when no organization workspace exists", async () => {

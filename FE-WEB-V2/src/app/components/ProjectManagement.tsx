@@ -12,6 +12,7 @@ import {
   X,
   Loader2,
   Archive,
+  Clock,
 } from "lucide-react";
 import { projectApi, ProjectDto, TaskSummaryDto } from "../services/projectApi";
 import { billingApi, EntitlementDto } from "../services/billingApi";
@@ -63,6 +64,28 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [busyAutomation, setBusyAutomation] = useState(false);
+
+  /** Null switches the daily sweep off. Reloads so the panel shows what the API actually stored. */
+  const handleSetRiskAutomation = async (hourUtc: number | null) => {
+    if (!selectedProject || busyAutomation) return;
+    setBusyAutomation(true);
+    try {
+      await projectApi.setRiskAutomation(selectedProject.projectId, hourUtc);
+      await loadProjects(selectedProject.projectId);
+      setFeedback({
+        type: "success",
+        message:
+          hourUtc == null
+            ? "Đã tắt tự động chạy Risk estimate."
+            : `Sẽ tự chạy Risk estimate lúc ${String(hourUtc).padStart(2, "0")}:00 UTC mỗi ngày.`,
+      });
+    } catch (err) {
+      setFeedback({ type: "error", message: errorMessage(err) });
+    } finally {
+      setBusyAutomation(false);
+    }
+  };
 
   const loadEntitlement = useCallback(async () => {
     try {
@@ -592,6 +615,53 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
                   )}
                 </div>
               </div>
+
+              {/* Scheduled risk estimate. Its own panel rather than a row in the summary: this one
+                  writes, and it spends a rate-limited AI quota every day it is on. */}
+              {selectedProject.canManageTasks !== false && (
+                <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="mb-1 flex items-center gap-2">
+                    <Clock size={15} className="text-[#1A237E]" aria-hidden />
+                    <h4 className="text-sm font-semibold text-slate-900">Tự động chạy Risk estimate</h4>
+                  </div>
+                  <p className="mb-3 text-xs text-slate-500">
+                    Hệ thống tự chấm lại rủi ro cho toàn bộ công việc chưa xong của dự án, mỗi ngày một
+                    lần vào khung giờ bạn chọn. Mỗi dự án đặt giờ riêng để không dồn hết vào một lúc
+                    làm quá tải nhà cung cấp AI.
+                  </p>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label htmlFor="risk-automation-hour" className="text-xs text-slate-600">
+                      Khung giờ (UTC)
+                    </label>
+                    <select
+                      id="risk-automation-hour"
+                      value={selectedProject.riskAutomationHourUtc ?? ""}
+                      onChange={(e) =>
+                        handleSetRiskAutomation(e.target.value === "" ? null : Number(e.target.value))
+                      }
+                      disabled={busyAutomation}
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 disabled:opacity-50"
+                    >
+                      <option value="">Tắt</option>
+                      {Array.from({ length: 24 }, (_, hour) => (
+                        <option key={hour} value={hour}>
+                          {String(hour).padStart(2, "0")}:00
+                        </option>
+                      ))}
+                    </select>
+                    {busyAutomation && <Loader2 size={13} className="animate-spin text-slate-400" aria-hidden />}
+
+                    <span className="ml-auto text-[11px] text-slate-500">
+                      {selectedProject.riskAutomationHourUtc == null
+                        ? "Đang tắt"
+                        : selectedProject.riskAutomationLastRunAt
+                          ? `Chạy gần nhất: ${new Date(selectedProject.riskAutomationLastRunAt).toLocaleString("vi-VN")}`
+                          : "Chưa chạy lần nào"}
+                    </span>
+                  </div>
+                </div>
+              )}
             </>
           ) : (
             <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">

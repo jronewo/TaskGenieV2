@@ -6,6 +6,7 @@ using TaskGenie.Application.Common.Options;
 using TaskGenie.Application.Features.Admin;
 using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
+using TaskGenie.Infrastructure.BackgroundJobs;
 using TaskGenie.Infrastructure.Export;
 using TaskGenie.Infrastructure.ExternalServices;
 using TaskGenie.Infrastructure.ExternalServices.PayOs;
@@ -135,6 +136,22 @@ public static class DependencyInjection
             {
                 client.BaseAddress = new Uri(payOsOptions.ApiBaseUrl);
             });
+        }
+
+        // Scheduled maintenance. Both are plain BackgroundServices on a timer rather than a job
+        // framework — the schedules are "check the clock hourly", which needs no job store.
+        //
+        // Never started under Testing: an integration test owns its database, and a sweep firing
+        // mid-test would expire subscriptions or rewrite risk levels underneath the assertions.
+        // Tests that cover the sweeps drive RunOnceAsync directly instead.
+        services.Configure<SubscriptionLifecycleOptions>(configuration.GetSection(SubscriptionLifecycleOptions.SectionName));
+        services.Configure<RiskAutomationOptions>(configuration.GetSection(RiskAutomationOptions.SectionName));
+
+        var isTestEnvironment = string.Equals(environmentName, "Testing", StringComparison.OrdinalIgnoreCase);
+        if (!isTestEnvironment)
+        {
+            services.AddHostedService<SubscriptionLifecycleWorker>();
+            services.AddHostedService<RiskAutomationWorker>();
         }
 
         services.AddSingleton<ITokenRevocationService, InMemoryTokenRevocationService>();

@@ -46,13 +46,14 @@ public sealed class AskAssistantQueryHandler(
     {
         var userId = currentUser.UserId;
 
-        // The assistant is a paid feature. Hiding the launcher in the UI is presentation only —
-        // the endpoint is what actually has to refuse a free caller.
+        // The assistant belongs to whichever plans an admin marked as including it — not to "any
+        // paid plan". Hiding the launcher in the UI is presentation only; the endpoint is what
+        // actually has to refuse a caller whose plan does not carry the feature.
         var entitlement = await entitlements.GetForUserAsync(userId, ct);
-        if (!entitlement.IsPremium)
+        if (!entitlement.AiChatbotEnabled)
         {
             throw new PlanUpgradeRequiredException(
-                "AI chatbot chỉ có trong gói trả phí. Nâng cấp để sử dụng trợ lý.",
+                "AI chatbot không có trong gói hiện tại. Nâng cấp gói để sử dụng trợ lý.",
                 limit: null,
                 usage: 0);
         }

@@ -2,8 +2,9 @@ import React, { useCallback, useEffect, useState } from "react";
 import { motion } from "motion/react";
 import {
   Users, Building2, BarChart2, Search, Power, PowerOff, Shield,
-  CreditCard, Receipt, Loader2, Layers, AlertTriangle,
+  CreditCard, Receipt, Loader2, Layers, AlertTriangle, Plus,
 } from "lucide-react";
+import { PlanFormModal } from "./PlanFormModal";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import {
   adminApi,
@@ -161,6 +162,29 @@ export const AdministrationCenter = ({ section }: AdministrationCenterProps = {}
       },
       "Role updated."
     );
+
+  /** Null while closed; a plan while editing; PLAN_FORM_NEW while creating. */
+  const [planForm, setPlanForm] = useState<AdminPlanDto | "new" | null>(null);
+
+  const submitPlan = (
+    payload: Parameters<typeof adminApi.createPlan>[0]
+  ) => {
+    const editing = planForm !== "new" && planForm !== null ? planForm : null;
+    void run(
+      "plan-form",
+      async () => {
+        if (editing) {
+          const { code, audience, billingInterval, ...updatable } = payload;
+          await adminApi.updatePlan(editing.planId, updatable);
+        } else {
+          await adminApi.createPlan(payload);
+        }
+        setPlanForm(null);
+        setPlans(await adminApi.plans());
+      },
+      editing ? "Đã lưu gói." : "Đã tạo gói mới."
+    );
+  };
 
   const togglePlanActive = (plan: AdminPlanDto) =>
     run(
@@ -480,7 +504,19 @@ export const AdministrationCenter = ({ section }: AdministrationCenterProps = {}
           )}
 
           {tab === "plans" && (
-            <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] text-gray-500">{plans.length} gói trong danh mục</p>
+                <button
+                  type="button"
+                  onClick={() => setPlanForm("new")}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#1A237E] px-3 py-2 text-xs font-semibold text-white hover:bg-[#0D1757]"
+                >
+                  <Plus size={13} aria-hidden /> Tạo gói mới
+                </button>
+              </div>
+
+              <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
               <table className="w-full text-left text-xs">
                 <thead className="bg-gray-50 text-[10px] uppercase tracking-wide text-gray-500">
                   <tr>
@@ -489,6 +525,8 @@ export const AdministrationCenter = ({ section }: AdministrationCenterProps = {}
                     <th className="px-3 py-2">Audience</th>
                     <th className="px-3 py-2">Price</th>
                     <th className="px-3 py-2">Projects</th>
+                    <th className="px-3 py-2">AI chatbot</th>
+                    <th className="px-3 py-2">Thời hạn</th>
                     <th className="px-3 py-2">Status</th>
                     <th className="px-3 py-2 text-right">Actions</th>
                   </tr>
@@ -504,6 +542,19 @@ export const AdministrationCenter = ({ section }: AdministrationCenterProps = {}
                       <td className="px-3 py-2">
                         <span
                           className={`rounded px-2 py-0.5 text-[10px] ${
+                            p.aiChatbotEnabled ? "bg-indigo-50 text-indigo-700" : "bg-gray-100 text-gray-500"
+                          }`}
+                        >
+                          {p.aiChatbotEnabled ? "Có" : "Không"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-gray-500">
+                        {p.effectiveDurationDays} ngày
+                        {p.durationDays == null && <span className="text-gray-400"> (theo chu kỳ)</span>}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`rounded px-2 py-0.5 text-[10px] ${
                             p.isActive ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500"
                           }`}
                         >
@@ -511,23 +562,42 @@ export const AdministrationCenter = ({ section }: AdministrationCenterProps = {}
                         </span>
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => togglePlanActive(p)}
-                          disabled={busy === `plan-${p.planId}`}
-                          className="rounded border border-gray-200 px-2 py-1 text-[11px] hover:bg-gray-50 disabled:opacity-40"
-                        >
-                          {p.isActive ? "Archive" : "Restore"}
-                        </button>
+                        <div className="inline-flex gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setPlanForm(p)}
+                            className="rounded border border-gray-200 px-2 py-1 text-[11px] hover:bg-gray-50"
+                          >
+                            Sửa
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => togglePlanActive(p)}
+                            disabled={busy === `plan-${p.planId}`}
+                            className="rounded border border-gray-200 px-2 py-1 text-[11px] hover:bg-gray-50 disabled:opacity-40"
+                          >
+                            {p.isActive ? "Archive" : "Restore"}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </>
       )}
+
+    {planForm && (
+      <PlanFormModal
+        plan={planForm === "new" ? null : planForm}
+        busy={busy === "plan-form"}
+        onCancel={() => setPlanForm(null)}
+        onSubmit={submitPlan}
+      />
+    )}
 
     {banTarget && (
         <div

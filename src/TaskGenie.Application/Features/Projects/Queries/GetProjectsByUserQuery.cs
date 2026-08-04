@@ -14,15 +14,39 @@ namespace TaskGenie.Application.Features.Projects.Queries;
 public sealed record GetProjectsByUserQuery(int UserId, bool Closed = false) : IRequest<List<ProjectDto>>;
 
 public sealed class GetProjectsByUserQueryHandler(
-    IProjectRepository projectRepo
+    IProjectRepository projectRepo,
+    ISubscriptionRepository subscriptionRepo
 ) : IRequestHandler<GetProjectsByUserQuery, List<ProjectDto>>
 {
     public async Task<List<ProjectDto>> Handle(GetProjectsByUserQuery query, CancellationToken ct)
     {
         var projects = await projectRepo.GetProjectsByUserIdAsync(query.UserId, ct);
-        return projects
-            .Where(p => p.IsClosed == query.Closed)
-            .Select(ProjectDto.FromEntity)
+        var visible = projects.Where(p => p.IsClosed == query.Closed).ToList();
+
+        // Organizations are a paid feature. When an organization's subscription lapses its projects
+        // drop out of every list at once — sidebar, dashboard, project page, profile — because they
+        // all read this one query. Filtering in each screen instead would guarantee one of them was
+        // missed, and the API would still be handing the rows out.
+        var organizationIds = visible
+            .Where(p => p.OrganizationId.HasValue)
+            .Select(p => p.OrganizationId!.Value)
+            .Distinct()
             .ToList();
+
+        if (organizationIds.Count > 0)
+        {
+            var paidOrganizations = new HashSet<int>();
+            foreach (var organizationId in organizationIds)
+            {
+                var subscription = await subscriptionRepo.GetEffectiveForOrganizationAsync(organizationId, ct);
+                if (subscription?.Plan is { IsFree: false }) paidOrganizations.Add(organizationId);
+            }
+
+            visible = visible
+                .Where(p => !p.OrganizationId.HasValue || paidOrganizations.Contains(p.OrganizationId.Value))
+                .ToList();
+        }
+
+        return visible.Select(ProjectDto.FromEntity).ToList();
     }
 }

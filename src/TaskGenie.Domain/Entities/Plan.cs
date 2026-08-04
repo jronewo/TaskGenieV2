@@ -30,6 +30,20 @@ public class Plan
     /// <summary>null = unlimited.</summary>
     public int? MemberLimit { get; internal set; }
 
+    /// <summary>
+    /// Whether this plan includes the AI assistant. Kept as its own flag rather than inferred from
+    /// the price: "paid" and "has the chatbot" are two different product decisions, and an admin
+    /// creating a cheap plan without the assistant must not have to make it free to do so.
+    /// </summary>
+    public bool AiChatbotEnabled { get; internal set; }
+
+    /// <summary>
+    /// How long one paid period lasts, in days. Null falls back to <see cref="BillingInterval"/>
+    /// (30 days monthly, 365 yearly) — it exists so an admin can sell a 7-day or 90-day plan
+    /// without inventing a new billing interval.
+    /// </summary>
+    public int? DurationDays { get; internal set; }
+
     public bool IsActive { get; internal set; } = true;
 
     public int SortOrder { get; internal set; }
@@ -42,7 +56,8 @@ public class Plan
 
     public static Plan Create(
         string code, string name, string audience, string billingInterval,
-        int priceMinor, string currency, int? projectLimit, int? memberLimit, int sortOrder = 0)
+        int priceMinor, string currency, int? projectLimit, int? memberLimit, int sortOrder = 0,
+        bool aiChatbotEnabled = false, int? durationDays = null)
         => new()
         {
             Code = code,
@@ -54,19 +69,48 @@ public class Plan
             ProjectLimit = projectLimit,
             MemberLimit = memberLimit,
             SortOrder = sortOrder,
+            AiChatbotEnabled = aiChatbotEnabled,
+            DurationDays = durationDays,
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
 
-    public void Update(string? name, int? priceMinor, int? projectLimit, int? memberLimit, int? sortOrder)
+    /// <summary>
+    /// Replaces the editable fields wholesale, because the admin edits a form.
+    ///
+    /// A partial "only apply what is non-null" update could never express "make this unlimited" —
+    /// null meant both "leave alone" and "no limit". Here null on a limit unambiguously means
+    /// unlimited, which is what the Unlimited checkbox sends.
+    /// </summary>
+    public void Update(
+        string name, int priceMinor, int? projectLimit, int? memberLimit, int sortOrder,
+        bool aiChatbotEnabled, int? durationDays)
     {
-        if (!string.IsNullOrWhiteSpace(name)) Name = name;
-        if (priceMinor.HasValue) PriceMinor = priceMinor.Value;
-        if (projectLimit.HasValue) ProjectLimit = projectLimit.Value;
-        if (memberLimit.HasValue) MemberLimit = memberLimit.Value;
-        if (sortOrder.HasValue) SortOrder = sortOrder.Value;
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("Plan name is required.", nameof(name));
+        if (priceMinor < 0) throw new ArgumentOutOfRangeException(nameof(priceMinor), "Price cannot be negative.");
+        if (projectLimit is < 0) throw new ArgumentOutOfRangeException(nameof(projectLimit), "Project limit cannot be negative.");
+        if (durationDays is < 1) throw new ArgumentOutOfRangeException(nameof(durationDays), "Duration must be at least one day.");
+
+        Name = name;
+        PriceMinor = priceMinor;
+        ProjectLimit = projectLimit;
+        MemberLimit = memberLimit;
+        SortOrder = sortOrder;
+        AiChatbotEnabled = aiChatbotEnabled;
+        DurationDays = durationDays;
         UpdatedAt = DateTime.UtcNow;
     }
+
+    /// <summary>
+    /// Length of one paid period. Falls back to the billing interval when no explicit duration was
+    /// configured, so every existing plan keeps the period length it already had.
+    /// </summary>
+    public int EffectiveDurationDays => DurationDays ?? BillingInterval switch
+    {
+        PlanBillingIntervals.Yearly => 365,
+        PlanBillingIntervals.Monthly => 30,
+        _ => 30,
+    };
 
     /// <summary>Archived plans stay referenced by existing subscriptions but accept no new checkout.</summary>
     public void SetActive(bool isActive)

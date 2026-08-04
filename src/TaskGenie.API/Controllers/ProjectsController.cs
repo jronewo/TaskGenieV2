@@ -42,6 +42,17 @@ public class ProjectsController(IMediator mediator) : ControllerBase
         return Ok(new { workingHoursPerDay = hours });
     }
 
+    /// <summary>
+    /// Schedules the daily automated risk estimate at an hour of the day (UTC), or switches it off
+    /// with a null hour. Leader-only — the handler enforces it, not the UI.
+    /// </summary>
+    [HttpPut("{id}/risk-automation")]
+    public async Task<IActionResult> SetRiskAutomation(int id, [FromBody] SetRiskAutomationRequest request)
+    {
+        var hour = await mediator.Send(new SetProjectRiskAutomationCommand(id, request.HourUtc));
+        return Ok(new { riskAutomationHourUtc = hour });
+    }
+
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateProjectRequest request)
     {
@@ -85,6 +96,9 @@ public record CreateProjectRequest(
     string? Description,
     int? OrganizationId,
     DateOnly? Deadline);
+
+/// <summary>Null switches the daily automated risk estimate off.</summary>
+public record SetRiskAutomationRequest(int? HourUtc);
 
 public record UpdateProjectRequest(
     string? Name,

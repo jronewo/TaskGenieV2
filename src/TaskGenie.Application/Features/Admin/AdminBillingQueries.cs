@@ -10,11 +10,13 @@ namespace TaskGenie.Application.Features.Admin;
 
 public sealed record AdminPlanDto(
     int PlanId, string Code, string Name, string Audience, string BillingInterval,
-    int PriceMinor, string Currency, int? ProjectLimit, int? MemberLimit, bool IsActive, int SortOrder)
+    int PriceMinor, string Currency, int? ProjectLimit, int? MemberLimit, bool IsActive, int SortOrder,
+    bool AiChatbotEnabled, int? DurationDays, int EffectiveDurationDays)
 {
     public static AdminPlanDto From(Plan p) => new(
         p.PlanId, p.Code, p.Name, p.Audience, p.BillingInterval,
-        p.PriceMinor, p.Currency, p.ProjectLimit, p.MemberLimit, p.IsActive, p.SortOrder);
+        p.PriceMinor, p.Currency, p.ProjectLimit, p.MemberLimit, p.IsActive, p.SortOrder,
+        p.AiChatbotEnabled, p.DurationDays, p.EffectiveDurationDays);
 }
 
 public sealed record AdminListPlansQuery : IRequest<List<AdminPlanDto>>;
@@ -30,9 +32,12 @@ public sealed class AdminListPlansQueryHandler(IPlanRepository planRepo)
     }
 }
 
+/// <summary>A null limit means unlimited; a null <paramref name="DurationDays"/> falls back to the
+/// billing interval.</summary>
 public sealed record AdminCreatePlanCommand(
     string Code, string Name, string Audience, string BillingInterval,
-    int PriceMinor, string Currency, int? ProjectLimit, int? MemberLimit, int SortOrder) : IRequest<AdminPlanDto>;
+    int PriceMinor, string Currency, int? ProjectLimit, int? MemberLimit, int SortOrder,
+    bool AiChatbotEnabled = false, int? DurationDays = null) : IRequest<AdminPlanDto>;
 
 public sealed class AdminCreatePlanCommandHandler(IPlanRepository planRepo)
     : IRequestHandler<AdminCreatePlanCommand, AdminPlanDto>
@@ -45,20 +50,30 @@ public sealed class AdminCreatePlanCommandHandler(IPlanRepository planRepo)
             throw new InvalidOperationException("BillingInterval must be NONE, MONTHLY or YEARLY.");
         if (cmd.PriceMinor < 0)
             throw new InvalidOperationException("Price cannot be negative.");
+        if (cmd.ProjectLimit is < 0)
+            throw new InvalidOperationException("Project limit cannot be negative.");
+        if (cmd.DurationDays is < 1)
+            throw new InvalidOperationException("Plan duration must be at least one day.");
 
         var code = cmd.Code.Trim().ToUpperInvariant();
         if (await planRepo.GetByCodeAsync(code, ct) is not null)
             throw new InvalidOperationException($"A plan with code '{code}' already exists.");
 
         var plan = Plan.Create(code, cmd.Name, cmd.Audience, cmd.BillingInterval,
-            cmd.PriceMinor, cmd.Currency, cmd.ProjectLimit, cmd.MemberLimit, cmd.SortOrder);
+            cmd.PriceMinor, cmd.Currency, cmd.ProjectLimit, cmd.MemberLimit, cmd.SortOrder,
+            cmd.AiChatbotEnabled, cmd.DurationDays);
         await planRepo.AddAsync(plan, ct);
         return AdminPlanDto.From(plan);
     }
 }
 
+/// <summary>
+/// A whole-form update: every field is sent, and a null limit means unlimited rather than
+/// "unchanged". That distinction is why the admin UI can switch a plan to unlimited projects at all.
+/// </summary>
 public sealed record AdminUpdatePlanCommand(
-    int PlanId, string? Name, int? PriceMinor, int? ProjectLimit, int? MemberLimit, int? SortOrder)
+    int PlanId, string Name, int PriceMinor, int? ProjectLimit, int? MemberLimit, int SortOrder,
+    bool AiChatbotEnabled, int? DurationDays)
     : IRequest<AdminPlanDto>;
 
 public sealed class AdminUpdatePlanCommandHandler(IPlanRepository planRepo)
@@ -69,10 +84,15 @@ public sealed class AdminUpdatePlanCommandHandler(IPlanRepository planRepo)
         var plan = await planRepo.GetByIdAsync(cmd.PlanId, ct)
             ?? throw new NotFoundException("Plan", cmd.PlanId);
 
-        if (cmd.PriceMinor is < 0)
+        if (cmd.PriceMinor < 0)
             throw new InvalidOperationException("Price cannot be negative.");
+        if (cmd.ProjectLimit is < 0)
+            throw new InvalidOperationException("Project limit cannot be negative.");
+        if (cmd.DurationDays is < 1)
+            throw new InvalidOperationException("Plan duration must be at least one day.");
 
-        plan.Update(cmd.Name, cmd.PriceMinor, cmd.ProjectLimit, cmd.MemberLimit, cmd.SortOrder);
+        plan.Update(cmd.Name, cmd.PriceMinor, cmd.ProjectLimit, cmd.MemberLimit, cmd.SortOrder,
+            cmd.AiChatbotEnabled, cmd.DurationDays);
         await planRepo.UpdateAsync(plan, ct);
         return AdminPlanDto.From(plan);
     }

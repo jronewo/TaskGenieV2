@@ -129,6 +129,34 @@ public sealed class ProjectClosureApiTests
         });
     }
 
+    /// <summary>
+    /// Organizations are a paid feature, so when the subscription lapses its projects must vanish
+    /// from every list at once. They all read this one query, which is where the filter lives —
+    /// filtering per screen would guarantee one was missed and the API would still hand the rows out.
+    /// </summary>
+    [Fact]
+    public async Task ProjectList_HidesOrganizationProjectsOnceThePlanHasLapsed()
+    {
+        await using var factory = new ProjectLifecycleApiFactory();
+        using var client = factory.CreateClient();
+        var owner = await factory.SeedUserAsync();
+        await factory.AuthenticateAsync(client, owner);
+
+        var (personal, _) = await factory.SeedProjectWithDedicatedTeamAsync(owner);
+        var organizationId = await factory.SeedOrganizationAsync(owner, activeSubscription: true);
+        var orgProject = await factory.SeedOrganizationProjectAsync(owner, organizationId);
+
+        var whilePaid = await client.GetFromJsonAsync<List<ProjectDto>>("/api/projects");
+        Assert.Contains(whilePaid!, p => p.ProjectId == orgProject);
+
+        await factory.ExpireOrganizationSubscriptionAsync(organizationId);
+
+        var afterLapse = await client.GetFromJsonAsync<List<ProjectDto>>("/api/projects");
+        Assert.DoesNotContain(afterLapse!, p => p.ProjectId == orgProject);
+        // The user's own project is untouched — only the organization's work disappears.
+        Assert.Contains(afterLapse!, p => p.ProjectId == personal.ProjectId);
+    }
+
     [Fact]
     public async Task ClosedList_IsEmptyWhileEveryProjectIsStillOpen()
     {

@@ -10,11 +10,24 @@ public record EffectiveEntitlement(
     int? ProjectLimit,
     int ProjectUsage,
     int? MemberLimit,
-    IReadOnlyList<string> Sources)
+    IReadOnlyList<string> Sources,
+    /// <summary>Whether the AI assistant is included. Read from the plan's own flag rather than
+    /// inferred from the price, so a paid plan can ship without it.</summary>
+    bool AiChatbotEnabled = false,
+    /// <summary>End of the current paid period; null on a free plan or one with no expiry.</summary>
+    DateTime? CurrentPeriodEnd = null,
+    /// <summary>Organizations are a paid-only feature: true only while an organization
+    /// subscription the caller belongs to is actually active.</summary>
+    bool CanUseOrganizations = false)
 {
     public bool IsUnlimitedProjects => ProjectLimit is null;
     public bool CanCreateAnotherProject => ProjectLimit is null || ProjectUsage < ProjectLimit;
     public int? RemainingProjects => ProjectLimit is null ? null : Math.Max(0, ProjectLimit.Value - ProjectUsage);
+
+    /// <summary>Whole days until the period ends; null when there is no end date, 0 once reached.</summary>
+    public int? DaysUntilExpiry => CurrentPeriodEnd is null
+        ? null
+        : Math.Max(0, (int)Math.Ceiling((CurrentPeriodEnd.Value - DateTime.UtcNow).TotalDays));
 }
 
 /// <summary>Thrown when a quota would be exceeded. Maps to HTTP 403 with code

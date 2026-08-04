@@ -23,6 +23,7 @@ import {
 } from "../services/organizationApi";
 import { projectApi } from "../services/projectApi";
 import { ApiError } from "../services/apiClient";
+import { Skeleton } from "./ui/skeleton";
 import { useConfirm } from "./ConfirmDialog";
 import { OrganizationProjectPanel } from "./OrganizationProjectPanel";
 import { ProjectInfoModal } from "./ProjectInfoModal";
@@ -235,10 +236,20 @@ export const OrganizationCenter = () => {
     );
 
   if (loadingList) {
+    // Shaped like the page it is standing in for, not a spinner in an empty box. A centred
+    // spinner occupies a completely different height from the real content, so the moment the
+    // data arrived the whole page jumped — on top of the page-transition fade, that read as three
+    // separate movements for one navigation.
     return (
-      <div className="flex items-center justify-center py-24 text-gray-500">
-        <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-        <span className="ml-2">Loading organizations…</span>
+      <div className="space-y-6" role="status" aria-label="Đang tải danh sách tổ chức">
+        <header className="space-y-2">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-4 w-96 max-w-full" />
+        </header>
+        <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+          <Skeleton className="h-64 w-full rounded-xl" />
+          <Skeleton className="h-64 w-full rounded-xl" />
+        </div>
       </div>
     );
   }

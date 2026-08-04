@@ -40,6 +40,20 @@ import { useAuth } from "./auth/AuthContext";
 import { useRealtimeNotifications } from "./realtime/useRealtimeNotifications";
 import { isPlatformAdmin } from "./auth/types";
 
+/**
+ * One transition for every page in the shell.
+ *
+ * Exit is deliberately quicker than enter: `AnimatePresence mode="wait"` holds the incoming page
+ * until the outgoing one has finished leaving, so a symmetric pair leaves a visible blank gap
+ * between them. The small lift gives the swap a direction without moving far enough to read as
+ * the layout breaking.
+ */
+const pageMotion = {
+  initial: { opacity: 0, y: 6 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.18, ease: [0.22, 1, 0.36, 1] as const } },
+  exit: { opacity: 0, y: -4, transition: { duration: 0.1, ease: "easeIn" as const } },
+} as const;
+
 const measure = () => ({
   isMobile: window.innerWidth < 768,
   /** Below this the sidebar has to give its width back to the board. */
@@ -434,11 +448,11 @@ export default function App() {
     }
     try {
       const entitlement = await billingApi.entitlement().catch(() => null);
-      // The organization workspace opens only once an organization plan is actually paid for —
-      // `sources` carries an "organization:<id>:<plan>" entry only for an ACTIVE paid subscription.
-      const onPaidOrgPlan = (entitlement?.sources ?? []).some((src) => src.startsWith("organization:"));
-      setCanAccessOrganizations(onPaidOrgPlan);
-      setCanUseAssistant(entitlement?.isPremium ?? false);
+      // Both flags come from the API's own entitlement decision rather than being re-derived here.
+      // `canUseOrganizations` goes false the moment the organization plan lapses, which is what
+      // removes the nav entry; the API stops returning organization projects at the same time.
+      setCanAccessOrganizations(entitlement?.canUseOrganizations ?? false);
+      setCanUseAssistant(entitlement?.aiChatbotEnabled ?? false);
     } catch {
       setCanAccessOrganizations(false);
       setCanUseAssistant(false);
@@ -549,10 +563,7 @@ export default function App() {
                     <motion.div
                       key="dashboard"
                       className="flex-1 flex flex-col overflow-hidden"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15 }}
+                      {...pageMotion}
                     >
                       <DashboardPage
                         showMyTasks={!canAccessAdministration}
@@ -569,10 +580,7 @@ export default function App() {
                     <motion.div
                       key="board"
                       className="flex-1 overflow-hidden flex flex-col"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15 }}
+                      {...pageMotion}
                     >
                       <ProjectBoardHeader projectId={activeProjectId} tasks={boardTasks} onProjectLoaded={(name, canManage) => {
                           setBoardProjectName(name);
@@ -607,10 +615,7 @@ export default function App() {
                     <motion.div
                       key="reports"
                       className="flex-1 overflow-hidden"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15 }}
+                      {...pageMotion}
                     >
                       <ReportsDashboard />
                     </motion.div>
@@ -620,10 +625,7 @@ export default function App() {
                     <motion.div
                       key="projects"
                       className="flex-1 overflow-y-auto"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15 }}
+                      {...pageMotion}
                     >
                       <ProjectView activeProject={activeProject} setActiveProject={setActiveProject} />
                     </motion.div>
@@ -633,10 +635,7 @@ export default function App() {
                     <motion.div
                       key="team"
                       className="flex-1 overflow-y-auto"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15 }}
+                      {...pageMotion}
                     >
                       <TeamView />
                     </motion.div>
@@ -646,10 +645,7 @@ export default function App() {
                     <motion.div
                       key="organizations"
                       className="flex-1 overflow-y-auto p-4"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15 }}
+                      {...pageMotion}
                     >
                       <OrganizationCenter />
                     </motion.div>
@@ -659,10 +655,7 @@ export default function App() {
                     <motion.div
                       key="subscription"
                       className="flex-1 overflow-y-auto p-4"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15 }}
+                      {...pageMotion}
                     >
                       <SubscriptionCenter onOrganizationsChanged={refreshOrganizationAccess} />
                     </motion.div>
@@ -672,10 +665,7 @@ export default function App() {
                     <motion.div
                       key="evaluations"
                       className="flex-1 overflow-y-auto"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15 }}
+                      {...pageMotion}
                     >
                       <EvaluationCenter />
                     </motion.div>
@@ -686,10 +676,7 @@ export default function App() {
                     <motion.div
                       key={activePage}
                       className="flex-1 overflow-y-auto"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15 }}
+                      {...pageMotion}
                     >
                       {activePage === "admin-skills" ? (
                         <SkillManagement />
@@ -705,10 +692,7 @@ export default function App() {
                     <motion.div
                       key="administration"
                       className="flex-1 overflow-y-auto"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15 }}
+                      {...pageMotion}
                     >
                       <AdministrationCenter />
                     </motion.div>
@@ -717,10 +701,7 @@ export default function App() {
                     <motion.div
                       key="profile"
                       className="flex-1 overflow-y-auto"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15 }}
+                      {...pageMotion}
                     >
                       <ProfilePage />
                     </motion.div>
@@ -731,10 +712,7 @@ export default function App() {
                     <motion.div
                       key="notifications"
                       className="flex-1 overflow-y-auto"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15 }}
+                      {...pageMotion}
                     >
                       <NotificationsView
                         onUnreadChange={handleUnreadChange}
@@ -752,10 +730,7 @@ export default function App() {
                     <motion.div
                       key="settings"
                       className="flex-1 overflow-y-auto"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15 }}
+                      {...pageMotion}
                     >
                       <SettingsPage
                         unreadCount={unreadCount}

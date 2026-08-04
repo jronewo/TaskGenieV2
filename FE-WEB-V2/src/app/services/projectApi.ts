@@ -15,6 +15,9 @@ export interface ProjectDto {
   predictedEndDate?: string | null;
   /** Hours a member is expected to work per day; null means the platform default of 8. */
   workingHoursPerDay?: number | null;
+  /** Hour of day (UTC) the risk estimate re-runs by itself; null means the automation is off. */
+  riskAutomationHourUtc?: number | null;
+  riskAutomationLastRunAt?: string | null;
   riskLevel: string;
   /** Rendering hint from the API: may the caller create tasks here? Endpoints enforce it too. */
   canManageTasks?: boolean;
@@ -86,6 +89,16 @@ export const projectApi = {
     }),
 
   /** Active projects only — a closed project is finished work and drops out of the workspace. */
+  /**
+   * Schedules the daily automated risk estimate at an hour of the day, or switches it off with
+   * null. Project-leader only; the API rejects anyone else.
+   */
+  setRiskAutomation: (projectId: number, hourUtc: number | null) =>
+    apiRequest<{ riskAutomationHourUtc: number | null }>(`/projects/${projectId}/risk-automation`, {
+      method: "PUT",
+      body: JSON.stringify({ hourUtc }),
+    }),
+
   list: () => apiRequest<ProjectDto[]>("/projects"),
 
   /** The projects that have been ended, for the finished-work list on the profile. */

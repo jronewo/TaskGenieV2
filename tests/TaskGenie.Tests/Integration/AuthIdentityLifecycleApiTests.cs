@@ -258,6 +258,11 @@ public sealed class CapturingEmailSender : IEmailSender
     public string? LastInvitationTeam { get; private set; }
     public string? LastInvitationRespondUrl { get; private set; }
 
+    /// <summary>Not exercised here — this sender exists for the password-reset flow.</summary>
+    public Task SendSubscriptionExpiryEmailAsync(
+        string toEmail, string planName, int daysRemaining, DateTime periodEnd, string manageUrl,
+        CancellationToken ct = default) => Task.CompletedTask;
+
     public Task SendPasswordResetEmailAsync(string toEmail, string resetToken, CancellationToken ct = default)
     {
         LastEmail = toEmail;

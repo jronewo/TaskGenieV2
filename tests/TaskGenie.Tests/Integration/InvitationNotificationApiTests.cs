@@ -177,6 +177,11 @@ public sealed class RecordingInvitationEmailSender : IEmailSender
     public Task SendPasswordResetEmailAsync(string toEmail, string resetToken, CancellationToken ct = default)
         => Task.CompletedTask;
 
+    /// <summary>Not exercised here — this sender exists for the invitation flow.</summary>
+    public Task SendSubscriptionExpiryEmailAsync(
+        string toEmail, string planName, int daysRemaining, DateTime periodEnd, string manageUrl,
+        CancellationToken ct = default) => Task.CompletedTask;
+
     public Task SendTeamInvitationEmailAsync(
         string toEmail,
         string teamName,

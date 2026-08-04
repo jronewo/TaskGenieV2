@@ -32,8 +32,19 @@ public class PlansController(IPlanRepository planRepo) : ControllerBase
 public class BillingController(
     IBillingService billing,
     IEntitlementService entitlements,
+    IPaymentProvider paymentProvider,
     ICurrentUser currentUser) : ControllerBase
 {
+    /// <summary>
+    /// Which gateway is actually wired up. The UI needs this to decide whether to offer the
+    /// manual "simulate outcome" controls: a database can still hold PENDING rows from an earlier
+    /// simulated run, and offering to settle them while a real gateway is configured shows a
+    /// button whose endpoint answers 404.
+    /// </summary>
+    [HttpGet("gateway")]
+    public IActionResult GetGateway()
+        => Ok(new { simulated = paymentProvider.IsTestProvider, provider = paymentProvider.Name });
+
     /// <summary>Effective plan, quota and Premium status for the caller (or an organization).</summary>
     [HttpGet("entitlement")]
     public async Task<IActionResult> GetEntitlement([FromQuery] int? organizationId)

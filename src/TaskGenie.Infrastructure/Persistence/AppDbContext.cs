@@ -456,6 +456,8 @@ public partial class AppDbContext : DbContext
                 .HasColumnName("progress");
             entity.Property(e => e.WorkingHoursPerDay).HasColumnName("working_hours_per_day");
             entity.Property(e => e.PredictedEndDate).HasColumnName("predicted_end_date");
+            entity.Property(e => e.RiskAutomationHourUtc).HasColumnName("risk_automation_hour_utc");
+            entity.Property(e => e.RiskAutomationLastRunAt).HasColumnType("datetime").HasColumnName("risk_automation_last_run_at");
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("(getdate())")
                 .HasColumnType("datetime")
@@ -793,6 +795,8 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.MemberLimit).HasColumnName("member_limit");
             entity.Property(e => e.IsActive).HasColumnName("is_active");
             entity.Property(e => e.SortOrder).HasColumnName("sort_order");
+            entity.Property(e => e.AiChatbotEnabled).HasDefaultValue(false).HasColumnName("ai_chatbot_enabled");
+            entity.Property(e => e.DurationDays).HasColumnName("duration_days");
             entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("created_at");
             entity.Property(e => e.UpdatedAt).HasColumnType("datetime").HasColumnName("updated_at");
             entity.HasIndex(e => e.Code).IsUnique();
@@ -803,11 +807,15 @@ public partial class AppDbContext : DbContext
             // the production payment provider, settles VND only; see migration
             // UpdatePlanCatalogToVnd for the USD -> VND cutover.
             var catalogSeededAt = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
+            // FREE_ORGANIZATION is archived rather than deleted: organizations are a paid-only
+            // feature now, but subscriptions still reference the row by foreign key, so removing it
+            // would fail the migration. Archived means it never appears on the pricing page and can
+            // never be checked out again.
             entity.HasData(
-                new { PlanId = 1, Code = "FREE_PERSONAL", Name = "Free", Audience = "PERSONAL", BillingInterval = "NONE", PriceMinor = 0, Currency = "VND", ProjectLimit = (int?)2, MemberLimit = (int?)null, IsActive = true, SortOrder = 1, CreatedAt = catalogSeededAt },
-                new { PlanId = 2, Code = "PRO_PERSONAL", Name = "Pro", Audience = "PERSONAL", BillingInterval = "MONTHLY", PriceMinor = 249000, Currency = "VND", ProjectLimit = (int?)null, MemberLimit = (int?)null, IsActive = true, SortOrder = 2, CreatedAt = catalogSeededAt },
-                new { PlanId = 3, Code = "FREE_ORGANIZATION", Name = "Organization Free", Audience = "ORGANIZATION", BillingInterval = "NONE", PriceMinor = 0, Currency = "VND", ProjectLimit = (int?)2, MemberLimit = (int?)5, IsActive = true, SortOrder = 1, CreatedAt = catalogSeededAt },
-                new { PlanId = 4, Code = "PRO_ORGANIZATION", Name = "Organization Pro", Audience = "ORGANIZATION", BillingInterval = "MONTHLY", PriceMinor = 1199000, Currency = "VND", ProjectLimit = (int?)null, MemberLimit = (int?)null, IsActive = true, SortOrder = 2, CreatedAt = catalogSeededAt });
+                new { PlanId = 1, Code = "FREE_PERSONAL", Name = "Free", Audience = "PERSONAL", BillingInterval = "NONE", PriceMinor = 0, Currency = "VND", ProjectLimit = (int?)2, MemberLimit = (int?)null, IsActive = true, SortOrder = 1, AiChatbotEnabled = false, DurationDays = (int?)null, CreatedAt = catalogSeededAt },
+                new { PlanId = 2, Code = "PRO_PERSONAL", Name = "Pro", Audience = "PERSONAL", BillingInterval = "MONTHLY", PriceMinor = 249000, Currency = "VND", ProjectLimit = (int?)null, MemberLimit = (int?)null, IsActive = true, SortOrder = 2, AiChatbotEnabled = true, DurationDays = (int?)null, CreatedAt = catalogSeededAt },
+                new { PlanId = 3, Code = "FREE_ORGANIZATION", Name = "Organization Free", Audience = "ORGANIZATION", BillingInterval = "NONE", PriceMinor = 0, Currency = "VND", ProjectLimit = (int?)2, MemberLimit = (int?)5, IsActive = false, SortOrder = 1, AiChatbotEnabled = false, DurationDays = (int?)null, CreatedAt = catalogSeededAt },
+                new { PlanId = 4, Code = "PRO_ORGANIZATION", Name = "Organization Pro", Audience = "ORGANIZATION", BillingInterval = "MONTHLY", PriceMinor = 1199000, Currency = "VND", ProjectLimit = (int?)null, MemberLimit = (int?)null, IsActive = true, SortOrder = 2, AiChatbotEnabled = true, DurationDays = (int?)null, CreatedAt = catalogSeededAt });
         });
 
         modelBuilder.Entity<Subscription>(entity =>

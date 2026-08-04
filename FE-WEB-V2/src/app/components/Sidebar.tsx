@@ -286,6 +286,10 @@ export const Sidebar = ({
             {activePage === id && (
               <motion.div
                 layoutId="activeNav"
+                // Only animate when moving between nav items. On mount the highlight has no
+                // measured position yet, so without this it paints at the wrong size and springs
+                // into place — a visible flash on the first render.
+                initial={false}
                 className="absolute inset-0 rounded-md"
                 style={{ background: "rgba(255,255,255,0.1)" }}
               />

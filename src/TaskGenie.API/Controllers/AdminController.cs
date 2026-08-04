@@ -62,15 +62,19 @@ public class AdminController(IMediator mediator) : ControllerBase
 
     [HttpPost("plans")]
     public async Task<IActionResult> CreatePlan([FromBody] AdminCreatePlanRequest request)
+        // VND, not USD: PayOS settles VND exclusively, so a plan priced in anything else could
+        // never be checked out.
         => Ok(await mediator.Send(new AdminCreatePlanCommand(
             request.Code, request.Name, request.Audience, request.BillingInterval,
-            request.PriceMinor, request.Currency ?? "USD",
-            request.ProjectLimit, request.MemberLimit, request.SortOrder)));
+            request.PriceMinor, request.Currency ?? "VND",
+            request.ProjectLimit, request.MemberLimit, request.SortOrder,
+            request.AiChatbotEnabled, request.DurationDays)));
 
     [HttpPut("plans/{planId}")]
     public async Task<IActionResult> UpdatePlan(int planId, [FromBody] AdminUpdatePlanRequest request)
         => Ok(await mediator.Send(new AdminUpdatePlanCommand(
-            planId, request.Name, request.PriceMinor, request.ProjectLimit, request.MemberLimit, request.SortOrder)));
+            planId, request.Name, request.PriceMinor, request.ProjectLimit, request.MemberLimit,
+            request.SortOrder, request.AiChatbotEnabled, request.DurationDays)));
 
     [HttpPut("plans/{planId}/active")]
     public async Task<IActionResult> SetPlanActive(int planId, [FromBody] SetActiveRequest request)
@@ -81,11 +85,16 @@ public record SetUserStatusRequest(int Status);
 public record SetUserRoleRequest(string Role);
 public record SetActiveRequest(bool IsActive);
 
+/// <summary>A null <c>ProjectLimit</c>/<c>MemberLimit</c> means unlimited; a null
+/// <c>DurationDays</c> falls back to the billing interval.</summary>
 public record AdminCreatePlanRequest(
     string Code, string Name, string Audience, string BillingInterval,
-    int PriceMinor, string? Currency, int? ProjectLimit, int? MemberLimit, int SortOrder = 0);
+    int PriceMinor, string? Currency, int? ProjectLimit, int? MemberLimit, int SortOrder = 0,
+    bool AiChatbotEnabled = false, int? DurationDays = null);
 
+/// <summary>Whole-form update — every field is authoritative, a null limit means unlimited.</summary>
 public record AdminUpdatePlanRequest(
-    string? Name, int? PriceMinor, int? ProjectLimit, int? MemberLimit, int? SortOrder);
+    string Name, int PriceMinor, int? ProjectLimit, int? MemberLimit, int SortOrder,
+    bool AiChatbotEnabled = false, int? DurationDays = null);
 
 public record BanUserRequest(int? Days, string? Reason);

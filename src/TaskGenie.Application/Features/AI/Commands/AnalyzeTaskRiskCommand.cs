@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using MediatR;
+using TaskGenie.Application.Common.Exceptions;
 using TaskGenie.Application.Features.AI.DTOs;
 using TaskGenie.Application.Features.AI.Services;
 using TaskGenie.Application.Interfaces;
@@ -9,7 +10,15 @@ using TaskGenie.Domain.Interfaces.Repositories;
 
 namespace TaskGenie.Application.Features.AI.Commands;
 
-public sealed record AnalyzeTaskRiskCommand(int TaskId) : IRequest<RiskAssessmentDto?>;
+/// <summary>
+/// Re-scores one task's risk.
+///
+/// <paramref name="SystemInitiated"/> is for the scheduled sweep only: a background job has no
+/// signed-in user, so there is nobody for the resource check to authorise. It MUST never be bound
+/// from a request body — every controller constructs this command itself and always leaves it
+/// false, which is what keeps the permission check on the user-facing path.
+/// </summary>
+public sealed record AnalyzeTaskRiskCommand(int TaskId, bool SystemInitiated = false) : IRequest<RiskAssessmentDto?>;
 
 public sealed class AnalyzeTaskRiskCommandHandler(
     IResourceAuthorizationService authz,
@@ -28,7 +37,12 @@ public sealed class AnalyzeTaskRiskCommandHandler(
 {
     public async Task<RiskAssessmentDto?> Handle(AnalyzeTaskRiskCommand cmd, CancellationToken ct)
     {
-        var task = await authz.EnsureCanManageTaskAsync(cmd.TaskId, ct);
+        // The scheduled sweep runs as the system: there is no actor to authorise, and the project
+        // it was scheduled from is the authorisation decision, taken when the leader turned the
+        // automation on.
+        var task = cmd.SystemInitiated
+            ? await taskRepo.GetByIdAsync(cmd.TaskId, ct) ?? throw new NotFoundException("Task", cmd.TaskId)
+            : await authz.EnsureCanManageTaskAsync(cmd.TaskId, ct);
 
         // The project decides what a working day is, so capacity is measured against its own shift
         // rather than a platform-wide assumption.

@@ -60,6 +60,45 @@ public sealed class SmtpEmailSender(
         return SendAsync(toEmail, $"Lời mời tham gia {teamName}", body, ct);
     }
 
+    public System.Threading.Tasks.Task SendSubscriptionExpiryEmailAsync(
+        string toEmail,
+        string planName,
+        int daysRemaining,
+        DateTime periodEnd,
+        string manageUrl,
+        CancellationToken ct = default)
+    {
+        var plan = WebUtility.HtmlEncode(planName);
+        var url = WebUtility.HtmlEncode(manageUrl);
+        var endsOn = periodEnd.ToString("dd/MM/yyyy");
+        var expired = daysRemaining <= 0;
+
+        // Says what is actually lost, not just "your plan expired" — someone who cannot see the
+        // consequence has no reason to act on the mail.
+        var body = expired
+            ? $"""
+                <p>Xin chào,</p>
+                <p>Gói <strong>{plan}</strong> của bạn đã hết hạn ngày <strong>{endsOn}</strong>.</p>
+                <p>Tài khoản đã trở về gói miễn phí: tối đa 2 dự án, không dùng được trợ lý AI,
+                   và các tính năng tổ chức đã bị ẩn cho tới khi bạn gia hạn.</p>
+                <p><a href="{url}">Gia hạn gói</a></p>
+                """
+            : $"""
+                <p>Xin chào,</p>
+                <p>Gói <strong>{plan}</strong> của bạn sẽ hết hạn sau <strong>{daysRemaining} ngày</strong>
+                   (ngày {endsOn}).</p>
+                <p>Sau thời điểm đó tài khoản trở về gói miễn phí: tối đa 2 dự án, không dùng được
+                   trợ lý AI, và các tính năng tổ chức sẽ bị ẩn.</p>
+                <p><a href="{url}">Gia hạn ngay</a></p>
+                """;
+
+        var subject = expired
+            ? $"Gói {planName} đã hết hạn"
+            : $"Gói {planName} sắp hết hạn ({daysRemaining} ngày)";
+
+        return SendAsync(toEmail, subject, body, ct);
+    }
+
     private async System.Threading.Tasks.Task SendAsync(string to, string subject, string html, CancellationToken ct)
     {
         var config = settings.Value;

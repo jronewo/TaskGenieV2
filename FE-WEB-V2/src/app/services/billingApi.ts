@@ -24,6 +24,14 @@ export interface EntitlementDto {
   projectUsage: number;
   memberLimit: number | null;
   sources: string[];
+  /** Read from the plan's own flag, not inferred from the price. */
+  aiChatbotEnabled: boolean;
+  /** End of the current paid period; null on a free plan. */
+  currentPeriodEnd: string | null;
+  /** Whole days left, 0 once reached, null when there is no end date. */
+  daysUntilExpiry: number | null;
+  /** Organizations are paid-only: true only while an organization plan is actually active. */
+  canUseOrganizations: boolean;
 }
 
 export interface SubscriptionDto {
@@ -79,6 +87,13 @@ export const formatMoney = (amountMinor: number, currency: string): string => {
 export const billingApi = {
   plans: (audience?: PlanAudience) =>
     apiRequest<PlanDto[]>(`/plans${audience ? `?audience=${audience}` : ""}`),
+
+  /**
+   * Which gateway is wired up. The simulate controls must only appear when it is actually the
+   * fake one — old PENDING rows from a previous simulated run otherwise offer a button whose
+   * endpoint answers 404.
+   */
+  gateway: () => apiRequest<{ simulated: boolean; provider: string }>("/billing/gateway"),
 
   entitlement: (organizationId?: number | null) =>
     apiRequest<EntitlementDto>(`/billing/entitlement${organizationId ? `?organizationId=${organizationId}` : ""}`),

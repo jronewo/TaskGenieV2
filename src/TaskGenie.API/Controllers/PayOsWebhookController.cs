@@ -48,7 +48,17 @@ public sealed class PayOsWebhookController(
 
         if (!PayOsSignature.Matches(computedSignature, providedSignature))
         {
+            // The field list and both signatures are logged because a mismatch is otherwise
+            // undiagnosable: PayOS only reports "401" from its side, and the difference is always
+            // in *which* fields were signed or how one was stringified. The checksum key itself is
+            // never logged, and signatures are derived values — knowing them grants nothing without
+            // the key. Debug level so this stays out of a production log by default.
             logger.LogWarning("Rejected PayOS webhook: signature mismatch.");
+            logger.LogDebug(
+                "PayOS signature mismatch. Signed fields: [{Fields}]. Computed {Computed}, received {Provided}.",
+                string.Join(", ", fields.Keys.OrderBy(k => k, StringComparer.Ordinal)),
+                computedSignature,
+                providedSignature);
             return Unauthorized(new { message = "Invalid webhook signature." });
         }
 

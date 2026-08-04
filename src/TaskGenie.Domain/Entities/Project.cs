@@ -34,6 +34,17 @@ public class Project
 
     public DateOnly? PredictedEndDate { get; internal set; }
 
+    /// <summary>
+    /// Hour of the day (0–23, UTC) at which the risk estimate re-runs for this project by itself.
+    /// Null means the automation is off. Per project rather than one global sweep: a school project
+    /// and a company project do not want their board recomputed at the same time, and the AI
+    /// provider is rate-limited, so spreading the runs across the day is what keeps them succeeding.
+    /// </summary>
+    public int? RiskAutomationHourUtc { get; internal set; }
+
+    /// <summary>Last time the automated risk sweep completed, so a restart cannot run it twice.</summary>
+    public DateTime? RiskAutomationLastRunAt { get; internal set; }
+
     public DateTime? CreatedAt { get; internal set; }
 
     public DateTime? UpdatedAt { get; internal set; }
@@ -66,6 +77,28 @@ public class Project
     };
 
     public void SetTeamId(int teamId) => TeamId = teamId;
+
+    /// <summary>Schedules (or, with null, switches off) the daily automated risk estimate.</summary>
+    public void SetRiskAutomationHour(int? hourUtc)
+    {
+        if (hourUtc is < 0 or > 23)
+            throw new ArgumentOutOfRangeException(nameof(hourUtc), "Hour must be between 0 and 23.");
+        RiskAutomationHourUtc = hourUtc;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>Stamped by the scheduler once a sweep finishes, successfully or not.</summary>
+    public void MarkRiskAutomationRun(DateTime runAtUtc) => RiskAutomationLastRunAt = runAtUtc;
+
+    /// <summary>
+    /// True when the daily sweep is due: the automation is on, the clock has reached its hour, and
+    /// it has not already run today. The last check is what makes an hourly tick idempotent.
+    /// </summary>
+    public bool IsRiskAutomationDue(DateTime nowUtc) =>
+        RiskAutomationHourUtc is { } hour
+        && !IsClosed
+        && nowUtc.Hour >= hour
+        && (RiskAutomationLastRunAt is not { } last || last.Date < nowUtc.Date);
 
     /// <summary>Only a project leader reaches this; the bounds keep a typo from making every task
     /// look either impossible or effortless.</summary>

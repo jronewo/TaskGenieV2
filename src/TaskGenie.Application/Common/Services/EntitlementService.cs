@@ -22,6 +22,8 @@ public sealed class EntitlementService(
         string planCode = "FREE_PERSONAL";
         string planName = "Free";
         var isPremium = false;
+        var aiChatbot = false;
+        DateTime? periodEnd = null;
 
         var personal = await subscriptionRepo.GetEffectiveForUserAsync(userId, ct);
         if (personal?.Plan is { } personalPlan)
@@ -31,16 +33,24 @@ public sealed class EntitlementService(
             planName = personalPlan.Name;
             projectLimit = personalPlan.ProjectLimit;
             isPremium = !personalPlan.IsFree;
+            aiChatbot = personalPlan.AiChatbotEnabled;
+            periodEnd = personal.CurrentPeriodEnd;
         }
         else
         {
             var freePlan = await planRepo.GetByCodeAsync("FREE_PERSONAL", ct);
             projectLimit = freePlan?.ProjectLimit ?? DefaultFreeProjectLimit;
-            if (freePlan is not null) planName = freePlan.Name;
+            if (freePlan is not null)
+            {
+                planName = freePlan.Name;
+                aiChatbot = freePlan.AiChatbotEnabled;
+            }
         }
 
         // Premium may also be inherited from any organization the user actively belongs to.
-        // Inheritance never mutates the user's own plan — it is recomputed on every call.
+        // Inheritance never mutates the user's own plan — it is recomputed on every call, which is
+        // what makes it disappear by itself the moment the organization's subscription lapses.
+        var canUseOrganizations = false;
         var memberships = await memberRepo.GetActiveByUserAsync(userId, ct);
         foreach (var membership in memberships)
         {
@@ -49,6 +59,11 @@ public sealed class EntitlementService(
 
             sources.Add($"organization:{membership.OrganizationId}:{orgPlan.Code}");
             isPremium = true;
+            canUseOrganizations = true;
+            if (orgPlan.AiChatbotEnabled) aiChatbot = true;
+            // The later of the two period ends is what the user actually keeps access until.
+            if (orgSub.CurrentPeriodEnd is { } orgEnd && (periodEnd is null || orgEnd > periodEnd))
+                periodEnd = orgEnd;
             // The more generous limit wins; null (unlimited) beats any number.
             if (projectLimit is not null)
                 projectLimit = orgPlan.ProjectLimit is null ? null : Math.Max(projectLimit.Value, orgPlan.ProjectLimit.Value);
@@ -57,7 +72,9 @@ public sealed class EntitlementService(
         if (sources.Count == 0) sources.Add("personal:FREE_PERSONAL");
 
         var usage = await CountActivePersonalProjectsAsync(userId, ct);
-        return new EffectiveEntitlement(planCode, planName, isPremium, projectLimit, usage, null, sources);
+        return new EffectiveEntitlement(
+            planCode, planName, isPremium, projectLimit, usage, null, sources,
+            aiChatbot, periodEnd, canUseOrganizations);
     }
 
     public async Task<EffectiveEntitlement> GetForOrganizationAsync(int organizationId, CancellationToken ct = default)
@@ -66,22 +83,29 @@ public sealed class EntitlementService(
         var projects = await projectRepo.GetProjectsByOrgIdAsync(organizationId, ct);
         var usage = projects.Count(IsCountedTowardQuota);
 
-        if (subscription?.Plan is { } plan)
+        if (subscription?.Plan is { } plan && !plan.IsFree)
         {
             return new EffectiveEntitlement(
-                plan.Code, plan.Name, !plan.IsFree, plan.ProjectLimit, usage, plan.MemberLimit,
-                [$"organization:{organizationId}:{plan.Code}"]);
+                plan.Code, plan.Name, true, plan.ProjectLimit, usage, plan.MemberLimit,
+                [$"organization:{organizationId}:{plan.Code}"],
+                plan.AiChatbotEnabled, subscription.CurrentPeriodEnd, CanUseOrganizations: true);
         }
 
-        var freePlan = await planRepo.GetByCodeAsync("FREE_ORGANIZATION", ct);
+        // No free tier for organizations: an organization is a paid feature, so one without an
+        // active paid subscription grants nothing at all. A zero project limit is what makes
+        // EnsureCanCreateProjectAsync refuse rather than silently allowing two "free" projects —
+        // the previous FREE_ORGANIZATION fallback is why an unpaid organization still worked.
         return new EffectiveEntitlement(
-            freePlan?.Code ?? "FREE_ORGANIZATION",
-            freePlan?.Name ?? "Free",
-            false,
-            freePlan?.ProjectLimit ?? DefaultFreeProjectLimit,
-            usage,
-            freePlan?.MemberLimit,
-            ["organization:free"]);
+            PlanCode: "NONE",
+            PlanName: "Chưa có gói",
+            IsPremium: false,
+            ProjectLimit: 0,
+            ProjectUsage: usage,
+            MemberLimit: 0,
+            Sources: [],
+            AiChatbotEnabled: false,
+            CurrentPeriodEnd: null,
+            CanUseOrganizations: false);
     }
 
     public async Task EnsureCanCreateProjectAsync(int userId, int? organizationId, CancellationToken ct = default)
@@ -92,10 +116,14 @@ public sealed class EntitlementService(
 
         if (entitlement.CanCreateAnotherProject) return;
 
-        throw new PlanUpgradeRequiredException(
-            $"Your current plan allows {entitlement.ProjectLimit} active project(s). Upgrade the plan or archive an existing project.",
-            entitlement.ProjectLimit,
-            entitlement.ProjectUsage);
+        // An organization with no paid plan has a limit of zero, which needs its own sentence —
+        // "allows 0 active projects" reads like a bug rather than "you have not paid yet".
+        var message = organizationId is not null && entitlement.ProjectLimit == 0
+            ? "Tổ chức chưa có gói đăng ký đang hoạt động. Hãy thanh toán gói tổ chức để tạo dự án."
+            : $"Gói hiện tại cho phép {entitlement.ProjectLimit} dự án ({entitlement.ProjectUsage}/{entitlement.ProjectLimit} đã dùng). "
+              + "Nâng cấp gói, hoặc xoá bớt dự án cho đến khi còn dưới hạn mức rồi tạo lại.";
+
+        throw new PlanUpgradeRequiredException(message, entitlement.ProjectLimit, entitlement.ProjectUsage);
     }
 
     private async Task<int> CountActivePersonalProjectsAsync(int userId, CancellationToken ct)

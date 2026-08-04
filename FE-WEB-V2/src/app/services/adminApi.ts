@@ -38,6 +38,23 @@ export interface AdminPlanDto {
   memberLimit: number | null;
   isActive: boolean;
   sortOrder: number;
+  /** Whether this plan includes the AI assistant — its own flag, not inferred from the price. */
+  aiChatbotEnabled: boolean;
+  /** Custom period length in days; null falls back to the billing interval. */
+  durationDays: number | null;
+  /** What durationDays resolves to (30 monthly, 365 yearly) — read-only. */
+  effectiveDurationDays: number;
+}
+
+/** A null limit means unlimited; a null durationDays falls back to the billing interval. */
+export interface AdminPlanPayload {
+  name: string;
+  priceMinor: number;
+  projectLimit: number | null;
+  memberLimit: number | null;
+  sortOrder: number;
+  aiChatbotEnabled: boolean;
+  durationDays: number | null;
 }
 
 export interface AdminSubscriptionDto {
@@ -135,10 +152,16 @@ export const adminApi = {
 
   plans: () => apiRequest<AdminPlanDto[]>("/admin/plans"),
 
-  updatePlan: (
-    planId: number,
-    payload: { name?: string | null; priceMinor?: number | null; projectLimit?: number | null; memberLimit?: number | null; sortOrder?: number | null }
+  createPlan: (
+    payload: AdminPlanPayload & { code: string; audience: PlanAudience; billingInterval: string }
   ) =>
+    apiRequest<AdminPlanDto>("/admin/plans", {
+      method: "POST",
+      body: JSON.stringify({ ...payload, currency: "VND" }),
+    }),
+
+  /** A whole-form update: every field is authoritative, a null limit means unlimited. */
+  updatePlan: (planId: number, payload: AdminPlanPayload) =>
     apiRequest<AdminPlanDto>(`/admin/plans/${planId}`, {
       method: "PUT",
       body: JSON.stringify(payload),

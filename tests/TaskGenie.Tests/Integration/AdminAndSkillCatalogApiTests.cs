@@ -190,14 +190,42 @@ public sealed class AdminAndSkillCatalogApiTests
         await factory.AuthenticateAsync(client, admin, "PLATFORM_ADMIN");
         var planId = await factory.GetPlanIdAsync("FREE_PERSONAL");
 
+        // The update is a whole form: every field is authoritative.
         var response = await client.PutAsJsonAsync($"/api/admin/plans/{planId}", new
         {
-            name = "Free tier", priceMinor = (int?)0, projectLimit = (int?)3,
-            memberLimit = (int?)null, sortOrder = (int?)null
+            name = "Free tier", priceMinor = 0, projectLimit = (int?)3,
+            memberLimit = (int?)null, sortOrder = 1, aiChatbotEnabled = false, durationDays = (int?)null
         });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         await factory.WithDbAsync(db => Assert.Equal(3, db.Plans.Single(p => p.PlanId == planId).ProjectLimit));
+    }
+
+    /// <summary>A null limit is how the Unlimited checkbox is expressed; the partial-update shape
+    /// this replaced could not say it, because null also meant "leave unchanged".</summary>
+    [Fact]
+    public async Task UpdatePlan_CanSwitchAPlanToUnlimitedProjects()
+    {
+        await using var factory = new AdminApiFactory();
+        using var client = factory.CreateClient();
+        var admin = await factory.SeedUserAsync("PLATFORM_ADMIN");
+        await factory.AuthenticateAsync(client, admin, "PLATFORM_ADMIN");
+        var planId = await factory.GetPlanIdAsync("FREE_PERSONAL");
+
+        var response = await client.PutAsJsonAsync($"/api/admin/plans/{planId}", new
+        {
+            name = "Free tier", priceMinor = 0, projectLimit = (int?)null,
+            memberLimit = (int?)null, sortOrder = 1, aiChatbotEnabled = true, durationDays = (int?)7
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await factory.WithDbAsync(db =>
+        {
+            var plan = db.Plans.Single(p => p.PlanId == planId);
+            Assert.Null(plan.ProjectLimit);
+            Assert.True(plan.AiChatbotEnabled);
+            Assert.Equal(7, plan.DurationDays);
+        });
     }
 
     [Fact]

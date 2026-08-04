@@ -196,6 +196,32 @@ public sealed class ProjectAuthorizationApiTests
         Assert.NotEqual(impersonated, payload.CreatedBy);
     }
 
+    /// <summary>
+    /// There is no free organization tier any more. An organization whose subscription has never
+    /// been paid (or has lapsed) has a project limit of zero, so even its owner is refused —
+    /// previously the FREE_ORGANIZATION fallback silently granted two projects.
+    /// </summary>
+    [Fact]
+    public async Task Create_UnderAnOrganizationWithNoActivePlan_IsRefused()
+    {
+        await using var factory = new ProjectAuthorizationApiFactory();
+        using var client = factory.CreateClient();
+        var orgOwner = await factory.SeedUserAsync();
+        var organizationId = await factory.SeedOrganizationAsync(orgOwner, withActiveSubscription: false);
+        await factory.AuthenticateAsync(client, orgOwner);
+
+        var response = await client.PostAsJsonAsync("/api/projects", new
+        {
+            name = "Unpaid org project",
+            description = (string?)null,
+            organizationId = (int?)organizationId,
+            deadline = (DateOnly?)null
+        });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Contains("PLAN_UPGRADE_REQUIRED", await response.Content.ReadAsStringAsync());
+    }
+
     [Fact]
     public async Task OrganizationOwner_CanAccessAndManageOrgProject_WithoutBeingCreatorOrMember()
     {
@@ -588,13 +614,34 @@ public sealed class ProjectAuthorizationApiFactory : WebApplicationFactory<Progr
         return team.TeamId;
     }
 
-    public async Task<int> SeedOrganizationAsync(int ownerUserId)
+    /// <summary>
+    /// Organizations are a paid-only feature — there is no free organization tier — so a seeded
+    /// organization carries an active paid subscription by default. Pass
+    /// <paramref name="withActiveSubscription"/> = false to build the unpaid case on purpose.
+    /// </summary>
+    public async Task<int> SeedOrganizationAsync(int ownerUserId, bool withActiveSubscription = true)
     {
         using var scope = Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var org = Organization.Create($"Org {Guid.NewGuid():N}", null, ownerUserId);
         context.Organizations.Add(org);
         await context.SaveChangesAsync();
+
+        if (withActiveSubscription)
+        {
+            var plan = Plan.Create(
+                $"PRO_ORG_{Guid.NewGuid():N}", "Organization Pro", "ORGANIZATION", "MONTHLY",
+                priceMinor: 1_199_000, currency: "VND", projectLimit: null, memberLimit: null,
+                sortOrder: 0, aiChatbotEnabled: true);
+            context.Plans.Add(plan);
+            await context.SaveChangesAsync();
+
+            var subscription = Subscription.CreateForOrganization(plan.PlanId, org.OrganizationId);
+            subscription.Activate(DateTime.UtcNow.AddDays(30));
+            context.Subscriptions.Add(subscription);
+            await context.SaveChangesAsync();
+        }
+
         return org.OrganizationId;
     }
 

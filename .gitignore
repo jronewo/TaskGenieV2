@@ -9,5 +9,9 @@ env/
 *.inspect.ndjson
 .~*
 
-# Claude Code working directories — worktrees are local scratch, never repo content.
-.claude/worktrees/
+# Agent tooling and instructions. This branch ships the product only: these files describe how
+# the code was built, not what runs, and they are kept on the development branches instead.
+.claude/
+.codex/
+CLAUDE.md
+AGENTS.md

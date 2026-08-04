@@ -66,7 +66,7 @@ jobs:
             --max-instances=4 \
             --add-cloudsql-instances="$INSTANCE" \
             --set-env-vars="ASPNETCORE_ENVIRONMENT=Production,Payments__UseFakeProvider=false" \
-            --set-secrets="ConnectionStrings__DefaultConnection=db-connection:latest,Jwt__Secret=jwt-secret:latest,PayOS__ClientId=payos-client-id:latest,PayOS__ApiKey=payos-api-key:latest,PayOS__ChecksumKey=payos-checksum-key:latest,Smtp__Host=smtp-host:latest,Smtp__FromAddress=smtp-from-address:latest,Smtp__UserName=smtp-username:latest,Smtp__Password=smtp-password:latest" \
+            --set-secrets="ConnectionStrings__DefaultConnection=db-connection:latest,Jwt__Secret=jwt-secret:latest,PayOS__ClientId=payos-client-id:latest,PayOS__ApiKey=payos-api-key:latest,PayOS__ChecksumKey=payos-checksum-key:latest,HuggingFace__ApiKey=huggingface-key:latest,Smtp__Host=smtp-host:latest,Smtp__FromAddress=smtp-from-address:latest,Smtp__UserName=smtp-username:latest,Smtp__Password=smtp-password:latest" \
             --quiet
 
       - name: Read the API URL
@@ -84,8 +84,16 @@ jobs:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
           IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$WEB_SERVICE:${{ github.sha }}"
+
+          # The Google client id has to be baked in too: Vite inlines it, and the sign-in button
+          # renders only when it is present. Read from Secret Manager rather than a GitHub secret
+          # so there is one source of truth shared with the API, which validates tokens against
+          # the same id.
+          GOOGLE_CLIENT_ID=$(gcloud secrets versions access latest --secret=google-client-id 2>/dev/null || echo "")
+
           docker build -f FE-WEB-V2/Dockerfile \
             --build-arg VITE_API_BASE_URL="$API_URL/api" \
+            --build-arg VITE_GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
             -t "$IMAGE" FE-WEB-V2
           docker push "$IMAGE"
           echo "WEB_IMAGE=$IMAGE" >> $GITHUB_ENV

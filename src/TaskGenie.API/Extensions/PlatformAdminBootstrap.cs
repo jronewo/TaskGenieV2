@@ -36,6 +36,18 @@ public static class PlatformAdminBootstrap
     private const string DevAdminEmail = "admin@gmail.com";
     private const string DevAdminPassword = "123456";
 
+    /// <summary>
+    /// Opt-in switch that lets Production create the built-in administrator too, with a password
+    /// supplied by configuration rather than the one in this file.
+    ///
+    /// Off by default and deliberately awkward to turn on: a live deployment with a known
+    /// administrator login is reachable by anyone who finds the URL. Set
+    /// <c>Bootstrap:SeedAdminInProduction=true</c> and <c>Bootstrap:SeedAdminPassword</c> only for
+    /// a short-lived demo, and change the password afterwards.
+    /// </summary>
+    private const string SeedInProductionKey = "Bootstrap:SeedAdminInProduction";
+    private const string SeedPasswordKey = "Bootstrap:SeedAdminPassword";
+
     public static async Task BootstrapPlatformAdminAsync(this WebApplication app)
     {
         await SeedDevelopmentAdminAsync(app);
@@ -79,7 +91,8 @@ public static class PlatformAdminBootstrap
     {
         var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("PlatformAdminBootstrap");
 
-        if (app.Environment.IsProduction())
+        var seedInProduction = app.Configuration.GetValue(SeedInProductionKey, false);
+        if (app.Environment.IsProduction() && !seedInProduction)
         {
             logger.LogInformation("Production environment: the built-in development administrator is not created.");
             return;
@@ -99,13 +112,28 @@ public static class PlatformAdminBootstrap
 
         if (await users.GetByEmailAsync(DevAdminEmail) is not null) return;
 
+        // Outside Production the password in this file is fine — it is public anyway. In
+        // Production it must come from configuration, so the live credential is never the one
+        // written in source control.
+        var password = app.Environment.IsProduction()
+            ? app.Configuration[SeedPasswordKey]
+            : DevAdminPassword;
+
+        if (string.IsNullOrWhiteSpace(password))
+        {
+            logger.LogWarning(
+                "{Key} is on but {PasswordKey} is empty; no administrator was created.",
+                SeedInProductionKey, SeedPasswordKey);
+            return;
+        }
+
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
-        var admin = UserEntity.Create("Platform Admin", DevAdminEmail, hasher.Hash(DevAdminPassword), "PLATFORM_ADMIN");
+        var admin = UserEntity.Create("Platform Admin", DevAdminEmail, hasher.Hash(password), "PLATFORM_ADMIN");
         await users.AddUserAsync(admin);
 
         logger.LogWarning(
-            "SECURITY: created the built-in development administrator {Email}. "
-            + "It exists only outside Production and its password is public — never reuse it anywhere real.",
+            "SECURITY: created the built-in administrator {Email}. Change its password before this "
+            + "deployment is used for anything real.",
             DevAdminEmail);
     }
 }

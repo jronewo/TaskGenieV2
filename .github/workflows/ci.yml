@@ -101,8 +101,13 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Install EF tools
-        run: dotnet tool install --global dotnet-ef
+      # `dotnet tool restore`, not `install --global`: the repo pins dotnet-ef in
+      # .config/dotnet-tools.json, and once a local manifest exists the `dotnet ef` command
+      # resolves to it and ignores any globally installed copy — so installing globally produced
+      # "Run \"dotnet tool restore\" to make the \"dotnet-ef\" command available." Restoring also
+      # gets the exact pinned version instead of whatever is latest that day.
+      - name: Restore .NET tools
+        run: dotnet tool restore
 
       # Catches the commonest migration mistake: changing an entity and forgetting to generate the
       # migration. The model snapshot then disagrees with the entities and the next deploy fails

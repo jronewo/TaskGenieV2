@@ -1,3 +1,5 @@
+using TaskGenie.Application.Common.Agent;
+
 namespace TaskGenie.Application.Interfaces;
 
 /// <summary>
@@ -43,3 +45,21 @@ public sealed record PlannerSkill(
     string Description,
     IReadOnlyDictionary<string, string> Arguments,
     bool Mutates);
+
+/// <summary>
+/// Turns a free-form question about tasks into a <see cref="TaskQuery"/>.
+///
+/// This is a separate capability from <see cref="ISkillPlanner"/> on purpose: choosing a skill can
+/// change data, so its output is one name from a closed list. A question changes nothing, so its
+/// output can be richer — filters and a sort over a fixed set of fields — without widening what the
+/// assistant is allowed to do. The model still never sees the database or decides which project's
+/// rows it runs over; the caller applies the query to rows it already had permission to read.
+/// </summary>
+public interface ITaskQueryPlanner
+{
+    /// <summary>
+    /// Returns the query the question implies, or null when it does not read as a question about
+    /// tasks at all.
+    /// </summary>
+    Task<TaskQuery?> PlanAsync(string question, CancellationToken ct = default);
+}

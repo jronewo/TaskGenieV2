@@ -153,6 +153,34 @@ public sealed class TaskDependencyGraphApiTests
     }
 
     [Fact]
+    public async Task TheBoard_SaysHowManyTasksEachOneIsHoldingUp()
+    {
+        await using var factory = new TaskAuthorizationApiFactory();
+        using var client = factory.CreateClient();
+        var owner = await factory.SeedUserAsync();
+        var (projectId, _) = await factory.SeedProjectWithTeamAsync(owner);
+        var foundation = await factory.SeedTaskAsync(projectId);
+        var api = await factory.SeedTaskAsync(projectId);
+        var ui = await factory.SeedTaskAsync(projectId);
+        var standalone = await factory.SeedTaskAsync(projectId);
+        await factory.AuthenticateAsync(client, owner);
+
+        await AddDependencyAsync(client, api, foundation);
+        await AddDependencyAsync(client, ui, foundation);
+
+        var tasks = await client.GetFromJsonAsync<List<TaskDetailDto>>($"/api/tasks?projectId={projectId}");
+
+        int BlockingOf(int id) => tasks!.Single(t => t.TaskId == id).BlockingCount;
+
+        // The board sorts on this number, so it has to count the tasks waiting on each one rather
+        // than the prerequisites each one has: foundation holds up two, api and ui hold up nobody.
+        Assert.Equal(2, BlockingOf(foundation));
+        Assert.Equal(0, BlockingOf(api));
+        Assert.Equal(0, BlockingOf(ui));
+        Assert.Equal(0, BlockingOf(standalone));
+    }
+
+    [Fact]
     public async Task AnOutsider_CannotReadTheGraph()
     {
         await using var factory = new TaskAuthorizationApiFactory();

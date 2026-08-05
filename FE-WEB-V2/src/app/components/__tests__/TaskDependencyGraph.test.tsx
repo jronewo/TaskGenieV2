@@ -150,7 +150,7 @@ describe("TaskDependencyGraph", () => {
     render(<TaskDependencyGraph open projectId={3007} projectName="ABC" onClose={vi.fn()} />);
 
     // Two tasks have no open prerequisites in this project.
-    expect(await screen.findByText(/6 công việc · 4 đợt · 2 làm được ngay/)).toBeInTheDocument();
+    expect(await screen.findByText(/6 task\(s\) · 4 wave\(s\) · 2 ready to start/)).toBeInTheDocument();
   });
 
   it("places a task below its latest prerequisite, not its first", async () => {
@@ -167,7 +167,7 @@ describe("TaskDependencyGraph", () => {
       g.querySelector("title")?.textContent?.includes("Write the rollback runbook")
     );
     expect(runbook).toBeTruthy();
-    expect(runbook!.textContent).toContain("đợt 4");
+    expect(runbook!.textContent).toContain("wave 4");
   });
 
   it("names every state in words, so the diagram is not readable by colour alone", async () => {
@@ -175,7 +175,7 @@ describe("TaskDependencyGraph", () => {
     render(<TaskDependencyGraph open projectId={3007} projectName="ABC" onClose={vi.fn()} />);
 
     await screen.findByText("Tạo database");
-    for (const label of ["Vòng lặp", "Đã xong", "Làm được ngay", "Đang chờ"]) {
+    for (const label of ["In a loop", "Done", "Ready to start", "Waiting"]) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
   });
@@ -189,7 +189,7 @@ describe("TaskDependencyGraph", () => {
     render(<TaskDependencyGraph open projectId={3007} projectName="ABC" onClose={vi.fn()} />);
 
     // Drawing a partial diagram would hide a project nobody can finish.
-    expect(await screen.findByRole("alert")).toHaveTextContent(/vòng tròn/i);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/circular dependency/i);
   });
 
   it("opens the task behind a node", async () => {
@@ -209,6 +209,6 @@ describe("TaskDependencyGraph", () => {
     api.dependencyGraph.mockResolvedValue({ nodes: [], edges: [], hasCycle: false, levelCount: 0 } as any);
     render(<TaskDependencyGraph open projectId={9} onClose={vi.fn()} />);
 
-    expect(await screen.findByText(/chưa có công việc nào/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no tasks yet/i)).toBeInTheDocument();
   });
 });

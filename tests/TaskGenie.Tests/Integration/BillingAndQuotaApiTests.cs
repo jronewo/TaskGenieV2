@@ -259,6 +259,42 @@ public sealed class BillingAndQuotaApiTests
             Assert.False(db.Subscriptions.Any(s => s.UserId == member))); // inherited, not granted personally
     }
 
+    /// <summary>
+    /// Being invited to somebody's project is not a way to acquire their plan.
+    ///
+    /// Premium is inherited from an *organization* subscription, never from a personal one: a
+    /// personal plan is bought for one person. Project membership only creates a TeamMember row,
+    /// so it must leave the invitee's entitlement — and the AI assistant with it — untouched.
+    /// </summary>
+    [Fact]
+    public async Task ProjectMember_DoesNotInheritTheInvitersPersonalPremium()
+    {
+        await using var factory = new BillingApiFactory();
+        using var client = factory.CreateClient();
+        var owner = await factory.SeedUserAsync();
+        var (inviteeId, inviteeEmail) = await factory.SeedUserWithEmailAsync();
+
+        // The inviter pays for a personal plan that includes the assistant.
+        await factory.GrantActiveSubscriptionAsync(userId: owner, planCode: "PRO_PERSONAL");
+
+        var projectId = await factory.SeedPersonalProjectAsync(owner);
+        await factory.AuthenticateAsync(client, owner);
+        var addResponse = await client.PostAsJsonAsync($"/api/projects/{projectId}/members",
+            new { email = inviteeEmail, role = "MEMBER" });
+        Assert.Equal(HttpStatusCode.OK, addResponse.StatusCode);
+
+        await factory.AuthenticateAsync(client, inviteeId);
+        var entitlement = await client.GetFromJsonAsync<JsonElement>("/api/billing/entitlement");
+
+        Assert.False(entitlement.GetProperty("isPremium").GetBoolean());
+        Assert.False(entitlement.GetProperty("aiChatbotEnabled").GetBoolean());
+
+        // And the endpoint itself refuses, not just the flag the UI reads.
+        var ask = await client.PostAsJsonAsync("/api/ai-analysis/assistant",
+            new { question = "What is at risk?" });
+        Assert.Equal(HttpStatusCode.Forbidden, ask.StatusCode);
+    }
+
     [Fact]
     public async Task RemovedMember_LosesInheritedPremium()
     {
@@ -435,6 +471,38 @@ public sealed class BillingApiFactory : WebApplicationFactory<Program>
         context.Users.Add(user);
         await context.SaveChangesAsync();
         return user.UserId;
+    }
+
+    /// <summary>The project-member endpoint invites by email, so the caller needs it back.</summary>
+    public async Task<(int UserId, string Email)> SeedUserWithEmailAsync()
+    {
+        using var scope = Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await context.Database.EnsureCreatedAsync();
+        var email = $"user-{Guid.NewGuid():N}@billing.test";
+        var user = User.Create($"User {Guid.NewGuid():N}", email, "hash");
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        return (user.UserId, email);
+    }
+
+    /// <summary>A personal project with its own dedicated team, as project creation produces.</summary>
+    public async Task<int> SeedPersonalProjectAsync(int ownerId)
+    {
+        using var scope = Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await context.Database.EnsureCreatedAsync();
+
+        var team = Team.Create($"Team {Guid.NewGuid():N}", null, ownerId, isProjectManaged: true);
+        context.Teams.Add(team);
+        await context.SaveChangesAsync();
+
+        context.TeamMembers.Add(TeamMember.Create(team.TeamId, ownerId, "LEADER"));
+        var project = Project.Create($"Project {Guid.NewGuid():N}", null, ownerId);
+        project.SetTeamId(team.TeamId);
+        context.Projects.Add(project);
+        await context.SaveChangesAsync();
+        return project.ProjectId;
     }
 
     public async Task<int> SeedOrganizationAsync(int ownerId)

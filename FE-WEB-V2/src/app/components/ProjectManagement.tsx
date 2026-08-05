@@ -12,11 +12,11 @@ import {
   X,
   Loader2,
   Archive,
-  Clock,
 } from "lucide-react";
 import { projectApi, ProjectDto, TaskSummaryDto } from "../services/projectApi";
 import { billingApi, EntitlementDto } from "../services/billingApi";
 import { ApiError } from "../services/apiClient";
+import { usePreferences } from "../settings/PreferencesContext";
 
 interface ProjectFormState {
   name: string;
@@ -42,6 +42,7 @@ function errorMessage(err: unknown): string {
 }
 
 export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, onProjectSelect }: ProjectManagementProps) => {
+  const { t } = usePreferences();
   const [projects, setProjects] = useState<ProjectDto[]>([]);
   const [tasks, setTasks] = useState<TaskSummaryDto[]>([]);
   const [tasksUnavailable, setTasksUnavailable] = useState(false);
@@ -64,29 +65,6 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
-  const [busyAutomation, setBusyAutomation] = useState(false);
-
-  /** Null switches the daily sweep off. Reloads so the panel shows what the API actually stored. */
-  const handleSetRiskAutomation = async (hourUtc: number | null) => {
-    if (!selectedProject || busyAutomation) return;
-    setBusyAutomation(true);
-    try {
-      await projectApi.setRiskAutomation(selectedProject.projectId, hourUtc);
-      await loadProjects(selectedProject.projectId);
-      setFeedback({
-        type: "success",
-        message:
-          hourUtc == null
-            ? "Đã tắt tự động chạy Risk estimate."
-            : `Sẽ tự chạy Risk estimate lúc ${String(hourUtc).padStart(2, "0")}:00 UTC mỗi ngày.`,
-      });
-    } catch (err) {
-      setFeedback({ type: "error", message: errorMessage(err) });
-    } finally {
-      setBusyAutomation(false);
-    }
-  };
-
   const loadEntitlement = useCallback(async () => {
     try {
       setEntitlement(await billingApi.entitlement());
@@ -283,7 +261,10 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
       await loadEntitlement();
       setFeedback({
         type: "success",
-        message: `Đã đóng "${summary.projectName ?? selectedProject.name}" — ${summary.doneTasks}/${summary.totalTasks} công việc hoàn thành. Xem lại ở mục "Dự án đã xong" trong trang cá nhân.`,
+        message: t("project.close.doneLong", {
+          name: summary.projectName ?? selectedProject.name,
+          count: `${summary.doneTasks}/${summary.totalTasks}`,
+        }),
       });
     } catch (err) {
       setFeedback({ type: "error", message: errorMessage(err) });
@@ -371,9 +352,16 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
               {entitlement && (
                 <p className={`mt-0.5 text-[11px] ${quotaExhausted ? "font-medium text-rose-600" : "text-slate-400"}`}>
                   {entitlement.projectLimit === null
-                    ? `Gói ${entitlement.planName}: không giới hạn dự án`
-                    : `Tối đa ${entitlement.projectLimit} dự án · đã dùng ${entitlement.projectUsage}` +
-                      (quotaExhausted ? " · đã hết" : ` · còn ${entitlement.projectLimit - entitlement.projectUsage}`)}
+                    ? t("project.quota.unlimited", { plan: entitlement.planName })
+                    : t("project.quota.used", {
+                        limit: entitlement.projectLimit,
+                        used: entitlement.projectUsage,
+                      }) +
+                      (quotaExhausted
+                        ? t("project.quota.exhausted")
+                        : t("project.quota.remaining", {
+                            left: entitlement.projectLimit - entitlement.projectUsage,
+                          }))}
                 </p>
               )}
             </div>
@@ -466,16 +454,14 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
               {showCloseConfirm && (
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
                   <p className="text-sm text-amber-900">
-                    Đóng dự án <strong>{selectedProject.name}</strong>?
+                    {t("project.close.title")} <strong>{selectedProject.name}</strong>?
                   </p>
                   <p className="mt-1 text-xs text-amber-800">
-                    Dự án sẽ chuyển sang trạng thái đã kết thúc và biến mất khỏi danh sách đang hoạt động.
-                    Điểm tổng kết được ghi cho các thành viên. Toàn bộ công việc vẫn được giữ và xem lại
-                    được ở mục “Dự án đã xong” trong trang cá nhân. Thao tác này không thể hoàn tác.
+                    {t("project.close.detail")}
                   </p>
                   <div className="mt-3 flex justify-end gap-2">
                     <button type="button" onClick={() => setShowCloseConfirm(false)} disabled={isClosing} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 disabled:opacity-60">
-                      Huỷ
+                      {t("common.cancel")}
                     </button>
                     <button
                       type="button"
@@ -483,7 +469,7 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
                       disabled={isClosing}
                       className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {isClosing && <Loader2 size={14} className="animate-spin" />} Đóng dự án
+                      {isClosing && <Loader2 size={14} className="animate-spin" />} {t("project.close.title")}
                     </button>
                   </div>
                 </motion.div>
@@ -495,9 +481,7 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
                     Delete <strong>{selectedProject.name}</strong>? This action cannot be undone.
                   </p>
                   <p className="mt-1 text-xs text-rose-700">
-                    Xoá vĩnh viễn toàn bộ dữ liệu của dự án: công việc, phân công, bình luận, tệp đính kèm,
-                    phụ thuộc, phân tích AI, lịch sử rủi ro, điểm và cuộc họp. Muốn giữ lại dữ liệu thì
-                    dùng <strong>End project</strong>.
+                    {t("project.delete.detail")}
                   </p>
                   <div className="mt-3 flex justify-end gap-2">
                     <button type="button" onClick={() => setShowDeleteConfirm(false)} disabled={isDeleting} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 disabled:opacity-60">
@@ -616,52 +600,6 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
                 </div>
               </div>
 
-              {/* Scheduled risk estimate. Its own panel rather than a row in the summary: this one
-                  writes, and it spends a rate-limited AI quota every day it is on. */}
-              {selectedProject.canManageTasks !== false && (
-                <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
-                  <div className="mb-1 flex items-center gap-2">
-                    <Clock size={15} className="text-[#1A237E]" aria-hidden />
-                    <h4 className="text-sm font-semibold text-slate-900">Tự động chạy Risk estimate</h4>
-                  </div>
-                  <p className="mb-3 text-xs text-slate-500">
-                    Hệ thống tự chấm lại rủi ro cho toàn bộ công việc chưa xong của dự án, mỗi ngày một
-                    lần vào khung giờ bạn chọn. Mỗi dự án đặt giờ riêng để không dồn hết vào một lúc
-                    làm quá tải nhà cung cấp AI.
-                  </p>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label htmlFor="risk-automation-hour" className="text-xs text-slate-600">
-                      Khung giờ (UTC)
-                    </label>
-                    <select
-                      id="risk-automation-hour"
-                      value={selectedProject.riskAutomationHourUtc ?? ""}
-                      onChange={(e) =>
-                        handleSetRiskAutomation(e.target.value === "" ? null : Number(e.target.value))
-                      }
-                      disabled={busyAutomation}
-                      className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 disabled:opacity-50"
-                    >
-                      <option value="">Tắt</option>
-                      {Array.from({ length: 24 }, (_, hour) => (
-                        <option key={hour} value={hour}>
-                          {String(hour).padStart(2, "0")}:00
-                        </option>
-                      ))}
-                    </select>
-                    {busyAutomation && <Loader2 size={13} className="animate-spin text-slate-400" aria-hidden />}
-
-                    <span className="ml-auto text-[11px] text-slate-500">
-                      {selectedProject.riskAutomationHourUtc == null
-                        ? "Đang tắt"
-                        : selectedProject.riskAutomationLastRunAt
-                          ? `Chạy gần nhất: ${new Date(selectedProject.riskAutomationLastRunAt).toLocaleString("vi-VN")}`
-                          : "Chưa chạy lần nào"}
-                    </span>
-                  </div>
-                </div>
-              )}
             </>
           ) : (
             <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">

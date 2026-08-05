@@ -9,6 +9,7 @@ import { TaskDependencyGraph } from "./TaskDependencyGraph";
 import { TaskDetailDto } from "../services/taskApi";
 import { ApiError } from "../services/apiClient";
 import { useConfirm } from "./ConfirmDialog";
+import { usePreferences } from "../settings/PreferencesContext";
 import { toast } from "sonner";
 
 function errorMessage(err: unknown): string {
@@ -55,7 +56,29 @@ export const ProjectBoardHeader = ({
   projectId, tasks, onProjectLoaded, onImportTasks, onOpenTask, onProjectClosed,
 }: Props) => {
   const confirm = useConfirm();
+  const { t, language } = usePreferences();
   const [closing, setClosing] = useState(false);
+  const [savingAutomation, setSavingAutomation] = useState(false);
+
+  /** Null switches the daily sweep off. Reloads so the control shows what the API actually stored. */
+  const saveRiskAutomation = async (hourUtc: number | null) => {
+    if (projectId == null || savingAutomation) return;
+    setSavingAutomation(true);
+    setError(null);
+    try {
+      await projectApi.setRiskAutomation(projectId, hourUtc);
+      await loadProjectRef.current?.();
+      toast.success(
+        hourUtc == null
+          ? t("project.risk.disabled")
+          : t("project.risk.scheduled", { hour: String(hourUtc).padStart(2, "0") })
+      );
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSavingAutomation(false);
+    }
+  };
   // Loaded here rather than in the shell: the shell renders before sign-in, and an authenticated
   // fetch from there would fire without a token and trip the 401 handler.
   const [project, setProject] = useState<ProjectDto | null>(null);
@@ -93,16 +116,13 @@ export const ProjectBoardHeader = ({
 
     const unfinished = tasks.filter((t) => (t.status ?? "Todo") !== "Done").length;
     const ok = await confirm({
-      title: `Đóng dự án "${project?.name ?? ""}"?`,
+      title: t("project.close.question", { name: project?.name ?? "" }),
       description:
         (unfinished > 0
-          ? `Dự án còn ${unfinished} công việc chưa hoàn thành. `
-          : "Tất cả công việc đã hoàn thành. ") +
-        "Dự án sẽ chuyển sang trạng thái đã kết thúc, biến mất khỏi danh sách dự án đang hoạt động " +
-        "và điểm tổng kết sẽ được ghi cho các thành viên. Bạn vẫn xem lại được ở mục " +
-        "“Dự án đã xong” trong trang cá nhân. Thao tác này không thể hoàn tác.",
-      confirmLabel: "Đóng dự án",
-      cancelLabel: "Huỷ",
+          ? t("project.close.remaining", { count: unfinished })
+          : t("project.close.allDone")) + t("project.close.detail"),
+      confirmLabel: t("project.close.confirm"),
+      cancelLabel: t("common.cancel"),
       tone: "danger",
     });
     if (!ok) return;
@@ -112,8 +132,10 @@ export const ProjectBoardHeader = ({
     try {
       const summary = await projectApi.close(projectId);
       toast.success(
-        `Đã đóng dự án "${summary.projectName ?? project?.name ?? ""}" — ` +
-          `${summary.doneTasks}/${summary.totalTasks} công việc hoàn thành.`
+        t("project.close.done", {
+          name: summary.projectName ?? project?.name ?? "",
+          count: `${summary.doneTasks}/${summary.totalTasks}`,
+        })
       );
       onProjectClosed?.(projectId);
     } catch (err) {
@@ -221,7 +243,7 @@ export const ProjectBoardHeader = ({
           <div className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1.5">
             <Clock size={12} className="text-gray-400" aria-hidden />
             <label htmlFor="working-hours" className="text-[10px] text-gray-500">
-              Giờ công/ngày
+              {t("project.hoursPerDay")}
             </label>
             <input
               id="working-hours"
@@ -238,7 +260,7 @@ export const ProjectBoardHeader = ({
               disabled={savingHours || !isValidHours(hours) || Number(hours) === currentHours}
               className="rounded px-1.5 py-0.5 text-[10px] font-medium text-[#1A237E] hover:bg-gray-50 disabled:opacity-40"
             >
-              {savingHours ? "…" : "Lưu"}
+              {savingHours ? "…" : t("project.save")}
             </button>
           </div>
         )}
@@ -248,7 +270,7 @@ export const ProjectBoardHeader = ({
           onClick={() => setGraphOpen(true)}
           className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
         >
-          <Network size={13} aria-hidden /> Sơ đồ phụ thuộc
+          <Network size={13} aria-hidden /> {t("project.graph")}
         </button>
         {onImportTasks && project.canManageTasks && (
           <button
@@ -269,6 +291,41 @@ export const ProjectBoardHeader = ({
           {scanning ? <Loader2 size={13} className="animate-spin" aria-hidden /> : <ShieldAlert size={13} aria-hidden />}
           {scanning ? `Scanning ${progress.done}/${progress.total}…` : "Risk estimate"}
         </button>
+
+        {/* Sits next to the manual scan because it is the same action, unattended: the sweep
+            re-scores this project's open tasks daily and notifies whoever is concerned when one
+            comes back HIGH or CRITICAL. Per project, so leaders can stagger them — the AI provider
+            is rate-limited and a single hour for everything would trip the quota. */}
+        {project.canManageTasks && (
+          <div className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1.5">
+            <Clock size={12} className="text-gray-400" aria-hidden />
+            <label htmlFor="risk-automation-hour" className="text-[10px] text-gray-500">
+              {t("project.risk.auto")}
+            </label>
+            <select
+              id="risk-automation-hour"
+              value={project.riskAutomationHourUtc ?? ""}
+              onChange={(e) => void saveRiskAutomation(e.target.value === "" ? null : Number(e.target.value))}
+              disabled={savingAutomation}
+              title={
+                project.riskAutomationLastRunAt
+                  ? t("project.risk.lastRun", {
+                      when: new Date(project.riskAutomationLastRunAt).toLocaleString(language === "vi" ? "vi-VN" : "en-GB"),
+                    })
+                  : t("project.risk.never")
+              }
+              className="rounded border border-gray-200 px-1 py-0.5 text-xs disabled:opacity-50"
+            >
+              <option value="">Tắt</option>
+              {Array.from({ length: 24 }, (_, hour) => (
+                <option key={hour} value={hour}>
+                  {String(hour).padStart(2, "0")}:00
+                </option>
+              ))}
+            </select>
+            {savingAutomation && <Loader2 size={11} className="animate-spin text-gray-400" aria-hidden />}
+          </div>
+        )}
         {/* Ending a project is a leader's call, so it sits behind the same permission as the
             other management controls. Last in the row because it is the terminal action. */}
         {project.canManageTasks && (
@@ -279,7 +336,7 @@ export const ProjectBoardHeader = ({
             className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
           >
             {closing ? <Loader2 size={13} className="animate-spin" aria-hidden /> : <Archive size={13} aria-hidden />}
-            {closing ? "Đang đóng…" : "Đóng dự án"}
+            {closing ? t("project.closing") : t("project.close.title")}
           </button>
         )}
         </div>
@@ -351,10 +408,9 @@ export const ProjectBoardHeader = ({
         projectId={projectId}
         projectName={project?.name}
         onClose={() => setGraphOpen(false)}
-        onOpenTask={(taskId) => {
-          setGraphOpen(false);
-          onOpenTask?.(taskId);
-        }}
+        // The diagram stays open behind the task. Closing it was losing the reader's place in the
+        // graph every time they checked a node, which is the whole reason for opening the diagram.
+        onOpenTask={(taskId) => onOpenTask?.(taskId)}
       />
     </>
   );

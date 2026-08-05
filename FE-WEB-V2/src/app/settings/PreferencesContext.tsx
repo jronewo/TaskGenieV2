@@ -59,6 +59,57 @@ export const STRINGS: Record<Language, Record<string, string>> = {
     "board.inProgress": "IN PROGRESS",
     "board.inReview": "IN REVIEW",
     "board.done": "DONE",
+
+    // Projects page — quota line, close/delete confirmations.
+    "project.quota.unlimited": "{plan} plan: unlimited projects",
+    "project.quota.used": "Up to {limit} projects · {used} used",
+    "project.quota.exhausted": " · none left",
+    "project.quota.remaining": " · {left} left",
+    "project.close.title": "Close project",
+    "project.close.question": "Close project {name}?",
+    "project.close.detail": "The project moves to a finished state and leaves the active list. Closure scores are recorded for members. Every task is kept and stays readable under \u201CFinished projects\u201D in your profile. This cannot be undone.",
+    "project.close.confirm": "Close project",
+    "project.delete.detail": "Permanently deletes everything in the project: tasks, assignments, comments, attachments, dependencies, AI analyses, risk history, scores and meetings. Use End project to keep the data.",
+    "project.risk.auto": "Auto",
+    "project.risk.off": "Off",
+    "project.risk.lastRun": "Last run: {when}",
+    "project.risk.never": "Never run",
+    "project.graph": "Dependency diagram",
+    "project.hoursPerDay": "Hours per day",
+    "project.save": "Save",
+    "project.closing": "Closing…",
+    "project.risk.disabled": "Automatic risk estimate turned off.",
+    "project.risk.scheduled": "Risk estimate will run at {hour}:00 UTC every day.",
+    "project.close.remaining": "The project still has {count} unfinished task(s). ",
+    "project.close.allDone": "All tasks are finished. ",
+    "project.close.done": "Closed project {name} — {count} task(s) finished.",
+    "project.close.doneLong": "Closed \u201C{name}\u201D — {count} task(s) finished. Review it under \u201CFinished projects\u201D in your profile.",
+
+    // Dependency diagram.
+    "graph.dialogLabel": "Task dependency diagram",
+    "graph.title": "Dependency diagram",
+    "graph.subtitle": "Left to right is the order things must finish in. The first column can start now.",
+    "graph.reload": "Reload diagram",
+    "graph.loadFailed": "Could not load the dependency diagram.",
+    "graph.building": "Building the diagram…",
+    "graph.empty": "This project has no tasks yet.",
+    "graph.cycleTitle": "There is a circular dependency.",
+    "graph.cycleDetail": "The tasks outlined in red are waiting on each other, so none of them can ever finish — remove one link to break it.",
+    "graph.summary": "{tasks} task(s) · {ready} ready to start",
+    "graph.legend.cycle": "In a loop",
+    "graph.legend.done": "Done",
+    "graph.legend.ready": "Ready to start",
+    "graph.legend.blocked": "Waiting",
+    "graph.waitingOnNobody": "waiting on nobody",
+    "graph.deadline": "Deadline {date}",
+    "graph.footer": "Arrows point from the task that must finish first to the one that waits. A dashed line means the earlier task is not done yet. Click a box to open that task.",
+    "graph.exportLabel": "Dependency diagram: {count} task(s) in {project}",
+    "graph.waitingOn": "Waiting on {count}",
+    "graph.blocks": "Blocks {count}",
+    "graph.waitingShort": "waits {count}",
+    "graph.blocksShort": " · blocks {count}",
+    "graph.wave": "wave {n}",
+    "graph.summaryFull": "{tasks} task(s) · {waves} wave(s) · {ready} ready to start",
     "board.noTasks": "No tasks here.",
     "board.noMatch": "No tasks match the filters.",
     "board.importTasks": "Import tasks",
@@ -162,6 +213,56 @@ export const STRINGS: Record<Language, Record<string, string>> = {
     "board.inProgress": "ĐANG LÀM",
     "board.inReview": "CHỜ DUYỆT",
     "board.done": "HOÀN THÀNH",
+
+    // Trang Dự án — dòng hạn mức, xác nhận đóng/xoá.
+    "project.quota.unlimited": "Gói {plan}: không giới hạn dự án",
+    "project.quota.used": "Tối đa {limit} dự án · đã dùng {used}",
+    "project.quota.exhausted": " · đã hết",
+    "project.quota.remaining": " · còn {left}",
+    "project.close.title": "Đóng dự án",
+    "project.close.question": "Đóng dự án {name}?",
+    "project.close.detail": "Dự án sẽ chuyển sang trạng thái đã kết thúc và biến mất khỏi danh sách đang hoạt động. Điểm tổng kết được ghi cho các thành viên. Toàn bộ công việc vẫn được giữ và xem lại được ở mục \u201CDự án đã xong\u201D trong trang cá nhân. Thao tác này không thể hoàn tác.",
+    "project.close.confirm": "Đóng dự án",
+    "project.delete.detail": "Xoá vĩnh viễn toàn bộ dữ liệu của dự án: công việc, phân công, bình luận, tệp đính kèm, phụ thuộc, phân tích AI, lịch sử rủi ro, điểm và cuộc họp. Muốn giữ lại dữ liệu thì dùng End project.",
+    "project.risk.auto": "Tự động",
+    "project.risk.off": "Tắt",
+    "project.graph": "Sơ đồ phụ thuộc",
+    "project.hoursPerDay": "Giờ công/ngày",
+    "project.save": "Lưu",
+    "project.closing": "Đang đóng…",
+    "project.risk.disabled": "Đã tắt tự động chạy Risk estimate.",
+    "project.risk.scheduled": "Sẽ tự chạy Risk estimate lúc {hour}:00 UTC mỗi ngày.",
+    "project.close.remaining": "Dự án còn {count} công việc chưa hoàn thành. ",
+    "project.close.allDone": "Tất cả công việc đã hoàn thành. ",
+    "project.close.done": "Đã đóng dự án {name} — {count} công việc hoàn thành.",
+    "project.close.doneLong": "Đã đóng \u201C{name}\u201D — {count} công việc hoàn thành. Xem lại ở mục \u201CDự án đã xong\u201D trong trang cá nhân.",
+
+    "graph.dialogLabel": "Sơ đồ phụ thuộc công việc",
+    "graph.title": "Sơ đồ phụ thuộc",
+    "graph.subtitle": "Trái sang phải là thứ tự phải hoàn thành. Cột đầu tiên làm được ngay.",
+    "graph.reload": "Tải lại sơ đồ",
+    "graph.loadFailed": "Không tải được sơ đồ phụ thuộc.",
+    "graph.building": "Đang dựng sơ đồ…",
+    "graph.empty": "Dự án này chưa có công việc nào.",
+    "graph.cycleTitle": "Có phụ thuộc vòng tròn.",
+    "graph.cycleDetail": "Những công việc viền đỏ đang chờ lẫn nhau nên không bao giờ hoàn thành được — gỡ bớt một liên kết để giải.",
+    "graph.summary": "{tasks} công việc · {ready} làm được ngay",
+    "graph.legend.cycle": "Vòng lặp",
+    "graph.legend.done": "Đã xong",
+    "graph.legend.ready": "Làm được ngay",
+    "graph.legend.blocked": "Đang chờ",
+    "graph.waitingOnNobody": "không chờ ai",
+    "graph.deadline": "Hạn {date}",
+    "graph.footer": "Mũi tên chỉ từ việc phải xong trước sang việc phải chờ. Nét đứt nghĩa là việc đứng trước vẫn chưa xong. Bấm vào một ô để mở công việc đó.",
+    "graph.exportLabel": "Sơ đồ phụ thuộc: {count} công việc trong {project}",
+    "graph.waitingOn": "Đang chờ {count} việc",
+    "graph.blocks": "Chặn {count} việc",
+    "graph.waitingShort": "chờ {count}",
+    "graph.blocksShort": " · chặn {count}",
+    "graph.wave": "đợt {n}",
+    "graph.summaryFull": "{tasks} công việc · {waves} đợt · {ready} làm được ngay",
+    "project.risk.lastRun": "Chạy gần nhất: {when}",
+    "project.risk.never": "Chưa chạy lần nào",
     "board.noTasks": "Chưa có công việc.",
     "board.noMatch": "Không có công việc khớp bộ lọc.",
     "board.importTasks": "Nhập từ Excel",
@@ -227,7 +328,8 @@ interface Preferences {
   resolvedTheme: "light" | "dark";
   language: Language;
   setLanguage: (language: Language) => void;
-  t: (key: string) => string;
+  /** `vars` fills `{name}` placeholders in the translated string. */
+  t: (key: string, vars?: Record<string, string | number>) => string;
 }
 
 const PreferencesContext = createContext<Preferences | null>(null);
@@ -303,8 +405,20 @@ export const PreferencesProvider = ({ children }: { children: React.ReactNode })
     setLanguageState(next);
   }, []);
 
+  /**
+   * `vars` fills `{name}` placeholders. Sentences that embed a number or a title cannot be
+   * assembled by concatenating fragments — word order differs between the two languages, and a
+   * translated fragment glued to a value produces something neither language would say.
+   */
   const t = useCallback(
-    (key: string) => STRINGS[language][key] ?? STRINGS.en[key] ?? key,
+    (key: string, vars?: Record<string, string | number>) => {
+      const template = STRINGS[language][key] ?? STRINGS.en[key] ?? key;
+      if (!vars) return template;
+      return Object.entries(vars).reduce(
+        (text, [name, value]) => text.replaceAll(`{${name}}`, String(value)),
+        template
+      );
+    },
     [language]
   );
 

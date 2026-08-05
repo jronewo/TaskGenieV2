@@ -13,7 +13,7 @@ import { ThemeToggle, Wordmark } from "./LandingPage";
 
 const SUPPORT_EMAIL = "support@taskgenie.local";
 
-type FaqItem = { q: string; a: string };
+type FaqItem = { key: string; q: string; a: string };
 type FaqCategory = {
   id: string;
   icon: typeof Rocket;
@@ -22,13 +22,18 @@ type FaqCategory = {
   items: FaqItem[];
 };
 
+/** Every FAQ question gets a stable id up front, independent of its position in whatever filtered
+ * subset gets rendered — filtering by search text must never shift which item a given key opens. */
+const withKeys = (catId: string, items: Omit<FaqItem, "key">[]): FaqItem[] =>
+  items.map((item, i) => ({ ...item, key: `${catId}-${i}` }));
+
 const CATEGORIES: FaqCategory[] = [
   {
     id: "getting-started",
     icon: Rocket,
     title: "Getting started",
     description: "Accounts, sign-in and your first project.",
-    items: [
+    items: withKeys("getting-started", [
       {
         q: "How do I create an account?",
         a: "From the landing page, choose Get started and sign in with Google or an email address. Your first project takes about two minutes to set up.",
@@ -41,14 +46,14 @@ const CATEGORIES: FaqCategory[] = [
         q: "I can't sign in — what do I do?",
         a: "Use Forgot password on the sign-in screen to reset it by email. If your account was created with Google sign-in, use the Google button instead of a password.",
       },
-    ],
+    ]),
   },
   {
     id: "projects-tasks",
     icon: LayoutGrid,
     title: "Projects & tasks",
     description: "The board, dependencies, import and export.",
-    items: [
+    items: withKeys("projects-tasks", [
       {
         q: "What are the board columns and who can move a card?",
         a: "Todo, In Progress, In Review and Done. Any project member can move a card between columns; only the project leader can edit or delete a task.",
@@ -65,14 +70,14 @@ const CATEGORIES: FaqCategory[] = [
         q: "Can I bring in a plan I already have in a spreadsheet?",
         a: "Import an XLSX with type, priority, deadline, required skills and dependencies already filled in. Any project can be exported back out to XLSX or PDF.",
       },
-    ],
+    ]),
   },
   {
     id: "ai-features",
     icon: Sparkles,
     title: "AI features",
     description: "Assignment recommendations and the assistant.",
-    items: [
+    items: withKeys("ai-features", [
       {
         q: "How does an assignment recommendation get its score?",
         a: "It blends skill match (40%), semantic similarity to past work (25%), current workload (20%) and past performance (15%) — the breakdown is shown before you accept a recommendation.",
@@ -81,14 +86,14 @@ const CATEGORIES: FaqCategory[] = [
         q: "Why don't I see the AI assistant chat?",
         a: "The assistant ships with the paid plans. On a free account the launcher doesn't appear; upgrading from Subscription unlocks it.",
       },
-    ],
+    ]),
   },
   {
     id: "billing-plans",
     icon: CreditCard,
     title: "Billing & plans",
     description: "Upgrading, limits and payment.",
-    items: [
+    items: withKeys("billing-plans", [
       {
         q: "What happens when I try to create a third free project?",
         a: "Creation is rejected — you'll see a message asking you to upgrade. Pro Personal removes the project cap entirely.",
@@ -101,14 +106,14 @@ const CATEGORIES: FaqCategory[] = [
         q: "Is Organization Premium the same as being an admin?",
         a: "No. It comes from your organization having an active paid subscription and you having active membership in it — it isn't tied to your account role.",
       },
-    ],
+    ]),
   },
   {
     id: "organizations-teams",
     icon: Users2,
     title: "Organizations & teams",
     description: "Invitations, roles and workspaces.",
-    items: [
+    items: withKeys("organizations-teams", [
       {
         q: "How do I invite someone to my project team?",
         a: "Open Team Management and send an invitation by email. Accepting it checks for an existing membership first, so nobody ends up added twice.",
@@ -117,14 +122,14 @@ const CATEGORIES: FaqCategory[] = [
         q: "What's the difference between a project team and an organization?",
         a: "Every project automatically gets its own team with you as leader. An organization is a separate paid workspace that groups multiple projects and members, with shared skills and reporting.",
       },
-    ],
+    ]),
   },
   {
     id: "account-security",
     icon: ShieldCheck,
     title: "Account & security",
     description: "Sessions, sign-out and data.",
-    items: [
+    items: withKeys("account-security", [
       {
         q: "How do sessions work?",
         a: "Signing in issues a rotating refresh token. Signing out from Settings invalidates that session immediately.",
@@ -133,7 +138,7 @@ const CATEGORIES: FaqCategory[] = [
         q: "Can I use Google to sign in instead of a password?",
         a: "Yes, Google sign-in is supported alongside email and password on both the sign-in and sign-up screens.",
       },
-    ],
+    ]),
   },
 ];
 
@@ -172,6 +177,49 @@ export const SupportCenter = ({
 
   const jumpTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
+  // Click-to-pick suggestions under the search box — every FAQ question, flattened once so a click
+  // can jump straight to its category and open it without re-deriving the lookup each render.
+  const allQuestions = useMemo(
+    () => CATEGORIES.flatMap((cat) => cat.items.map((item) => ({ catId: cat.id, key: item.key, question: item.q }))),
+    []
+  );
+
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(-1);
+
+  const suggestions = useMemo(() => {
+    if (!q) return allQuestions.slice(0, 8);
+    const needle = norm(q);
+    return allQuestions.filter((s) => norm(s.question).includes(needle)).slice(0, 8);
+  }, [q, allQuestions]);
+
+  const pickSuggestion = (s: { catId: string; key: string; question: string }) => {
+    setQuery(s.question);
+    setSuggestOpen(false);
+    setActiveSuggestion(-1);
+    setOpenKeys((prev) => new Set(prev).add(s.key));
+    requestAnimationFrame(() => jumpTo(s.catId));
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      setSuggestOpen(false);
+      setActiveSuggestion(-1);
+      return;
+    }
+    if (!suggestOpen || suggestions.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveSuggestion((i) => (i + 1) % suggestions.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveSuggestion((i) => (i <= 0 ? suggestions.length - 1 : i - 1));
+    } else if (e.key === "Enter" && activeSuggestion >= 0) {
+      e.preventDefault();
+      pickSuggestion(suggestions[activeSuggestion]);
+    }
+  };
+
   return (
     <div className="min-h-dvh bg-surface font-body text-default">
       {/* ── Nav ─────────────────────────────────────────────────────────── */}
@@ -203,7 +251,7 @@ export const SupportCenter = ({
       </header>
 
       {/* ── Hero + search ───────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden border-b border-soft">
+      <section className="relative border-b border-soft">
         <div className="absolute inset-0 brand-wash pointer-events-none" aria-hidden="true" />
         <div className="relative max-w-3xl mx-auto px-5 pt-16 pb-14 text-center">
           <h1 className="font-display text-[32px] sm:text-[40px] leading-[1.1] font-bold text-strong text-balance mb-4">
@@ -222,11 +270,55 @@ export const SupportCenter = ({
             />
             <input
               type="search"
+              role="combobox"
+              aria-expanded={suggestOpen}
+              aria-controls="support-suggestions"
+              aria-autocomplete="list"
+              aria-activedescendant={activeSuggestion >= 0 ? `support-suggestion-${activeSuggestion}` : undefined}
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setSuggestOpen(true);
+                setActiveSuggestion(-1);
+              }}
+              onFocus={() => setSuggestOpen(true)}
+              onBlur={() => setSuggestOpen(false)}
+              onKeyDown={handleSearchKeyDown}
               placeholder="Search for an answer…"
               className="w-full pl-11 pr-4 py-3 text-[14px] rounded-xl border border-line bg-surface-raised text-default placeholder:text-subtle shadow-brand-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-600)]"
             />
+
+            {suggestOpen && (
+              <ul
+                id="support-suggestions"
+                role="listbox"
+                aria-label="Suggested questions"
+                className="absolute z-10 top-full inset-x-0 mt-1.5 max-h-80 overflow-y-auto rounded-xl border border-line bg-surface-raised shadow-brand-lg text-left py-1.5"
+              >
+                {suggestions.length === 0 ? (
+                  <li className="px-4 py-2.5 text-[12.5px] text-subtle">No matching questions.</li>
+                ) : (
+                  suggestions.map((s, i) => (
+                    <li key={s.key} role="presentation">
+                      <button
+                        id={`support-suggestion-${i}`}
+                        type="button"
+                        role="option"
+                        aria-selected={i === activeSuggestion}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => pickSuggestion(s)}
+                        onMouseEnter={() => setActiveSuggestion(i)}
+                        className={`w-full text-left px-4 py-2.5 text-[13px] text-default cursor-pointer transition-colors ${
+                          i === activeSuggestion ? "bg-surface-sunken" : "hover:bg-surface-sunken"
+                        }`}
+                      >
+                        {s.question}
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
+            )}
           </label>
         </div>
       </section>
@@ -287,7 +379,7 @@ export const SupportCenter = ({
 
               <div className="rounded-xl border border-line bg-surface overflow-hidden">
                 {cat.items.map((item, i) => {
-                  const key = `${cat.id}-${i}`;
+                  const key = item.key;
                   const open = openKeys.has(key);
                   return (
                     <div key={key} className={i > 0 ? "border-t border-soft" : undefined}>

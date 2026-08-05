@@ -163,7 +163,7 @@ public sealed class AnalyzeTaskRiskCommandHandler(
 
         await riskRepo.AddAssessmentAsync(history, executionLog, ct);
 
-        await WarnAboutHighRiskAsync(task, result.RiskLevel, result.TotalScore, assignees, ct);
+        await WarnAboutHighRiskAsync(task, result.RiskLevel, result.TotalScore, assignees, cmd.SystemInitiated, ct);
 
         return RiskAssessmentDto.FromEntity(history);
     }
@@ -178,6 +178,7 @@ public sealed class AnalyzeTaskRiskCommandHandler(
         string riskLevel,
         double totalScore,
         IReadOnlyList<TaskAssignee> assignees,
+        bool systemInitiated,
         CancellationToken ct)
     {
         if (!string.Equals(riskLevel, "HIGH", StringComparison.OrdinalIgnoreCase)
@@ -206,7 +207,13 @@ public sealed class AnalyzeTaskRiskCommandHandler(
         var title = string.IsNullOrWhiteSpace(task.Title) ? $"Task #{task.TaskId}" : task.Title;
         var level = riskLevel.ToUpperInvariant();
 
-        foreach (var userId in recipients.Distinct().Where(id => id != currentUser.UserId))
+        // The person who pressed "Risk estimate" is already looking at the answer, so telling them
+        // is noise. A scheduled sweep has no such person — ICurrentUser.UserId is 0 outside a
+        // request — and everyone concerned should hear about it, which is the whole point of
+        // running it unattended. Stated explicitly rather than relying on no account having id 0.
+        var actorToSkip = systemInitiated ? (int?)null : currentUser.UserId;
+
+        foreach (var userId in recipients.Distinct().Where(id => id != actorToSkip))
         {
             try
             {

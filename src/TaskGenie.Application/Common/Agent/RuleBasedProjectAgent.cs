@@ -24,7 +24,8 @@ public sealed class RuleBasedProjectAgent(
     IResourceAuthorizationService authz,
     ITaskRepository taskRepo,
     ILogger<RuleBasedProjectAgent> logger,
-    ISkillPlanner? planner = null
+    ISkillPlanner? planner = null,
+    ITaskQueryPlanner? queryPlanner = null
 ) : IProjectAgent
 {
     /// <summary>
@@ -75,6 +76,16 @@ public sealed class RuleBasedProjectAgent(
             matched = await PlanAsync(userMessage, ct);
         }
 
+        // Last resort: not a command, not one of the six canned questions, but still a question
+        // about tasks. The model is asked for filters over a fixed field list, never for rows
+        // themselves — TaskQueryAsync reads exactly the same permission-scoped tasks the canned
+        // diagnostics read, and the query only narrows which of those the person sees.
+        if (matched is null && queryPlanner is not null)
+        {
+            var freeform = await AnswerFreeformQuestionAsync(userMessage, projectId, ct);
+            if (freeform is not null) return freeform;
+        }
+
         if (matched is null) return new AgentReply(Capabilities(), []);
 
         var (skill, args) = matched.Value;
@@ -109,29 +120,67 @@ public sealed class RuleBasedProjectAgent(
         int? projectId,
         CancellationToken ct)
     {
-        List<Domain.Entities.Task> tasks;
-        string scope;
-
-        if (projectId is int id)
-        {
-            // Same authorization as opening the board: a project they cannot read stays unread.
-            var project = await authz.EnsureCanAccessProjectAsync(id, ct);
-            tasks = await taskRepo.GetByProjectIdWithDetailsAsync(id, ct);
-            scope = project.Name;
-        }
-        else
-        {
-            // No project chosen: their own assigned work is the honest workspace-wide scope, since
-            // reading every project would need a permission check per project.
-            tasks = await taskRepo.GetByAssigneeAsync(currentUser.UserId, ct);
-            scope = "công việc của bạn";
-        }
-
+        var (tasks, scope) = await ScopedTasksAsync(projectId, ct);
         var answer = WorkspaceDiagnostics.Answer(intent, tasks, DateOnly.FromDateTime(DateTime.UtcNow), scope);
 
         return new AgentReply(
             string.IsNullOrWhiteSpace(answer) ? Capabilities() : answer,
             [new AgentStep(skill.Id, string.Join(", ", skill.ApiCalls), $"{tasks.Count} task(s) read")]);
+    }
+
+    /// <summary>
+    /// Answers a question no pattern and no canned diagnostic recognised, by asking the model for
+    /// filters instead of an answer.
+    ///
+    /// The model never receives a row of data and never decides whose tasks are in play — it only
+    /// names fields and comparisons from a closed enum, which <see cref="TaskQuery.Apply"/> runs
+    /// over rows already scoped by <see cref="ScopedTasksAsync"/>. A wrong or nonsense query still
+    /// only narrows or empties that same permitted set; it cannot widen it.
+    ///
+    /// Returns null when the sentence does not read as a task question at all, so the caller falls
+    /// through to the same "I did not understand" as before this existed.
+    /// </summary>
+    private async System.Threading.Tasks.Task<AgentReply?> AnswerFreeformQuestionAsync(
+        string userMessage, int? projectId, CancellationToken ct)
+    {
+        TaskQuery? plan;
+        try
+        {
+            plan = await queryPlanner!.PlanAsync(userMessage, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Task query planner unavailable; falling back to canned answers.");
+            return null;
+        }
+
+        if (plan is null) return null;
+
+        var (tasks, scope) = await ScopedTasksAsync(projectId, ct);
+        var matches = plan.Apply(tasks, DateOnly.FromDateTime(DateTime.UtcNow));
+
+        var answer = matches.Count == 0
+            ? $"Không có công việc nào khớp trong {scope}."
+            : $"Trong {scope} ({matches.Count} kết quả):\n"
+              + string.Join("\n", matches.Select(t => $"• #{t.TaskId} {t.Title} ({t.Status})"));
+
+        return new AgentReply(answer, [new AgentStep("freeform-query", "TaskQuery.Apply", $"{tasks.Count} task(s) read, {matches.Count} matched")]);
+    }
+
+    /// <summary>The same permission-scoped read every diagnostic and free-form question runs over.</summary>
+    private async System.Threading.Tasks.Task<(List<Domain.Entities.Task> Tasks, string Scope)> ScopedTasksAsync(
+        int? projectId, CancellationToken ct)
+    {
+        if (projectId is int id)
+        {
+            // Same authorization as opening the board: a project they cannot read stays unread.
+            var project = await authz.EnsureCanAccessProjectAsync(id, ct);
+            return (await taskRepo.GetByProjectIdWithDetailsAsync(id, ct), project.Name);
+        }
+
+        // No project chosen: their own assigned work is the honest workspace-wide scope, since
+        // reading every project would need a permission check per project.
+        return (await taskRepo.GetByAssigneeAsync(currentUser.UserId, ct), "công việc của bạn");
     }
 
     /// <summary>Generated from the registry, so it can never drift from what actually works.</summary>

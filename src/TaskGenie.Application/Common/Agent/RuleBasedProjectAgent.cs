@@ -10,9 +10,10 @@ namespace TaskGenie.Application.Common.Agent;
 /// <see cref="AssistantSkillRegistry"/>, and the matching skill calls the application's own use
 /// cases — so the assistant's capabilities are a list you can read rather than a model's whim.
 ///
-/// This replaced an LLM-backed agent deliberately. The model could interpret free-form language,
-/// but it depended on a provider quota that never became available, so in practice it answered
-/// nothing. Narrower and working beats broader and broken.
+/// An earlier LLM-backed version was removed because it depended on a provider quota that never
+/// arrived, leaving the assistant answering nothing at all. The model is back, but only where that
+/// failure is survivable: it reads intent when no pattern matches, and it chooses among these same
+/// declared skills. It cannot invent a capability, so the blast radius is still this file.
 ///
 /// Everything still goes through MediatR under the signed-in user, so a project they cannot open is
 /// a project the assistant cannot touch.
@@ -22,15 +23,58 @@ public sealed class RuleBasedProjectAgent(
     ICurrentUser currentUser,
     IResourceAuthorizationService authz,
     ITaskRepository taskRepo,
-    ILogger<RuleBasedProjectAgent> logger
+    ILogger<RuleBasedProjectAgent> logger,
+    ISkillPlanner? planner = null
 ) : IProjectAgent
 {
+    /// <summary>
+    /// Asks the planner which skill the sentence wants.
+    ///
+    /// A planner that is down must not take the assistant with it: the patterns still work, so a
+    /// failure here falls back to "I did not understand" rather than an error page. That is the
+    /// same failure the user would have seen before the planner existed.
+    /// </summary>
+    private async System.Threading.Tasks.Task<(AssistantSkill Skill, SkillArgs Args)?> PlanAsync(
+        string userMessage,
+        CancellationToken ct)
+    {
+        try
+        {
+            var plan = await planner!.PlanAsync(userMessage, AssistantSkillRegistry.ForPlanner(), ct);
+            if (plan is null) return null;
+
+            var skill = AssistantSkillRegistry.ById(plan.SkillId);
+            if (skill is null)
+            {
+                logger.LogWarning("Planner chose unknown skill {SkillId}.", plan.SkillId);
+                return null;
+            }
+
+            logger.LogInformation("Planner routed a message to {SkillId}.", skill.Id);
+            return (skill, SkillArgs.FromModel(plan.Arguments));
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Planner unavailable; falling back to patterns only.");
+            return null;
+        }
+    }
+
     public async System.Threading.Tasks.Task<AgentReply> RunAsync(
         string userMessage,
         int? projectId,
         CancellationToken ct = default)
     {
         var matched = AssistantSkillRegistry.Match(userMessage);
+
+        // Patterns first: they cost nothing and they are exact. The planner is for the sentences
+        // they were never written to catch — "thêm việc sửa lỗi login cho tôi đi" asks for the same
+        // thing as "tạo task tên là Sửa lỗi login", but only one of them is shaped like the regex.
+        if (matched is null && planner is not null)
+        {
+            matched = await PlanAsync(userMessage, ct);
+        }
+
         if (matched is null) return new AgentReply(Capabilities(), []);
 
         var (skill, args) = matched.Value;

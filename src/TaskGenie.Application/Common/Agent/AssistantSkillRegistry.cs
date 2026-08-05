@@ -3,6 +3,7 @@ using TaskGenie.Application.Features.AI.Commands;
 using TaskGenie.Application.Features.Projects.Commands;
 using TaskGenie.Application.Features.Tasks.Commands;
 using TaskGenie.Application.Features.Tasks.Queries;
+using TaskGenie.Application.Interfaces;
 
 namespace TaskGenie.Application.Common.Agent;
 
@@ -327,6 +328,57 @@ public static class AssistantSkillRegistry
         }
         return null;
     }
+
+    public static AssistantSkill? ById(string id) =>
+        All.FirstOrDefault(skill => skill.Id == id);
+
+    /// <summary>
+    /// The registry described for a planner, in the words a person would use.
+    ///
+    /// The argument names are the ones each skill actually reads, so a planner that fills them in
+    /// produces something the skill can run unchanged. Keeping this beside the skills means a new
+    /// skill is understood by the planner as soon as it is declared — there is no second list to
+    /// forget to update.
+    /// </summary>
+    public static IReadOnlyList<PlannerSkill> ForPlanner() =>
+    [
+        .. All.Select(skill => new PlannerSkill(
+            skill.Id,
+            $"{skill.Title}. Ví dụ: \"{skill.Example}\".",
+            ArgumentsOf(skill.Id),
+            skill.Mutates)),
+    ];
+
+    private static IReadOnlyDictionary<string, string> ArgumentsOf(string skillId) => skillId switch
+    {
+        "create-project" => new Dictionary<string, string>
+        {
+            ["name"] = "Tên dự án.",
+            ["deadline"] = "Hạn chót, dạng dd/mm/yyyy. Chỉ điền khi câu có nói ngày.",
+        },
+        "create-task" => new Dictionary<string, string>
+        {
+            ["title"] = "Tên công việc.",
+            ["priority"] = "Mức ưu tiên: low, medium, high hoặc critical.",
+            ["deadline"] = "Hạn chót, dạng dd/mm/yyyy. Chỉ điền khi câu có nói ngày.",
+        },
+        "update-status" => new Dictionary<string, string>
+        {
+            ["id"] = "Mã số công việc, chỉ chữ số.",
+            ["status"] = "Trạng thái mới: todo, in progress, in review hoặc done.",
+        },
+        "assign-task" => new Dictionary<string, string>
+        {
+            ["id"] = "Mã số công việc, chỉ chữ số.",
+            ["who"] = "Tên hoặc email người nhận việc.",
+        },
+        "suggest-assignee" or "analyse-risk" or "task-detail" => new Dictionary<string, string>
+        {
+            ["id"] = "Mã số công việc, chỉ chữ số.",
+        },
+        // The diagnostics read no arguments — they answer about the project already in scope.
+        _ => new Dictionary<string, string>(),
+    };
 
     /// <summary>Trailing politeness ("giúp tôi", "nhé") is not part of a name.</summary>
     private static string? Clean(string? value)

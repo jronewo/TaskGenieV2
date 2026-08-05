@@ -6,6 +6,7 @@ import { MobileDashboard } from "./components/MobileDashboard";
 import { ReportsDashboard } from "./components/ReportsDashboard";
 import { AuthModule } from "./components/AuthModule";
 import { LandingPage } from "./components/LandingPage";
+import { SupportCenter } from "./components/SupportCenter";
 import { TeamManagement } from "./components/TeamManagement";
 import { EvaluationCenter } from "./components/EvaluationCenter";
 import { AdministrationCenter } from "./components/AdministrationCenter";
@@ -337,6 +338,9 @@ export default function App() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   // Signed-out visitors land on the marketing page; the sign-in form is one step behind it.
   const [showAuth, setShowAuth] = useState(false);
+  // The Help Center is a third top-level view for signed-out visitors, reached from the landing
+  // page navbar — independent of whether the auth form is also open.
+  const [showSupport, setShowSupport] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
   // Narrowing the window collapses the sidebar; widening restores whatever the user last chose.
@@ -485,7 +489,15 @@ export default function App() {
     return (
       <>
         <Toaster position="top-right" richColors />
-        {showAuth ? (
+        {showSupport ? (
+          <SupportCenter
+            onBack={() => setShowSupport(false)}
+            onSignIn={() => {
+              setShowSupport(false);
+              setShowAuth(true);
+            }}
+          />
+        ) : showAuth ? (
           <div className="relative">
             {/* Overlaid so the auth screens themselves stay untouched. */}
             <button
@@ -498,7 +510,7 @@ export default function App() {
             <AuthModule />
           </div>
         ) : (
-          <LandingPage onEnter={() => setShowAuth(true)} />
+          <LandingPage onEnter={() => setShowAuth(true)} onSupport={() => setShowSupport(true)} />
         )}
       </>
     );

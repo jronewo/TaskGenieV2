@@ -86,6 +86,10 @@ public static class DependencyInjection
         if (!string.IsNullOrWhiteSpace(configuration["VertexAi:ProjectId"]))
         {
             services.AddHttpClient<ISkillPlanner, VertexAiSkillPlanner>();
+            // Answers free-form questions the six canned diagnostics do not cover. It only ever
+            // narrows the same permission-scoped tasks those diagnostics already read — see
+            // RuleBasedProjectAgent.AnswerFreeformQuestionAsync.
+            services.AddHttpClient<ITaskQueryPlanner, VertexAiTaskQueryPlanner>();
         }
         services.AddScoped<IProjectAgent, RuleBasedProjectAgent>();
         services.AddHttpClient<IClassificationService, ClassificationService>();

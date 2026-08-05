@@ -54,6 +54,13 @@ jobs:
 
           # Secrets are mounted from Secret Manager rather than passed as plain env vars, so their
           # values never appear in the service description, the deploy log, or `gcloud describe`.
+          #
+          # VertexAi__ProjectId is not one of them: it is the project this service already runs in,
+          # and the credential is the service account, not a key. Leaving it unset makes the
+          # assistant fall back to pattern matching rather than fail to start.
+          #
+          # Keep comments out of the command below — a '#' line between two backslash-continued
+          # lines ends the command, and the next flag is then run as its own program.
           gcloud run deploy "$API_SERVICE" \
             --image="$API_IMAGE" \
             --region="$REGION" \
@@ -65,9 +72,6 @@ jobs:
             --min-instances=0 \
             --max-instances=4 \
             --add-cloudsql-instances="$INSTANCE" \
-            # VertexAi__ProjectId is not a secret: it is the project this service already runs in,
-            # and the credential is the service account, not a key. Leaving it unset makes the
-            # assistant fall back to pattern matching rather than fail to start.
             --set-env-vars="ASPNETCORE_ENVIRONMENT=Production,Payments__UseFakeProvider=false,VertexAi__ProjectId=$PROJECT_ID" \
             --set-secrets="ConnectionStrings__DefaultConnection=db-connection:latest,Jwt__Secret=jwt-secret:latest,PayOS__ClientId=payos-client-id:latest,PayOS__ApiKey=payos-api-key:latest,PayOS__ChecksumKey=payos-checksum-key:latest,HuggingFace__ApiKey=huggingface-key:latest,Smtp__Host=smtp-host:latest,Smtp__FromAddress=smtp-from-address:latest,Smtp__UserName=smtp-username:latest,Smtp__Password=smtp-password:latest" \
             --quiet

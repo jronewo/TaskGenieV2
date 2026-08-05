@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { taskApi, DependencyGraphDto, DependencyGraphNode } from "../services/taskApi";
 import { ApiError } from "../services/apiClient";
+import { usePreferences } from "../settings/PreferencesContext";
 
 /** Card geometry. Positions are computed, not measured, so the drawing never races layout. */
 const NODE_W = 190;
@@ -17,11 +18,12 @@ const PAD = 28;
  * State colours. Each one ships with its own icon and wording in the legend and on the card, so
  * the diagram is never readable by colour alone.
  */
+/** `label` is a translation key, not a string: this table is module-level, so it cannot call t(). */
 const STATE = {
-  cycle: { fill: "#FEE2E2", stroke: "#DC2626", text: "#991B1B", label: "Vòng lặp", Icon: AlertTriangle },
-  done: { fill: "#D1FAE5", stroke: "#10B981", text: "#065F46", label: "Đã xong", Icon: CircleCheck },
-  ready: { fill: "#DBEAFE", stroke: "#2563EB", text: "#1E3A8A", label: "Làm được ngay", Icon: CirclePlay },
-  blocked: { fill: "#F1F5F9", stroke: "#94A3B8", text: "#475569", label: "Đang chờ", Icon: CircleDashed },
+  cycle: { fill: "#FEE2E2", stroke: "#DC2626", text: "#991B1B", label: "graph.legend.cycle", Icon: AlertTriangle },
+  done: { fill: "#D1FAE5", stroke: "#10B981", text: "#065F46", label: "graph.legend.done", Icon: CircleCheck },
+  ready: { fill: "#DBEAFE", stroke: "#2563EB", text: "#1E3A8A", label: "graph.legend.ready", Icon: CirclePlay },
+  blocked: { fill: "#F1F5F9", stroke: "#94A3B8", text: "#475569", label: "graph.legend.blocked", Icon: CircleDashed },
 } as const;
 
 type StateKey = keyof typeof STATE;
@@ -90,6 +92,7 @@ interface Props {
  * status cannot show this — it says what state work is in, never what is waiting on what.
  */
 export const TaskDependencyGraph = ({ open, projectId, projectName, onClose, onOpenTask }: Props) => {
+  const { t } = usePreferences();
   const [graph, setGraph] = useState<DependencyGraphDto | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,13 +108,13 @@ export const TaskDependencyGraph = ({ open, projectId, projectName, onClose, onO
       setError(
         err instanceof ApiError
           ? err.message || `Request failed (${err.status}).`
-          : "Không tải được sơ đồ phụ thuộc."
+          : t("graph.loadFailed")
       );
       setGraph(null);
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, t]);
 
   useEffect(() => {
     if (open) void load();
@@ -144,7 +147,7 @@ export const TaskDependencyGraph = ({ open, projectId, projectName, onClose, onO
           exit={{ opacity: 0 }}
           role="dialog"
           aria-modal="true"
-          aria-label="Sơ đồ phụ thuộc công việc"
+          aria-label={t("graph.dialogLabel")}
         >
           <motion.div
             className="flex max-h-[90vh] w-full max-w-6xl flex-col rounded-xl border border-gray-200 bg-white"
@@ -156,11 +159,11 @@ export const TaskDependencyGraph = ({ open, projectId, projectName, onClose, onO
               <div className="min-w-0">
                 <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
                   <Network size={15} className="text-[#1A237E]" aria-hidden />
-                  Sơ đồ phụ thuộc
+                  {t("graph.title")}
                 </h2>
                 <p className="mt-0.5 text-[10px] text-gray-500">
                   {projectName ? `${projectName} · ` : ""}
-                  Trái sang phải là thứ tự phải hoàn thành. Cột đầu tiên làm được ngay.
+                  {t("graph.subtitle")}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -168,7 +171,7 @@ export const TaskDependencyGraph = ({ open, projectId, projectName, onClose, onO
                   type="button"
                   onClick={() => void load()}
                   disabled={loading}
-                  aria-label="Tải lại sơ đồ"
+                  aria-label={t("graph.reload")}
                   className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40"
                 >
                   <RefreshCw size={14} aria-hidden />
@@ -176,7 +179,7 @@ export const TaskDependencyGraph = ({ open, projectId, projectName, onClose, onO
                 <button
                   type="button"
                   onClick={onClose}
-                  aria-label="Đóng"
+                  aria-label={t("common.close")}
                   className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
                 >
                   <X size={16} aria-hidden />
@@ -197,13 +200,13 @@ export const TaskDependencyGraph = ({ open, projectId, projectName, onClose, onO
                       aria-hidden
                     />
                     <Icon size={11} style={{ color: s.stroke }} aria-hidden />
-                    {s.label}
+                    {t(s.label)}
                   </span>
                 );
               })}
               {graph && (
                 <span className="ml-auto text-[10px] text-gray-500">
-                  {graph.nodes.length} công việc · {graph.levelCount} đợt · {readyCount} làm được ngay
+                  {t("graph.summaryFull", { tasks: graph.nodes.length, waves: graph.levelCount, ready: readyCount })}
                 </span>
               )}
             </div>
@@ -215,8 +218,7 @@ export const TaskDependencyGraph = ({ open, projectId, projectName, onClose, onO
               >
                 <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden />
                 <span>
-                  Có phụ thuộc vòng tròn. Những công việc viền đỏ đang chờ lẫn nhau nên không bao giờ
-                  hoàn thành được — gỡ bớt một liên kết để giải.
+                  {t("graph.cycleTitle")} {t("graph.cycleDetail")}
                 </span>
               </div>
             )}
@@ -224,20 +226,20 @@ export const TaskDependencyGraph = ({ open, projectId, projectName, onClose, onO
             <div className="min-h-0 flex-1 overflow-auto p-1">
               {loading ? (
                 <div className="flex items-center justify-center gap-2 py-24 text-xs text-gray-500">
-                  <Loader2 size={14} className="animate-spin" aria-hidden /> Đang dựng sơ đồ…
+                  <Loader2 size={14} className="animate-spin" aria-hidden /> {t("graph.building")}
                 </div>
               ) : error ? (
                 <div role="alert" className="m-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
                   {error}
                 </div>
               ) : !graph || graph.nodes.length === 0 ? (
-                <p className="py-24 text-center text-xs text-gray-500">Dự án này chưa có công việc nào.</p>
+                <p className="py-24 text-center text-xs text-gray-500">{t("graph.empty")}</p>
               ) : (
                 <svg
                   width={Math.max(width, 320)}
                   height={Math.max(height, 200)}
                   role="img"
-                  aria-label={`Sơ đồ phụ thuộc: ${graph.nodes.length} công việc trong ${graph.levelCount} đợt`}
+                  aria-label={t("graph.exportLabel", { count: graph.nodes.length, project: projectName ?? "" })}
                   className="tg-depgraph"
                 >
                   <defs>
@@ -293,11 +295,11 @@ export const TaskDependencyGraph = ({ open, projectId, projectName, onClose, onO
                         opacity={dim ? 0.45 : 1}
                       >
                         <title>
-                          {`${node.title}\n${s.label}` +
-                            (node.blockedByCount > 0 ? `\nĐang chờ ${node.blockedByCount} việc` : "") +
-                            (node.blocksCount > 0 ? `\nChặn ${node.blocksCount} việc` : "") +
+                          {`${node.title}\n${t(s.label)}` +
+                            (node.blockedByCount > 0 ? `\n${t("graph.waitingOn", { count: node.blockedByCount })}` : "") +
+                            (node.blocksCount > 0 ? `\n${t("graph.blocks", { count: node.blocksCount })}` : "") +
                             (node.assigneeName ? `\n${node.assigneeName}` : "") +
-                            (node.deadline ? `\nHạn ${node.deadline}` : "")}
+                            (node.deadline ? `\n${t("graph.deadline", { date: node.deadline })}` : "")}
                         </title>
                         <rect
                           width={NODE_W}
@@ -311,15 +313,17 @@ export const TaskDependencyGraph = ({ open, projectId, projectName, onClose, onO
                           {node.title.length > 24 ? `${node.title.slice(0, 23)}…` : node.title}
                         </text>
                         <text x={12} y={39} fontSize={9.5} fill={s.text} opacity={0.8}>
-                          {s.label}
+                          {t(s.label)}
                           {node.deadline ? ` · ${node.deadline}` : ""}
                         </text>
                         <text x={12} y={56} fontSize={9} fill={s.text} opacity={0.7}>
-                          {node.blockedByCount > 0 ? `chờ ${node.blockedByCount}` : "không chờ ai"}
-                          {node.blocksCount > 0 ? ` · chặn ${node.blocksCount}` : ""}
+                          {node.blockedByCount > 0
+                            ? t("graph.waitingShort", { count: node.blockedByCount })
+                            : t("graph.waitingOnNobody")}
+                          {node.blocksCount > 0 ? t("graph.blocksShort", { count: node.blocksCount }) : ""}
                         </text>
                         <text x={NODE_W - 10} y={22} fontSize={9} textAnchor="end" fill={s.text} opacity={0.6}>
-                          {`đợt ${node.level + 1}`}
+                          {t("graph.wave", { n: node.level + 1 })}
                         </text>
                       </g>
                     );
@@ -329,8 +333,7 @@ export const TaskDependencyGraph = ({ open, projectId, projectName, onClose, onO
             </div>
 
             <footer className="border-t border-gray-200 px-5 py-2 text-[10px] text-gray-500">
-              Mũi tên chỉ từ việc phải xong trước sang việc phải chờ. Nét đứt nghĩa là việc đứng trước
-              vẫn chưa xong. Bấm vào một ô để mở công việc đó.
+              {t("graph.footer")}
             </footer>
           </motion.div>
         </motion.div>

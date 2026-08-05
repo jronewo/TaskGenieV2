@@ -42,6 +42,8 @@ export interface TaskDetailDto {
   daysLateOrEarly?: number | null;
   assignees: TaskAssigneeDto[];
   dependencies: TaskDependencyDto[];
+  /** How many other tasks are waiting on this one. */
+  blockingCount?: number;
   requiredSkillIds: number[];
 }
 

@@ -187,7 +187,10 @@ export const TaskDetailModal = ({ taskId, projectName, onClose, onChanged }: Tas
     <AnimatePresence>
       {taskId != null && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          // z-60, not z-50: this opens on top of the dependency diagram, which stays behind it so
+          // the reader keeps their place in the graph. Relying on DOM order alone would break the
+          // moment either modal moved in the tree.
+          className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}

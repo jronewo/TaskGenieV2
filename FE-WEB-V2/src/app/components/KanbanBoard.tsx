@@ -44,7 +44,14 @@ export const KanbanBoard = ({ projectId, projectName, canManageTasks = false, on
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState<TaskDetailDto | null>(null);
-  const [filters, setFilters] = useState({ risk: "ALL", difficulty: "ALL", assigned: "ALL", sort: "created-desc" });
+  const [filters, setFilters] = useState({
+    risk: "ALL",
+    difficulty: "ALL",
+    assigned: "ALL",
+    dependency: "ALL",
+    search: "",
+    sort: "created-desc",
+  });
   const [movingId, setMovingId] = useState<number | null>(null);
 
   // Ref-held so an inline parent callback can't re-create this effect on every render.
@@ -82,10 +89,37 @@ export const KanbanBoard = ({ projectId, projectName, canManageTasks = false, on
     if (filters.assigned === "YES") list = list.filter((t) => (t.assignees?.length ?? 0) > 0);
     if (filters.assigned === "NO") list = list.filter((t) => (t.assignees?.length ?? 0) === 0);
 
+    const blocking = (t: TaskDetailDto) => t.blockingCount ?? 0;
+    /** Only unfinished prerequisites actually hold a task back; a finished one is just history. */
+    const waitingOn = (t: TaskDetailDto) =>
+      (t.dependencies ?? []).filter((d) => (d.status ?? "").toUpperCase() !== "DONE").length;
+
+    if (filters.dependency === "BLOCKING") list = list.filter((t) => blocking(t) > 0);
+    if (filters.dependency === "BLOCKED") list = list.filter((t) => waitingOn(t) > 0);
+    // "Ready" is the queue a person can actually pick from: nothing unfinished stands in the way.
+    if (filters.dependency === "READY") list = list.filter((t) => waitingOn(t) === 0);
+
+    const query = filters.search.trim().toLowerCase();
+    if (query) {
+      // Searching prerequisite titles too, so "login" finds both the task and whatever waits on it.
+      list = list.filter(
+        (t) =>
+          (t.title ?? "").toLowerCase().includes(query) ||
+          String(t.taskId).includes(query) ||
+          (t.dependencies ?? []).some((d) => (d.dependsOnTaskTitle ?? "").toLowerCase().includes(query))
+      );
+    }
+
     const RISK_ORDER: Record<string, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
     const time = (v?: string | null) => (v ? new Date(v).getTime() : 0);
 
     switch (filters.sort) {
+      case "dependency":
+        // Whatever is holding up the most work comes first; among equals, the task that is itself
+        // free to start outranks one still waiting, so the top of the column is always actionable.
+        return list.sort(
+          (a, b) => blocking(b) - blocking(a) || waitingOn(a) - waitingOn(b) || time(a.deadline) - time(b.deadline)
+        );
       case "created-asc":
         return list.sort((a, b) => time(a.createdAt) - time(b.createdAt));
       case "deadline":
@@ -197,6 +231,27 @@ export const KanbanBoard = ({ projectId, projectName, canManageTasks = false, on
           <option value="NO">Unassigned</option>
         </select>
 
+        <select
+          value={filters.dependency}
+          onChange={(e) => setFilters((f) => ({ ...f, dependency: e.target.value }))}
+          aria-label="Filter by dependency"
+          className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700"
+        >
+          <option value="ALL">Any dependency</option>
+          <option value="BLOCKING">Blocking others</option>
+          <option value="BLOCKED">Waiting on others</option>
+          <option value="READY">Ready to start</option>
+        </select>
+
+        <input
+          type="search"
+          value={filters.search}
+          onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
+          aria-label="Search tasks"
+          placeholder="Search title or #id…"
+          className="w-44 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 placeholder:text-gray-400"
+        />
+
         <span className="ml-auto inline-flex items-center gap-1.5">
           <label htmlFor="board-sort" className="text-[11px] text-gray-500">
             Sort
@@ -207,6 +262,7 @@ export const KanbanBoard = ({ projectId, projectName, canManageTasks = false, on
             onChange={(e) => setFilters((f) => ({ ...f, sort: e.target.value }))}
             className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700"
           >
+            <option value="dependency">Blocking most</option>
             <option value="created-desc">Newest first</option>
             <option value="created-asc">Oldest first</option>
             <option value="deadline">Deadline</option>
@@ -215,10 +271,23 @@ export const KanbanBoard = ({ projectId, projectName, canManageTasks = false, on
           </select>
         </span>
 
-        {(filters.risk !== "ALL" || filters.difficulty !== "ALL" || filters.assigned !== "ALL") && (
+        {(filters.risk !== "ALL" ||
+          filters.difficulty !== "ALL" ||
+          filters.assigned !== "ALL" ||
+          filters.dependency !== "ALL" ||
+          filters.search !== "") && (
           <button
             type="button"
-            onClick={() => setFilters({ risk: "ALL", difficulty: "ALL", assigned: "ALL", sort: filters.sort })}
+            onClick={() =>
+              setFilters({
+                risk: "ALL",
+                difficulty: "ALL",
+                assigned: "ALL",
+                dependency: "ALL",
+                search: "",
+                sort: filters.sort,
+              })
+            }
             className="rounded-md px-2 py-1 text-[11px] text-[#1A237E] hover:underline"
           >
             Clear filters

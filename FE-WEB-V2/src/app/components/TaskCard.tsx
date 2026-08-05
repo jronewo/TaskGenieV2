@@ -8,7 +8,9 @@ import {
   Calendar,
   Check,
   Equal,
+  GitBranch,
   Loader2,
+  Lock,
   MessageSquare,
   Bookmark,
   SquareCheck,
@@ -53,6 +55,8 @@ export const TaskCard = ({ task, commentCount, projectName, onClick, onDragStart
   const risk = RISK_DOT[riskLevel] ?? RISK_DOT.LOW;
   // A high-risk task is the one thing on a board that must not need a hover to be noticed.
   const highRisk = riskLevel === "HIGH";
+  const blockingCount = task.blockingCount ?? 0;
+  const waitingOn = (task.dependencies ?? []).filter((d) => (d.status ?? "").toUpperCase() !== "DONE").length;
   const overdue = isOverdue(task);
   const type = issueType(task);
   const TypeIcon = TYPE_ICON[type];
@@ -140,6 +144,28 @@ export const TaskCard = ({ task, commentCount, projectName, onClick, onDragStart
         )}
 
         <span className={`font-medium tracking-wide ${done ? "text-gray-400 line-through" : "text-gray-600"}`}>{key}</span>
+
+        {/* The two chips answer different questions: how much work this card is holding up, and
+            whether it can be picked up at all. Both stay hidden once the task is done, when
+            neither changes what anyone does next. */}
+        {!done && blockingCount > 0 && (
+          <span
+            className="inline-flex shrink-0 items-center gap-0.5 rounded bg-amber-50 px-1 py-0.5 text-[9px] font-semibold text-amber-700"
+            title={`${blockingCount} task${blockingCount === 1 ? "" : "s"} waiting on this one`}
+          >
+            <GitBranch size={9} aria-hidden />
+            {blockingCount}
+          </span>
+        )}
+        {!done && waitingOn > 0 && (
+          <span
+            className="inline-flex shrink-0 items-center gap-0.5 rounded bg-gray-100 px-1 py-0.5 text-[9px] font-semibold text-gray-600"
+            title={`Waiting on ${waitingOn} unfinished task${waitingOn === 1 ? "" : "s"}`}
+          >
+            <Lock size={9} aria-hidden />
+            {waitingOn}
+          </span>
+        )}
 
         <PriorityIcon size={12} className={rank.color} aria-label={`Priority: ${rank.label}`} />
 

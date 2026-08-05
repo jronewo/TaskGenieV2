@@ -33,6 +33,13 @@ public sealed class TaskDetailDto
 
     public List<TaskAssigneeDto> Assignees { get; init; } = new();
     public List<TaskDependencyDto> Dependencies { get; init; } = new();
+
+    /// <summary>
+    /// How many other tasks are waiting on this one. The board sorts by it so the work that is
+    /// holding up the most people rises to the top; without it the client would have to load every
+    /// task's dependency list and invert the graph itself just to order a column.
+    /// </summary>
+    public int BlockingCount { get; init; }
     public List<int> RequiredSkillIds { get; init; } = new();
 
     public static TaskDetailDto FromEntity(TaskEntity t) => new()
@@ -64,6 +71,7 @@ public sealed class TaskDetailDto
                 UserName = ta.User?.Name,
                 Avatar = ta.User?.Avatar
             }).ToList(),
+        BlockingCount = t.DependentOnTasks.Count,
         Dependencies = t.TaskDependencies
             .Select(td => new TaskDependencyDto
             {

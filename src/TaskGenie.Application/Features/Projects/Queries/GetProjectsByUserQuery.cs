@@ -1,5 +1,6 @@
 using MediatR;
 using TaskGenie.Application.Features.Projects.DTOs;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
 
 namespace TaskGenie.Application.Features.Projects.Queries;
@@ -15,7 +16,8 @@ public sealed record GetProjectsByUserQuery(int UserId, bool Closed = false) : I
 
 public sealed class GetProjectsByUserQueryHandler(
     IProjectRepository projectRepo,
-    ISubscriptionRepository subscriptionRepo
+    ISubscriptionRepository subscriptionRepo,
+    IResourceAuthorizationService authz
 ) : IRequestHandler<GetProjectsByUserQuery, List<ProjectDto>>
 {
     public async Task<List<ProjectDto>> Handle(GetProjectsByUserQuery query, CancellationToken ct)
@@ -47,6 +49,17 @@ public sealed class GetProjectsByUserQueryHandler(
                 .ToList();
         }
 
-        return visible.Select(ProjectDto.FromEntity).ToList();
+        // CanManageTasks was only ever populated by GetProjectByIdQuery, so on this list it stayed
+        // at its default of false — and every control gated on it (the scheduled risk estimate,
+        // End project) was invisible to leaders on the projects page. It is a rendering hint only;
+        // each endpoint still enforces the same rule itself.
+        var dtos = new List<ProjectDto>(visible.Count);
+        foreach (var project in visible)
+        {
+            var dto = ProjectDto.FromEntity(project);
+            dto.CanManageTasks = await authz.CanManageTasksInProjectAsync(project.ProjectId, ct);
+            dtos.Add(dto);
+        }
+        return dtos;
     }
 }

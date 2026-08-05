@@ -6,14 +6,37 @@ namespace TaskGenie.Application.Common.Agent;
 /// <summary>What a skill can reach. The actor is fixed here, never parsed out of the message.</summary>
 public sealed record SkillContext(IMediator Mediator, int CurrentUserId, int? ProjectId);
 
-/// <summary>Values pulled out of the user's sentence by the skill's own pattern.</summary>
-public sealed class SkillArgs(Match match)
+/// <summary>
+/// Values pulled out of the user's sentence.
+///
+/// Two things produce these: the skill's own regex, and the language model when the regex found
+/// nothing. Skills read arguments by name and cannot tell the difference, which is the point — the
+/// model widens what sentences are understood without widening what a skill is allowed to do.
+/// </summary>
+public sealed class SkillArgs
 {
+    private readonly IReadOnlyDictionary<string, string> _values;
+
+    private SkillArgs(IReadOnlyDictionary<string, string> values) => _values = values;
+
+    public SkillArgs(Match match)
+        : this(match.Groups.Keys
+            .Where(key => match.Groups[key].Success)
+            .ToDictionary(key => key, key => match.Groups[key].Value, StringComparer.OrdinalIgnoreCase))
+    {
+    }
+
+    /// <summary>Arguments named by the model rather than captured by a pattern.</summary>
+    public static SkillArgs FromModel(IReadOnlyDictionary<string, string> values) =>
+        new(new Dictionary<string, string>(values, StringComparer.OrdinalIgnoreCase));
+
     public string? Text(string group) =>
-        match.Groups[group].Success ? match.Groups[group].Value.Trim() : null;
+        _values.TryGetValue(group, out var value) && !string.IsNullOrWhiteSpace(value)
+            ? value.Trim()
+            : null;
 
     public int? Number(string group) =>
-        match.Groups[group].Success && int.TryParse(match.Groups[group].Value, out var value) ? value : null;
+        Text(group) is string text && int.TryParse(text, out var value) ? value : null;
 }
 
 /// <summary>

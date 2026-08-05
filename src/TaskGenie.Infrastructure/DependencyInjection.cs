@@ -76,8 +76,17 @@ public static class DependencyInjection
         services.AddHttpClient<IHuggingFaceService, HuggingFaceService>();
         services.AddHttpClient<ITextGenerationService, TextGenerationService>();
 
-        // The assistant answers from the database, not from a language model. See
-        // RuleBasedProjectAgent for why the LLM-backed version was removed.
+        // The assistant answers from the database. A language model only reads what a sentence is
+        // asking for, and only when the patterns found nothing — it picks among the declared
+        // skills and never reaches data itself.
+        //
+        // Registered only when a project id is configured. Without it the assistant runs on
+        // patterns alone, which is exactly how it behaved before, so a missing setting degrades
+        // the assistant instead of breaking startup.
+        if (!string.IsNullOrWhiteSpace(configuration["VertexAi:ProjectId"]))
+        {
+            services.AddHttpClient<ISkillPlanner, VertexAiSkillPlanner>();
+        }
         services.AddScoped<IProjectAgent, RuleBasedProjectAgent>();
         services.AddHttpClient<IClassificationService, ClassificationService>();
         services.AddSingleton<ICloudinaryService, CloudinaryService>();

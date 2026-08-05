@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaskGenie.Domain.Entities;
 using TaskEntity = TaskGenie.Domain.Entities.Task;
 
@@ -92,6 +93,33 @@ public partial class AppDbContext : DbContext
     public virtual DbSet<Subscription> Subscriptions { get; set; }
 
     public virtual DbSet<PaymentTransaction> PaymentTransactions { get; set; }
+
+    /// <summary>
+    /// Every DateTime read from the database is UTC.
+    ///
+    /// SQL Server's `datetime` carries no offset, so EF materialises it with
+    /// <c>DateTimeKind.Unspecified</c>. System.Text.Json then writes it without the trailing `Z`,
+    /// and a browser or React Native client reads a `Z`-less timestamp as *local* time — so a
+    /// notification written at 10:17 UTC displayed as 10:17 in Vietnam, seven hours early.
+    ///
+    /// The values were always stored as UTC (`DateTime.UtcNow` throughout the domain); the only
+    /// thing missing was saying so on the way back out. Applied through a convention so a new
+    /// entity cannot forget it, and stated once rather than repeated per property.
+    /// </summary>
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        configurationBuilder.Properties<DateTime>().HaveConversion<UtcDateTimeConverter>();
+        configurationBuilder.Properties<DateTime?>().HaveConversion<NullableUtcDateTimeConverter>();
+    }
+
+    /// <summary>Writes the value untouched, tags what comes back as UTC.</summary>
+    private sealed class UtcDateTimeConverter() : ValueConverter<DateTime, DateTime>(
+        v => v,
+        v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
+
+    private sealed class NullableUtcDateTimeConverter() : ValueConverter<DateTime?, DateTime?>(
+        v => v,
+        v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : v);
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

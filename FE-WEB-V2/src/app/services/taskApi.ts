@@ -29,6 +29,7 @@ export interface TaskDetailDto {
   status?: string | null;
   priority?: string | null;
   deadline?: string | null;
+  startDate?: string | null;
   estimatedTime?: number | null;
   aiEstimatedTime?: number | null;
   actualTime?: number | null;
@@ -103,6 +104,7 @@ export interface CreateTaskPayload {
   description?: string | null;
   priority?: string | null;
   deadline?: string | null;
+  startDate?: string | null;
   difficulty?: number | null;
   taskTypeId?: number | null;
 }
@@ -113,6 +115,7 @@ export interface UpdateTaskPayload {
   status?: string | null;
   priority?: string | null;
   deadline?: string | null;
+  startDate?: string | null;
   estimatedTime?: number | null;
   actualTime?: number | null;
   difficulty?: number | null;

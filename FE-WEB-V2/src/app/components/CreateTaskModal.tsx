@@ -17,11 +17,14 @@ interface FormState {
   description: string;
   priority: string;
   deadline: string;
+  startDate: string;
   difficulty: string;
   taskTypeId: string;
 }
 
-const EMPTY: FormState = { title: "", description: "", priority: "Medium", deadline: "", difficulty: "3", taskTypeId: "" };
+const EMPTY: FormState = {
+  title: "", description: "", priority: "Medium", deadline: "", startDate: "", difficulty: "3", taskTypeId: "",
+};
 
 function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
@@ -79,6 +82,10 @@ export const CreateTaskModal = ({ open, projectId, onClose, onCreated }: CreateT
 
   const submit = async () => {
     if (projectId == null || busy) return; // double-submit guard
+    if (form.startDate && form.deadline && form.startDate > form.deadline) {
+      setError("Start date must be on or before the deadline.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -88,6 +95,7 @@ export const CreateTaskModal = ({ open, projectId, onClose, onCreated }: CreateT
         description: form.description.trim() || null,
         priority: form.priority,
         deadline: form.deadline || null,
+        startDate: form.startDate || null,
         difficulty: form.difficulty ? Number(form.difficulty) : null,
         taskTypeId: form.taskTypeId ? Number(form.taskTypeId) : null,
       });
@@ -184,7 +192,7 @@ export const CreateTaskModal = ({ open, projectId, onClose, onCreated }: CreateT
                 </select>
               </label>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <label className="block">
                   <span className="mb-1 block text-xs font-semibold text-gray-700">Priority</span>
                   <select
@@ -196,15 +204,6 @@ export const CreateTaskModal = ({ open, projectId, onClose, onCreated }: CreateT
                     <option value="Medium">Medium</option>
                     <option value="High">High</option>
                   </select>
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-xs font-semibold text-gray-700">Deadline</span>
-                  <input
-                    type="date"
-                    value={form.deadline}
-                    onChange={(e) => setForm((f) => ({ ...f, deadline: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm"
-                  />
                 </label>
                 <label className="block">
                   <span className="mb-1 block text-xs font-semibold text-gray-700">Difficulty</span>
@@ -219,6 +218,26 @@ export const CreateTaskModal = ({ open, projectId, onClose, onCreated }: CreateT
                       </option>
                     ))}
                   </select>
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-semibold text-gray-700">Start date</span>
+                  <input
+                    type="date"
+                    value={form.startDate}
+                    max={form.deadline || undefined}
+                    onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-semibold text-gray-700">Deadline</span>
+                  <input
+                    type="date"
+                    value={form.deadline}
+                    min={form.startDate || undefined}
+                    onChange={(e) => setForm((f) => ({ ...f, deadline: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm"
+                  />
                 </label>
               </div>
 

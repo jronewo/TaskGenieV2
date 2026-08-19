@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Flag, Clock, Link2, Loader2, Plus, Trash2, Sparkles, Ban } from "lucide-react";
+import { Flag, Clock, Link2, Loader2, Plus, Trash2, Sparkles, Ban, Calendar } from "lucide-react";
 import { taskApi, TaskDetailDto } from "../services/taskApi";
 import { ApiError } from "../services/apiClient";
 
@@ -38,6 +38,15 @@ export const TaskPlanningPanel = ({ task, onChanged }: Props) => {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // Local, editable copies of the schedule — synced from the server whenever a different task is
+  // opened, but not on every re-render, so mid-edit keystrokes survive an unrelated refresh.
+  const [startDateInput, setStartDateInput] = useState(task.startDate?.slice(0, 10) ?? "");
+  const [deadlineInput, setDeadlineInput] = useState(task.deadline?.slice(0, 10) ?? "");
+  useEffect(() => {
+    setStartDateInput(task.startDate?.slice(0, 10) ?? "");
+    setDeadlineInput(task.deadline?.slice(0, 10) ?? "");
+  }, [task.taskId]);
+
   // Candidate blockers are the project's other tasks.
   const loadSiblings = useCallback(async () => {
     if (task.projectId == null) return;
@@ -71,6 +80,23 @@ export const TaskPlanningPanel = ({ task, onChanged }: Props) => {
 
   const changePriority = (priority: string) =>
     run("priority", () => taskApi.update(task.taskId, { priority }).then(() => undefined));
+
+  const scheduleInvalid = Boolean(startDateInput && deadlineInput && startDateInput > deadlineInput);
+
+  const saveSchedule = () => {
+    if (scheduleInvalid) {
+      setError("Start date must be on or before the deadline.");
+      return;
+    }
+    return run(
+      "schedule",
+      () =>
+        taskApi
+          .update(task.taskId, { startDate: startDateInput || null, deadline: deadlineInput || null })
+          .then(() => undefined),
+      "Schedule saved."
+    );
+  };
 
   const suggestEstimate = () =>
     run(
@@ -142,6 +168,47 @@ export const TaskPlanningPanel = ({ task, onChanged }: Props) => {
           })}
           {busy === "priority" && <Loader2 size={12} className="mt-1.5 animate-spin text-gray-400" aria-hidden />}
         </div>
+      </div>
+
+      {/* Schedule */}
+      <div>
+        <h4 className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+          <Calendar size={11} aria-hidden /> Schedule
+        </h4>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="block">
+            <span className="mb-1 block text-[10px] text-gray-500">Start date</span>
+            <input
+              type="date"
+              value={startDateInput}
+              max={deadlineInput || undefined}
+              onChange={(e) => setStartDateInput(e.target.value)}
+              className="rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-700"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[10px] text-gray-500">Deadline</span>
+            <input
+              type="date"
+              value={deadlineInput}
+              min={startDateInput || undefined}
+              onChange={(e) => setDeadlineInput(e.target.value)}
+              className="rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-700"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={saveSchedule}
+            disabled={busy === "schedule" || scheduleInvalid}
+            className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {busy === "schedule" ? <Loader2 size={11} className="animate-spin" aria-hidden /> : null}
+            Save
+          </button>
+        </div>
+        {scheduleInvalid && (
+          <p className="mt-1 text-[10px] text-red-600">Start date must be on or before the deadline.</p>
+        )}
       </div>
 
       {/* Estimate */}

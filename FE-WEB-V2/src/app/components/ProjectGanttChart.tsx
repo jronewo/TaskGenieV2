@@ -85,7 +85,11 @@ export const ProjectGanttChart = ({ projectId, onOpenTask }: Props) => {
 
   const weekTicks = useMemo(() => {
     if (!range) return [];
-    return eachWeekOfInterval({ start: range.rangeStart, end: range.rangeEnd }, { weekStartsOn: 1 });
+    // eachWeekOfInterval anchors to the calendar week, so its first tick can land before
+    // rangeStart when that day isn't a Monday — drop anything outside the drawn range.
+    return eachWeekOfInterval({ start: range.rangeStart, end: range.rangeEnd }, { weekStartsOn: 1 }).filter(
+      (tick) => tick >= range.rangeStart
+    );
   }, [range]);
 
   const today = startOfDay(new Date());
@@ -120,25 +124,32 @@ export const ProjectGanttChart = ({ projectId, onOpenTask }: Props) => {
 
     return (
       <>
-        <div className="flex">
-          <div className="shrink-0" style={{ width: LEFT_COL_W }}>
-            <div style={{ height: HEADER_H }} />
-            {scheduled.map(({ task }) => (
-              <button
-                key={task.taskId}
-                type="button"
-                onClick={() => onOpenTask?.(task.taskId)}
-                title={task.title ?? undefined}
-                style={{ height: ROW_H }}
-                className="flex w-full items-center truncate pr-2 text-left text-[11px] text-default hover:text-strong hover:underline"
-              >
-                <span className="truncate">{task.title ?? `Task #${task.taskId}`}</span>
-              </button>
-            ))}
-          </div>
+        {/*
+          A single scroll container for both axes, rather than nesting an x-scrolling div inside
+          a y-scrolling one: with two independent scrollers, the inner horizontal scrollbar sits at
+          the bottom of its own (un-clipped) content instead of the visible viewport, so it can end
+          up stranded mid-list once the outer container scrolls vertically. One container means one
+          scrollbar pair, each pinned to what's actually on screen.
+        */}
+        <div className="max-h-[420px] overflow-auto">
+          <div className="flex" style={{ width: LEFT_COL_W + timelineWidth }}>
+            <div className="sticky left-0 z-10 shrink-0 bg-surface-raised" style={{ width: LEFT_COL_W }}>
+              <div style={{ height: HEADER_H }} />
+              {scheduled.map(({ task }) => (
+                <button
+                  key={task.taskId}
+                  type="button"
+                  onClick={() => onOpenTask?.(task.taskId)}
+                  title={task.title ?? undefined}
+                  style={{ height: ROW_H }}
+                  className="flex w-full items-center truncate pr-2 text-left text-[11px] text-default hover:text-strong hover:underline"
+                >
+                  <span className="truncate">{task.title ?? `Task #${task.taskId}`}</span>
+                </button>
+              ))}
+            </div>
 
-          <div className="min-w-0 flex-1 overflow-x-auto">
-            <svg width={timelineWidth} height={chartHeight} role="img" aria-label="Project Gantt timeline">
+            <svg width={timelineWidth} height={chartHeight} role="img" aria-label="Project Gantt timeline" className="shrink-0">
               {weekTicks.map((tick) => {
                 const x = dayOffset(tick) * PX_PER_DAY;
                 return (

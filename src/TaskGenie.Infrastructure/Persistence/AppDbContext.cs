@@ -560,6 +560,7 @@ public partial class AppDbContext : DbContext
                 .HasColumnName("created_at");
             entity.Property(e => e.CreatedBy).HasColumnName("created_by");
             entity.Property(e => e.Deadline).HasColumnName("deadline");
+            entity.Property(e => e.StartDate).HasColumnName("start_date");
             entity.Property(e => e.Description).HasColumnName("description");
             entity.Property(e => e.Difficulty).HasColumnName("difficulty");
             entity.Property(e => e.TaskTypeId).HasColumnName("task_type_id");

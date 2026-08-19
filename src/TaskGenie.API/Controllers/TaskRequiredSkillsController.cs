@@ -16,9 +16,13 @@ public class TaskRequiredSkillsController(IMediator mediator) : ControllerBase
     [HttpPost("{taskId}")]
     public async Task<IActionResult> UpdateTaskSkills(int taskId, [FromBody] TaskSkillsRequest request)
     {
-        await mediator.Send(new ReplaceTaskRequiredSkillsCommand(taskId, request.SkillIds));
+        await mediator.Send(new ReplaceTaskRequiredSkillsCommand(
+            taskId,
+            request.Skills.Select(s => new TaskSkillRequirementInput(s.SkillId, s.RequiredLevel)).ToList()));
         return Ok(new { message = "Task required skills updated successfully." });
     }
 }
 
-public record TaskSkillsRequest(List<int> SkillIds);
+public record TaskSkillRequest(int SkillId, int RequiredLevel);
+
+public record TaskSkillsRequest(List<TaskSkillRequest> Skills);

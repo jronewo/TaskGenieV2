@@ -1,6 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
-using TaskGenie.API.Middleware;
+using TaskGenie.API.Extensions;
 using TaskGenie.Application.Features.Meetings.Commands;
 using TaskGenie.Application.Features.Meetings.Queries;
 
@@ -31,7 +31,6 @@ public class MeetingsController(IMediator mediator) : ControllerBase
     {
         var meeting = await mediator.Send(new CreateMeetingCommand(
             request.ProjectId,
-            request.OrganizedBy,
             request.Title,
             request.Description,
             request.ScheduledAt,
@@ -86,7 +85,6 @@ public class MeetingsController(IMediator mediator) : ControllerBase
 
 public record CreateMeetingRequest(
     int ProjectId,
-    int OrganizedBy,
     string Title,
     string? Description,
     DateTime ScheduledAt,

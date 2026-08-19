@@ -25,6 +25,22 @@ public class Organization
 
     public virtual ICollection<Project> Projects { get; internal set; } = new List<Project>();
 
+    public void Update(string? name, string? description, string? logo)
+    {
+        if (!string.IsNullOrWhiteSpace(name)) Name = name;
+        if (description != null) Description = description;
+        if (logo != null) Logo = logo;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>Transfers ownership. The caller is responsible for updating membership rows so the
+    /// new owner holds an ACTIVE OWNER membership.</summary>
+    public void TransferOwnership(int newOwnerId)
+    {
+        OwnerId = newOwnerId;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
     public static Organization Create(string name, string? description, int ownerId) => new()
     {
         Name = name,

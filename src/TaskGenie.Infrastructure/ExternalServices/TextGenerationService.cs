@@ -24,9 +24,9 @@ public class TextGenerationService : ITextGenerationService
             ?? throw new InvalidOperationException("HuggingFace:ApiKey is not configured in User Secrets");
 
         _modelId = configuration["HuggingFace:TextGenerationModelId"]
-            ?? "HuggingFaceH4/zephyr-7b-beta";
+            ?? "Qwen/Qwen3-4B-Instruct-2507:nscale";
 
-        _httpClient.BaseAddress = new Uri("https://router.huggingface.co/hf-inference/");
+        _httpClient.BaseAddress = new Uri("https://router.huggingface.co/");
         _httpClient.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
     }
@@ -34,7 +34,7 @@ public class TextGenerationService : ITextGenerationService
     public async Task<string> GenerateTextAsync(string prompt, int maxTokens = 200)
     {
         // HF Inference API now uses OpenAI-compatible /v1/chat/completions for text generation
-        var url = $"models/{_modelId}/v1/chat/completions";
+        const string url = "v1/chat/completions";
 
         try
         {
@@ -54,8 +54,8 @@ public class TextGenerationService : ITextGenerationService
             if (!response.IsSuccessStatusCode)
             {
                 var errorBody = await response.Content.ReadAsStringAsync();
-                _logger.LogWarning("HuggingFace TextGeneration API error {StatusCode}: {Body}. Falling back to default response.", response.StatusCode, errorBody);
-                return "[AI Phản hồi giả lập] Người dùng này là một ứng viên tiềm năng cho công việc này dựa trên khối lượng công việc hiện tại và sự phù hợp về kỹ năng.";
+                _logger.LogWarning("HuggingFace TextGeneration API error {StatusCode}: {Body}.", response.StatusCode, errorBody);
+                throw new HttpRequestException($"HuggingFace text generation returned {response.StatusCode}.");
             }
 
             var responseContent = await response.Content.ReadAsStringAsync();
@@ -73,12 +73,12 @@ public class TextGenerationService : ITextGenerationService
                 }
             }
 
-            return "[AI Phản hồi giả lập] Người dùng này là một ứng viên tiềm năng cho công việc này dựa trên khối lượng công việc hiện tại và sự phù hợp về kỹ năng.";
+            throw new InvalidOperationException("HuggingFace text generation returned an unexpected response.");
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to call HuggingFace TextGeneration API. Falling back to default response.");
-            return "[AI Phản hồi giả lập] Đang chờ phản hồi từ AI, người dùng hiện tại có các chỉ số phù hợp với yêu cầu công việc.";
+            _logger.LogWarning(ex, "Failed to call HuggingFace TextGeneration API.");
+            throw;
         }
     }
 

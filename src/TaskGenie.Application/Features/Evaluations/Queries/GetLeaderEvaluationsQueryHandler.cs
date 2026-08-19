@@ -1,14 +1,20 @@
 using MediatR;
 using TaskGenie.Application.Features.Evaluations;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
 
 namespace TaskGenie.Application.Features.Evaluations.Queries;
 
-public class GetLeaderEvaluationsQueryHandler(IEvaluationRepository evaluationRepository)
+public class GetLeaderEvaluationsQueryHandler(
+    IResourceAuthorizationService authorization,
+    IEvaluationRepository evaluationRepository)
     : IRequestHandler<GetLeaderEvaluationsQuery, List<EvaluationDto>>
 {
     public async Task<List<EvaluationDto>> Handle(GetLeaderEvaluationsQuery request, CancellationToken ct)
     {
+        
+        authorization.EnsureSelfOrPlatformAdmin(request.LeaderId);
+
         var evaluations = await evaluationRepository.GetByLeaderIdAsync(request.LeaderId, ct);
         return evaluations.Select(e => new EvaluationDto
         {

@@ -1,18 +1,18 @@
 using MediatR;
 using TaskGenie.Application.Features.Organizations.DTOs;
-using TaskGenie.Domain.Interfaces.Repositories;
+using TaskGenie.Application.Interfaces;
 
 namespace TaskGenie.Application.Features.Organizations.Queries;
 
 public sealed record GetOrganizationByIdQuery(int OrganizationId) : IRequest<OrganizationDto?>;
 
 public sealed class GetOrganizationByIdQueryHandler(
-    IOrganizationRepository organizationRepo
+    IResourceAuthorizationService authorization
 ) : IRequestHandler<GetOrganizationByIdQuery, OrganizationDto?>
 {
     public async Task<OrganizationDto?> Handle(GetOrganizationByIdQuery query, CancellationToken ct)
     {
-        var org = await organizationRepo.GetByIdAsync(query.OrganizationId, ct);
-        return org is not null ? OrganizationDto.FromEntity(org) : null;
+        var org = await authorization.EnsureCanAccessOrganizationAsync(query.OrganizationId, ct);
+        return OrganizationDto.FromEntity(org);
     }
 }

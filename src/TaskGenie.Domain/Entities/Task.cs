@@ -21,6 +21,8 @@ public class Task
 
     public DateOnly? Deadline { get; internal set; }
 
+    public DateOnly? StartDate { get; internal set; }
+
     public int? EstimatedTime { get; internal set; }
 
     public int? AiEstimatedTime { get; internal set; }
@@ -28,6 +30,11 @@ public class Task
     public int? ActualTime { get; internal set; }
 
     public int? Difficulty { get; internal set; }
+
+    /// <summary>Which kind of work this is. Null on tasks created before types existed.</summary>
+    public int? TaskTypeId { get; internal set; }
+
+    public virtual TaskType? TaskType { get; internal set; }
 
     public int? CreatedBy { get; internal set; }
 
@@ -71,6 +78,7 @@ public class Task
         string? description,
         string priority = "Medium",
         DateOnly? deadline = null,
+        DateOnly? startDate = null,
         int? difficulty = null,
         int? createdBy = null) => new()
     {
@@ -80,6 +88,7 @@ public class Task
         Priority = priority,
         Status = "Todo",
         Deadline = deadline,
+        StartDate = startDate,
         Difficulty = difficulty,
         CreatedBy = createdBy,
         CreatedAt = DateTime.UtcNow,
@@ -93,6 +102,7 @@ public class Task
         string? status,
         string? priority,
         DateOnly? deadline,
+        DateOnly? startDate,
         int? estimatedTime,
         int? actualTime,
         int? difficulty)
@@ -102,6 +112,7 @@ public class Task
         if (status is not null) Status = status;
         if (priority is not null) Priority = priority;
         if (deadline.HasValue) Deadline = deadline;
+        if (startDate.HasValue) StartDate = startDate;
         if (estimatedTime.HasValue) EstimatedTime = estimatedTime;
         if (actualTime.HasValue) ActualTime = actualTime;
         if (difficulty.HasValue) Difficulty = difficulty;
@@ -120,8 +131,28 @@ public class Task
         }
     }
 
+    /// <summary>
+    /// Records an estimated difficulty (1–5). Never overwrites a value a person set: the estimate
+    /// is a suggestion for tasks nobody has judged yet, and difficulty now drives the risk floor.
+    /// </summary>
+    public void SuggestDifficulty(int difficulty)
+    {
+        if (Difficulty.HasValue) return;
+        Difficulty = Math.Clamp(difficulty, 1, 5);
+    }
+
+    public void SetTaskType(int? taskTypeId) => TaskTypeId = taskTypeId;
+
     public void SetAiEstimatedTime(int hours)
     {
         AiEstimatedTime = hours;
+    }
+
+    public void SetRiskAssessment(string riskLevel)
+    {
+        if (string.IsNullOrWhiteSpace(riskLevel))
+            throw new ArgumentException("Risk level is required.", nameof(riskLevel));
+
+        RiskLevel = riskLevel.Trim().ToUpperInvariant();
     }
 }

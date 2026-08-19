@@ -2,4 +2,5 @@ using MediatR;
 
 namespace TaskGenie.Application.Features.Users.Commands;
 
-public record ChangePasswordCommand(int UserId, string CurrentPassword, string NewPassword) : IRequest<bool>;
+/// <summary>Always applies to the authenticated user — the actor is never taken from the client.</summary>
+public record ChangePasswordCommand(string CurrentPassword, string NewPassword) : IRequest<bool>;

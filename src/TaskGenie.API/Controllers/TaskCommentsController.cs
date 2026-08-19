@@ -17,7 +17,6 @@ public class TaskCommentsController(IMediator mediator) : ControllerBase
     public async Task<IActionResult> Create([FromBody] CreateTaskCommentRequest request)
         => Ok(await mediator.Send(new CreateTaskCommentCommand(
             request.TaskId,
-            request.UserId,
             request.Content,
             request.ImageUrl)));
 
@@ -29,4 +28,4 @@ public class TaskCommentsController(IMediator mediator) : ControllerBase
     }
 }
 
-public record CreateTaskCommentRequest(int TaskId, int UserId, string? Content, string? ImageUrl);
+public record CreateTaskCommentRequest(int TaskId, string? Content, string? ImageUrl);

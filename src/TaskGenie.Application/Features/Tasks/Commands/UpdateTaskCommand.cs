@@ -1,5 +1,6 @@
 using MediatR;
 using TaskGenie.Application.Events;
+using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Interfaces.Repositories;
 using TaskEntity = TaskGenie.Domain.Entities.Task;
 
@@ -12,22 +13,25 @@ public sealed record UpdateTaskCommand(
     string? Status,
     string? Priority,
     string? Deadline,
+    string? StartDate,
     int? EstimatedTime,
     int? ActualTime,
     int? Difficulty
 ) : IRequest<bool>;
 
 public sealed class UpdateTaskCommandHandler(
+    IResourceAuthorizationService authz,
     ITaskRepository taskRepo,
     IMediator mediator
 ) : IRequestHandler<UpdateTaskCommand, bool>
 {
     public async Task<bool> Handle(UpdateTaskCommand cmd, CancellationToken ct)
     {
-        var task = await taskRepo.GetByIdAsync(cmd.TaskId, ct);
-        if (task is null || task.ProjectId is null) return false;
+        var task = await authz.EnsureCanManageTaskAsync(cmd.TaskId, ct);
+        if (task.ProjectId is null) return false;
 
         var deadline = !string.IsNullOrEmpty(cmd.Deadline) && DateOnly.TryParse(cmd.Deadline, out var dl) ? dl : (DateOnly?)null;
+        var startDate = !string.IsNullOrEmpty(cmd.StartDate) && DateOnly.TryParse(cmd.StartDate, out var sd) ? sd : (DateOnly?)null;
 
         task.Update(
             title: cmd.Title,
@@ -35,6 +39,7 @@ public sealed class UpdateTaskCommandHandler(
             status: cmd.Status,
             priority: cmd.Priority,
             deadline: deadline,
+            startDate: startDate,
             estimatedTime: cmd.EstimatedTime,
             actualTime: cmd.ActualTime,
             difficulty: cmd.Difficulty

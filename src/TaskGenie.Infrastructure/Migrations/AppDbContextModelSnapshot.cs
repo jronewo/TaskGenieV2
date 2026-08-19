@@ -96,6 +96,79 @@ namespace TaskGenie.Infrastructure.Migrations
                     b.ToTable("ai_analysis", (string)null);
                 });
 
+            modelBuilder.Entity("TaskGenie.Domain.Entities.AiExecutionLog", b =>
+                {
+                    b.Property<int>("AiExecutionLogId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("ai_execution_log_id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("AiExecutionLogId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("error_message");
+
+                    b.Property<string>("Feature")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("feature");
+
+                    b.Property<string>("InputSnapshot")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("input_snapshot");
+
+                    b.Property<int>("LatencyMs")
+                        .HasColumnType("int")
+                        .HasColumnName("latency_ms");
+
+                    b.Property<string>("ModelVersion")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("model_version");
+
+                    b.Property<string>("OutputSnapshot")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("output_snapshot");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("provider");
+
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("run_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasColumnName("status");
+
+                    b.Property<int?>("TaskId")
+                        .HasColumnType("int")
+                        .HasColumnName("task_id");
+
+                    b.HasKey("AiExecutionLogId")
+                        .HasName("PK_ai_execution_logs");
+
+                    b.HasIndex("RunId")
+                        .IsUnique();
+
+                    b.HasIndex("TaskId");
+
+                    b.ToTable("ai_execution_logs", (string)null);
+                });
+
             modelBuilder.Entity("TaskGenie.Domain.Entities.AiRecommendation", b =>
                 {
                     b.Property<int>("Id")
@@ -104,6 +177,38 @@ namespace TaskGenie.Infrastructure.Migrations
                         .HasColumnName("id");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("(getdate())");
+
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("decided_at");
+
+                    b.Property<int?>("DecidedBy")
+                        .HasColumnType("int")
+                        .HasColumnName("decided_by");
+
+                    b.Property<string>("ModelVersion")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("model_version");
+
+                    b.Property<string>("Outcome")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("outcome");
+
+                    b.Property<double>("PerformanceScore")
+                        .HasColumnType("float")
+                        .HasColumnName("performance_score");
+
+                    b.Property<int>("Rank")
+                        .HasColumnType("int")
+                        .HasColumnName("rank");
 
                     b.Property<string>("Reason")
                         .HasColumnType("nvarchar(max)")
@@ -116,9 +221,29 @@ namespace TaskGenie.Infrastructure.Migrations
                         .HasDefaultValue("assign")
                         .HasColumnName("recommendation_type");
 
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("run_id");
+
                     b.Property<double?>("Score")
                         .HasColumnType("float")
                         .HasColumnName("score");
+
+                    b.Property<double>("SemanticSimilarityScore")
+                        .HasColumnType("float")
+                        .HasColumnName("semantic_similarity_score");
+
+                    b.Property<double>("SkillMatchScore")
+                        .HasColumnType("float")
+                        .HasColumnName("skill_match_score");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("GENERATED")
+                        .HasColumnName("status");
 
                     b.Property<int?>("SuggestedUserId")
                         .HasColumnType("int")
@@ -128,14 +253,76 @@ namespace TaskGenie.Infrastructure.Migrations
                         .HasColumnType("int")
                         .HasColumnName("task_id");
 
+                    b.Property<double>("WorkloadScore")
+                        .HasColumnType("float")
+                        .HasColumnName("workload_score");
+
                     b.HasKey("Id")
                         .HasName("PK__ai_recom__3213E83FF227C486");
 
                     b.HasIndex("SuggestedUserId");
 
-                    b.HasIndex("TaskId");
+                    b.HasIndex("TaskId", "RunId", "Rank");
 
                     b.ToTable("ai_recommendations", (string)null);
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.Attachment", b =>
+                {
+                    b.Property<int>("AttachmentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("attachment_id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("AttachmentId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasColumnName("file_name");
+
+                    b.Property<string>("MimeType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("mime_type");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.Property<string>("StoragePublicId")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("storage_public_id");
+
+                    b.Property<string>("StorageUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)")
+                        .HasColumnName("storage_url");
+
+                    b.Property<int>("TaskId")
+                        .HasColumnType("int")
+                        .HasColumnName("task_id");
+
+                    b.Property<int>("UploadedBy")
+                        .HasColumnType("int")
+                        .HasColumnName("uploaded_by");
+
+                    b.HasKey("AttachmentId")
+                        .HasName("PK_attachments");
+
+                    b.HasIndex("TaskId");
+
+                    b.HasIndex("UploadedBy");
+
+                    b.ToTable("attachments", (string)null);
                 });
 
             modelBuilder.Entity("TaskGenie.Domain.Entities.Evaluation", b =>
@@ -334,6 +521,11 @@ namespace TaskGenie.Infrastructure.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("(getdate())");
 
+                    b.Property<string>("ImageUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("image_url");
+
                     b.Property<bool>("IsRead")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
@@ -343,6 +535,10 @@ namespace TaskGenie.Infrastructure.Migrations
                     b.Property<string>("Message")
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("message");
+
+                    b.Property<int?>("ProjectId")
+                        .HasColumnType("int")
+                        .HasColumnName("project_id");
 
                     b.Property<int?>("ReferenceId")
                         .HasColumnType("int")
@@ -369,6 +565,8 @@ namespace TaskGenie.Infrastructure.Migrations
 
                     b.HasKey("NotificationId")
                         .HasName("PK_notifications");
+
+                    b.HasIndex("ProjectId");
 
                     b.HasIndex("UserId");
 
@@ -421,6 +619,336 @@ namespace TaskGenie.Infrastructure.Migrations
                     b.ToTable("organizations", (string)null);
                 });
 
+            modelBuilder.Entity("TaskGenie.Domain.Entities.OrganizationMember", b =>
+                {
+                    b.Property<int>("OrganizationMemberId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("organization_member_id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("OrganizationMemberId"));
+
+                    b.Property<int?>("InvitedBy")
+                        .HasColumnType("int")
+                        .HasColumnName("invited_by");
+
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("joined_at");
+
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("int")
+                        .HasColumnName("organization_id");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("MEMBER")
+                        .HasColumnName("role");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("ACTIVE")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("OrganizationMemberId")
+                        .HasName("PK_organization_members");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("OrganizationId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("organization_members", (string)null);
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.PasswordResetToken", b =>
+                {
+                    b.Property<int>("PasswordResetTokenId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("password_reset_token_id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("PasswordResetTokenId"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime")
+                        .HasColumnName("expires_at_utc");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)")
+                        .HasColumnName("token_hash");
+
+                    b.Property<DateTime?>("UsedAtUtc")
+                        .HasColumnType("datetime")
+                        .HasColumnName("used_at_utc");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("PasswordResetTokenId")
+                        .HasName("PK_password_reset_tokens");
+
+                    b.HasIndex("ExpiresAtUtc");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("password_reset_tokens", (string)null);
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.PaymentTransaction", b =>
+                {
+                    b.Property<int>("PaymentTransactionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("payment_transaction_id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("PaymentTransactionId"));
+
+                    b.Property<int>("AmountMinor")
+                        .HasColumnType("int")
+                        .HasColumnName("amount_minor");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)")
+                        .HasColumnName("currency");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<bool>("IsTest")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_test");
+
+                    b.Property<int?>("OrganizationId")
+                        .HasColumnType("int")
+                        .HasColumnName("organization_id");
+
+                    b.Property<int>("PlanId")
+                        .HasColumnType("int")
+                        .HasColumnName("plan_id");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("provider");
+
+                    b.Property<string>("ProviderReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("provider_reference");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("status");
+
+                    b.Property<int>("SubscriptionId")
+                        .HasColumnType("int")
+                        .HasColumnName("subscription_id");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("int")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("PaymentTransactionId")
+                        .HasName("PK_payment_transactions");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("PlanId");
+
+                    b.HasIndex("SubscriptionId");
+
+                    b.ToTable("payment_transactions", (string)null);
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.Plan", b =>
+                {
+                    b.Property<int>("PlanId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("plan_id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("PlanId"));
+
+                    b.Property<bool>("AiChatbotEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("ai_chatbot_enabled");
+
+                    b.Property<string>("Audience")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("audience");
+
+                    b.Property<string>("BillingInterval")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("billing_interval");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)")
+                        .HasColumnName("currency");
+
+                    b.Property<int?>("DurationDays")
+                        .HasColumnType("int")
+                        .HasColumnName("duration_days");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_active");
+
+                    b.Property<int?>("MemberLimit")
+                        .HasColumnType("int")
+                        .HasColumnName("member_limit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("PriceMinor")
+                        .HasColumnType("int")
+                        .HasColumnName("price_minor");
+
+                    b.Property<int?>("ProjectLimit")
+                        .HasColumnType("int")
+                        .HasColumnName("project_limit");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int")
+                        .HasColumnName("sort_order");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("PlanId")
+                        .HasName("PK_plans");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("plans", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            PlanId = 1,
+                            AiChatbotEnabled = false,
+                            Audience = "PERSONAL",
+                            BillingInterval = "NONE",
+                            Code = "FREE_PERSONAL",
+                            CreatedAt = new DateTime(2026, 8, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Currency = "VND",
+                            IsActive = true,
+                            Name = "Free",
+                            PriceMinor = 0,
+                            ProjectLimit = 2,
+                            SortOrder = 1
+                        },
+                        new
+                        {
+                            PlanId = 2,
+                            AiChatbotEnabled = true,
+                            Audience = "PERSONAL",
+                            BillingInterval = "MONTHLY",
+                            Code = "PRO_PERSONAL",
+                            CreatedAt = new DateTime(2026, 8, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Currency = "VND",
+                            IsActive = true,
+                            Name = "Pro",
+                            PriceMinor = 249000,
+                            SortOrder = 2
+                        },
+                        new
+                        {
+                            PlanId = 3,
+                            AiChatbotEnabled = false,
+                            Audience = "ORGANIZATION",
+                            BillingInterval = "NONE",
+                            Code = "FREE_ORGANIZATION",
+                            CreatedAt = new DateTime(2026, 8, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Currency = "VND",
+                            IsActive = false,
+                            MemberLimit = 5,
+                            Name = "Organization Free",
+                            PriceMinor = 0,
+                            ProjectLimit = 2,
+                            SortOrder = 1
+                        },
+                        new
+                        {
+                            PlanId = 4,
+                            AiChatbotEnabled = true,
+                            Audience = "ORGANIZATION",
+                            BillingInterval = "MONTHLY",
+                            Code = "PRO_ORGANIZATION",
+                            CreatedAt = new DateTime(2026, 8, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Currency = "VND",
+                            IsActive = true,
+                            Name = "Organization Pro",
+                            PriceMinor = 1199000,
+                            SortOrder = 2
+                        });
+                });
+
             modelBuilder.Entity("TaskGenie.Domain.Entities.Project", b =>
                 {
                     b.Property<int>("ProjectId")
@@ -469,6 +997,14 @@ namespace TaskGenie.Infrastructure.Migrations
                         .HasDefaultValue(0)
                         .HasColumnName("progress");
 
+                    b.Property<int?>("RiskAutomationHourUtc")
+                        .HasColumnType("int")
+                        .HasColumnName("risk_automation_hour_utc");
+
+                    b.Property<DateTime?>("RiskAutomationLastRunAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("risk_automation_last_run_at");
+
                     b.Property<string>("Status")
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)")
@@ -481,6 +1017,10 @@ namespace TaskGenie.Infrastructure.Migrations
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime")
                         .HasColumnName("updated_at");
+
+                    b.Property<int?>("WorkingHoursPerDay")
+                        .HasColumnType("int")
+                        .HasColumnName("working_hours_per_day");
 
                     b.HasKey("ProjectId")
                         .HasName("PK__projects__BC799E1F9E7CEF3B");
@@ -547,6 +1087,312 @@ namespace TaskGenie.Infrastructure.Migrations
                     b.ToTable("project_evaluations", (string)null);
                 });
 
+            modelBuilder.Entity("TaskGenie.Domain.Entities.RefreshToken", b =>
+                {
+                    b.Property<int>("RefreshTokenId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("refresh_token_id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("RefreshTokenId"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime")
+                        .HasColumnName("expires_at_utc");
+
+                    b.Property<Guid>("FamilyId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("family_id");
+
+                    b.Property<int?>("ReplacedByTokenId")
+                        .HasColumnType("int")
+                        .HasColumnName("replaced_by_token_id");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("datetime")
+                        .HasColumnName("revoked_at_utc");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)")
+                        .HasColumnName("token_hash");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("RefreshTokenId")
+                        .HasName("PK_refresh_tokens");
+
+                    b.HasIndex("ExpiresAtUtc");
+
+                    b.HasIndex("FamilyId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("refresh_tokens", (string)null);
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.RiskFactor", b =>
+                {
+                    b.Property<int>("RiskFactorId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("risk_factor_id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("RiskFactorId"));
+
+                    b.Property<double>("Contribution")
+                        .HasColumnType("float")
+                        .HasColumnName("contribution");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Evidence")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)")
+                        .HasColumnName("evidence");
+
+                    b.Property<string>("FactorCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("factor_code");
+
+                    b.Property<double>("NormalizedScore")
+                        .HasColumnType("float")
+                        .HasColumnName("normalized_score");
+
+                    b.Property<string>("RawValue")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("raw_value");
+
+                    b.Property<int?>("RiskRuleId")
+                        .HasColumnType("int")
+                        .HasColumnName("risk_rule_id");
+
+                    b.Property<int>("RiskScoreHistoryId")
+                        .HasColumnType("int")
+                        .HasColumnName("risk_score_history_id");
+
+                    b.Property<double>("Weight")
+                        .HasColumnType("float")
+                        .HasColumnName("weight");
+
+                    b.HasKey("RiskFactorId")
+                        .HasName("PK_risk_factors");
+
+                    b.HasIndex("RiskRuleId");
+
+                    b.HasIndex("RiskScoreHistoryId");
+
+                    b.ToTable("risk_factors", (string)null);
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.RiskRule", b =>
+                {
+                    b.Property<int>("RiskRuleId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("risk_rule_id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("RiskRuleId"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("FactorType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("factor_type");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("version");
+
+                    b.Property<double>("Weight")
+                        .HasColumnType("float")
+                        .HasColumnName("weight");
+
+                    b.HasKey("RiskRuleId")
+                        .HasName("PK_risk_rules");
+
+                    b.HasIndex("Code", "Version")
+                        .IsUnique();
+
+                    b.ToTable("risk_rules", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            RiskRuleId = 1,
+                            Code = "DEADLINE",
+                            CreatedAt = new DateTime(2026, 7, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Deadline proximity and remaining effort.",
+                            FactorType = "DEADLINE",
+                            IsActive = true,
+                            Name = "Deadline pressure",
+                            Version = "risk-v1",
+                            Weight = 0.29999999999999999
+                        },
+                        new
+                        {
+                            RiskRuleId = 2,
+                            Code = "PROGRESS",
+                            CreatedAt = new DateTime(2026, 7, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Expected versus actual progress.",
+                            FactorType = "PROGRESS",
+                            IsActive = true,
+                            Name = "Progress variance",
+                            Version = "risk-v1",
+                            Weight = 0.25
+                        },
+                        new
+                        {
+                            RiskRuleId = 3,
+                            Code = "DEPENDENCY",
+                            CreatedAt = new DateTime(2026, 7, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Incomplete dependencies and reported blockers.",
+                            FactorType = "DEPENDENCY",
+                            IsActive = true,
+                            Name = "Dependencies and blockers",
+                            Version = "risk-v1",
+                            Weight = 0.20000000000000001
+                        },
+                        new
+                        {
+                            RiskRuleId = 4,
+                            Code = "WORKLOAD",
+                            CreatedAt = new DateTime(2026, 7, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Active workload and declared capacity.",
+                            FactorType = "WORKLOAD",
+                            IsActive = true,
+                            Name = "Assignee workload",
+                            Version = "risk-v1",
+                            Weight = 0.14999999999999999
+                        },
+                        new
+                        {
+                            RiskRuleId = 5,
+                            Code = "HISTORICAL",
+                            CreatedAt = new DateTime(2026, 7, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Historical deadline performance.",
+                            FactorType = "HISTORICAL",
+                            IsActive = true,
+                            Name = "Historical delivery",
+                            Version = "risk-v1",
+                            Weight = 0.10000000000000001
+                        });
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.RiskScoreHistory", b =>
+                {
+                    b.Property<int>("RiskScoreHistoryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("risk_score_history_id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("RiskScoreHistoryId"));
+
+                    b.Property<string>("CalculationMode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("calculation_mode");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Explanation")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("explanation");
+
+                    b.Property<string>("MitigationActions")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("mitigation_actions");
+
+                    b.Property<int?>("ProjectId")
+                        .HasColumnType("int")
+                        .HasColumnName("project_id");
+
+                    b.Property<string>("RiskLevel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("risk_level");
+
+                    b.Property<string>("RuleVersion")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("rule_version");
+
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("run_id");
+
+                    b.Property<int>("TaskId")
+                        .HasColumnType("int")
+                        .HasColumnName("task_id");
+
+                    b.Property<double>("TotalScore")
+                        .HasColumnType("float")
+                        .HasColumnName("total_score");
+
+                    b.HasKey("RiskScoreHistoryId")
+                        .HasName("PK_risk_score_history");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("RunId")
+                        .IsUnique();
+
+                    b.HasIndex("TaskId");
+
+                    b.ToTable("risk_score_history", (string)null);
+                });
+
             modelBuilder.Entity("TaskGenie.Domain.Entities.Skill", b =>
                 {
                     b.Property<int>("SkillId")
@@ -555,6 +1401,12 @@ namespace TaskGenie.Infrastructure.Migrations
                         .HasColumnName("skill_id");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("SkillId"));
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
 
                     b.Property<string>("SkillName")
                         .IsRequired()
@@ -569,6 +1421,78 @@ namespace TaskGenie.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("skills", (string)null);
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.Subscription", b =>
+                {
+                    b.Property<int>("SubscriptionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("subscription_id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("SubscriptionId"));
+
+                    b.Property<bool>("CancelAtPeriodEnd")
+                        .HasColumnType("bit")
+                        .HasColumnName("cancel_at_period_end");
+
+                    b.Property<DateTime?>("CanceledAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("canceled_at");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime?>("CurrentPeriodEnd")
+                        .HasColumnType("datetime")
+                        .HasColumnName("current_period_end");
+
+                    b.Property<int?>("OrganizationId")
+                        .HasColumnType("int")
+                        .HasColumnName("organization_id");
+
+                    b.Property<string>("OwnerType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("owner_type");
+
+                    b.Property<int>("PlanId")
+                        .HasColumnType("int")
+                        .HasColumnName("plan_id");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("int")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("SubscriptionId")
+                        .HasName("PK_subscriptions");
+
+                    b.HasIndex("PlanId");
+
+                    b.HasIndex("OrganizationId", "Status");
+
+                    b.HasIndex("UserId", "Status");
+
+                    b.ToTable("subscriptions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_subscriptions_owner_xor", "(user_id IS NOT NULL AND organization_id IS NULL) OR (user_id IS NULL AND organization_id IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("TaskGenie.Domain.Entities.Task", b =>
@@ -642,10 +1566,18 @@ namespace TaskGenie.Infrastructure.Migrations
                         .HasColumnType("nvarchar(20)")
                         .HasColumnName("risk_level");
 
+                    b.Property<DateOnly?>("StartDate")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date");
+
                     b.Property<string>("Status")
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
+
+                    b.Property<int?>("TaskTypeId")
+                        .HasColumnType("int")
+                        .HasColumnName("task_type_id");
 
                     b.Property<string>("Title")
                         .HasMaxLength(255)
@@ -664,6 +1596,8 @@ namespace TaskGenie.Infrastructure.Migrations
                     b.HasIndex("CreatedBy");
 
                     b.HasIndex("ProjectId");
+
+                    b.HasIndex("TaskTypeId");
 
                     b.ToTable("tasks", null, t =>
                         {
@@ -788,6 +1722,65 @@ namespace TaskGenie.Infrastructure.Migrations
                     b.ToTable("task_embeddings", (string)null);
                 });
 
+            modelBuilder.Entity("TaskGenie.Domain.Entities.TaskEvidence", b =>
+                {
+                    b.Property<int>("EvidenceId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("evidence_id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("EvidenceId"));
+
+                    b.Property<int?>("AttachmentId")
+                        .HasColumnType("int")
+                        .HasColumnName("attachment_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("EvidenceType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("evidence_type");
+
+                    b.Property<string>("ExternalUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)")
+                        .HasColumnName("external_url");
+
+                    b.Property<int>("SubmittedBy")
+                        .HasColumnType("int")
+                        .HasColumnName("submitted_by");
+
+                    b.Property<int>("TaskId")
+                        .HasColumnType("int")
+                        .HasColumnName("task_id");
+
+                    b.Property<int?>("TaskLogId")
+                        .HasColumnType("int")
+                        .HasColumnName("task_log_id");
+
+                    b.HasKey("EvidenceId")
+                        .HasName("PK_task_evidences");
+
+                    b.HasIndex("AttachmentId");
+
+                    b.HasIndex("SubmittedBy");
+
+                    b.HasIndex("TaskId");
+
+                    b.HasIndex("TaskLogId");
+
+                    b.ToTable("task_evidences", (string)null);
+                });
+
             modelBuilder.Entity("TaskGenie.Domain.Entities.TaskLog", b =>
                 {
                     b.Property<int>("LogId")
@@ -856,6 +1849,112 @@ namespace TaskGenie.Infrastructure.Migrations
                     b.ToTable("TaskRequiredSkill", (string)null);
                 });
 
+            modelBuilder.Entity("TaskGenie.Domain.Entities.TaskType", b =>
+                {
+                    b.Property<int>("TaskTypeId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("task_type_id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("TaskTypeId"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasColumnName("code");
+
+                    b.Property<string>("ColorHex")
+                        .HasMaxLength(9)
+                        .HasColumnType("nvarchar(9)")
+                        .HasColumnName("color_hex");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)")
+                        .HasColumnName("name");
+
+                    b.HasKey("TaskTypeId");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("task_types", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            TaskTypeId = 1,
+                            Code = "DEVELOP",
+                            ColorHex = "#3B82F6",
+                            IsActive = true,
+                            Name = "Develop"
+                        },
+                        new
+                        {
+                            TaskTypeId = 2,
+                            Code = "BUG",
+                            ColorHex = "#EF4444",
+                            IsActive = true,
+                            Name = "Bug"
+                        },
+                        new
+                        {
+                            TaskTypeId = 3,
+                            Code = "TESTING",
+                            ColorHex = "#10B981",
+                            IsActive = true,
+                            Name = "Testing"
+                        },
+                        new
+                        {
+                            TaskTypeId = 4,
+                            Code = "MIGRATION",
+                            ColorHex = "#F59E0B",
+                            IsActive = true,
+                            Name = "Migration"
+                        },
+                        new
+                        {
+                            TaskTypeId = 5,
+                            Code = "RESEARCH",
+                            ColorHex = "#8B5CF6",
+                            IsActive = true,
+                            Name = "Research"
+                        },
+                        new
+                        {
+                            TaskTypeId = 6,
+                            Code = "DOCUMENTATION",
+                            ColorHex = "#64748B",
+                            IsActive = true,
+                            Name = "Documentation"
+                        },
+                        new
+                        {
+                            TaskTypeId = 7,
+                            Code = "DESIGN",
+                            ColorHex = "#EC4899",
+                            IsActive = true,
+                            Name = "Design"
+                        },
+                        new
+                        {
+                            TaskTypeId = 8,
+                            Code = "DEVOPS",
+                            ColorHex = "#0EA5E9",
+                            IsActive = true,
+                            Name = "DevOps"
+                        });
+                });
+
             modelBuilder.Entity("TaskGenie.Domain.Entities.Team", b =>
                 {
                     b.Property<int>("TeamId")
@@ -872,6 +1971,12 @@ namespace TaskGenie.Infrastructure.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("description");
+
+                    b.Property<bool>("IsProjectManaged")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_project_managed");
 
                     b.Property<string>("Name")
                         .HasMaxLength(255)
@@ -932,6 +2037,12 @@ namespace TaskGenie.Infrastructure.Migrations
                     b.Property<string>("Avatar")
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("avatar");
+
+                    b.Property<string>("BanReason")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("BannedUntil")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("CreatedAt")
                         .ValueGeneratedOnAdd()
@@ -1118,6 +2229,17 @@ namespace TaskGenie.Infrastructure.Migrations
                     b.Navigation("Task");
                 });
 
+            modelBuilder.Entity("TaskGenie.Domain.Entities.AiExecutionLog", b =>
+                {
+                    b.HasOne("TaskGenie.Domain.Entities.Task", "Task")
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_ai_execution_logs_tasks");
+
+                    b.Navigation("Task");
+                });
+
             modelBuilder.Entity("TaskGenie.Domain.Entities.AiRecommendation", b =>
                 {
                     b.HasOne("TaskGenie.Domain.Entities.User", "SuggestedUser")
@@ -1133,6 +2255,27 @@ namespace TaskGenie.Infrastructure.Migrations
                     b.Navigation("SuggestedUser");
 
                     b.Navigation("Task");
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.Attachment", b =>
+                {
+                    b.HasOne("TaskGenie.Domain.Entities.Task", "Task")
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_attachments_tasks");
+
+                    b.HasOne("TaskGenie.Domain.Entities.User", "Uploader")
+                        .WithMany()
+                        .HasForeignKey("UploadedBy")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_attachments_users");
+
+                    b.Navigation("Task");
+
+                    b.Navigation("Uploader");
                 });
 
             modelBuilder.Entity("TaskGenie.Domain.Entities.Evaluation", b =>
@@ -1204,10 +2347,17 @@ namespace TaskGenie.Infrastructure.Migrations
 
             modelBuilder.Entity("TaskGenie.Domain.Entities.Notification", b =>
                 {
+                    b.HasOne("TaskGenie.Domain.Entities.Project", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("TaskGenie.Domain.Entities.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .HasConstraintName("FK_notifications_users");
+
+                    b.Navigation("Project");
 
                     b.Navigation("User");
                 });
@@ -1220,6 +2370,60 @@ namespace TaskGenie.Infrastructure.Migrations
                         .HasConstraintName("FK_organizations_users");
 
                     b.Navigation("Owner");
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.OrganizationMember", b =>
+                {
+                    b.HasOne("TaskGenie.Domain.Entities.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_organization_members_organizations");
+
+                    b.HasOne("TaskGenie.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_organization_members_users");
+
+                    b.Navigation("Organization");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.PasswordResetToken", b =>
+                {
+                    b.HasOne("TaskGenie.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_password_reset_tokens_users");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.PaymentTransaction", b =>
+                {
+                    b.HasOne("TaskGenie.Domain.Entities.Plan", "Plan")
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_payment_transactions_plans");
+
+                    b.HasOne("TaskGenie.Domain.Entities.Subscription", "Subscription")
+                        .WithMany()
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_payment_transactions_subscriptions");
+
+                    b.Navigation("Plan");
+
+                    b.Navigation("Subscription");
                 });
 
             modelBuilder.Entity("TaskGenie.Domain.Entities.Project", b =>
@@ -1264,6 +2468,86 @@ namespace TaskGenie.Infrastructure.Migrations
                     b.Navigation("Project");
                 });
 
+            modelBuilder.Entity("TaskGenie.Domain.Entities.RefreshToken", b =>
+                {
+                    b.HasOne("TaskGenie.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_refresh_tokens_users");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.RiskFactor", b =>
+                {
+                    b.HasOne("TaskGenie.Domain.Entities.RiskRule", "RiskRule")
+                        .WithMany()
+                        .HasForeignKey("RiskRuleId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_risk_factors_risk_rules");
+
+                    b.HasOne("TaskGenie.Domain.Entities.RiskScoreHistory", "RiskScoreHistory")
+                        .WithMany("Factors")
+                        .HasForeignKey("RiskScoreHistoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_risk_factors_risk_score_history");
+
+                    b.Navigation("RiskRule");
+
+                    b.Navigation("RiskScoreHistory");
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.RiskScoreHistory", b =>
+                {
+                    b.HasOne("TaskGenie.Domain.Entities.Project", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_risk_score_history_projects");
+
+                    b.HasOne("TaskGenie.Domain.Entities.Task", "Task")
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_risk_score_history_tasks");
+
+                    b.Navigation("Project");
+
+                    b.Navigation("Task");
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.Subscription", b =>
+                {
+                    b.HasOne("TaskGenie.Domain.Entities.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_subscriptions_organizations");
+
+                    b.HasOne("TaskGenie.Domain.Entities.Plan", "Plan")
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_subscriptions_plans");
+
+                    b.HasOne("TaskGenie.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_subscriptions_users");
+
+                    b.Navigation("Organization");
+
+                    b.Navigation("Plan");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("TaskGenie.Domain.Entities.Task", b =>
                 {
                     b.HasOne("TaskGenie.Domain.Entities.User", "CreatedByNavigation")
@@ -1276,9 +2560,16 @@ namespace TaskGenie.Infrastructure.Migrations
                         .HasForeignKey("ProjectId")
                         .HasConstraintName("FK__tasks__project_i__5DCAEF64");
 
+                    b.HasOne("TaskGenie.Domain.Entities.TaskType", "TaskType")
+                        .WithMany("Tasks")
+                        .HasForeignKey("TaskTypeId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("CreatedByNavigation");
 
                     b.Navigation("Project");
+
+                    b.Navigation("TaskType");
                 });
 
             modelBuilder.Entity("TaskGenie.Domain.Entities.TaskAssignee", b =>
@@ -1345,6 +2636,43 @@ namespace TaskGenie.Infrastructure.Migrations
                         .HasConstraintName("FK_task_embeddings_tasks");
 
                     b.Navigation("Task");
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.TaskEvidence", b =>
+                {
+                    b.HasOne("TaskGenie.Domain.Entities.Attachment", "Attachment")
+                        .WithMany()
+                        .HasForeignKey("AttachmentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_task_evidences_attachments");
+
+                    b.HasOne("TaskGenie.Domain.Entities.User", "Submitter")
+                        .WithMany()
+                        .HasForeignKey("SubmittedBy")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_task_evidences_users");
+
+                    b.HasOne("TaskGenie.Domain.Entities.Task", "Task")
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_task_evidences_tasks");
+
+                    b.HasOne("TaskGenie.Domain.Entities.TaskLog", "TaskLog")
+                        .WithMany()
+                        .HasForeignKey("TaskLogId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_task_evidences_task_logs");
+
+                    b.Navigation("Attachment");
+
+                    b.Navigation("Submitter");
+
+                    b.Navigation("Task");
+
+                    b.Navigation("TaskLog");
                 });
 
             modelBuilder.Entity("TaskGenie.Domain.Entities.TaskLog", b =>
@@ -1474,6 +2802,11 @@ namespace TaskGenie.Infrastructure.Migrations
                     b.Navigation("Tasks");
                 });
 
+            modelBuilder.Entity("TaskGenie.Domain.Entities.RiskScoreHistory", b =>
+                {
+                    b.Navigation("Factors");
+                });
+
             modelBuilder.Entity("TaskGenie.Domain.Entities.Skill", b =>
                 {
                     b.Navigation("TaskRequiredSkills");
@@ -1500,6 +2833,11 @@ namespace TaskGenie.Infrastructure.Migrations
                     b.Navigation("TaskLogs");
 
                     b.Navigation("TaskRequiredSkills");
+                });
+
+            modelBuilder.Entity("TaskGenie.Domain.Entities.TaskType", b =>
+                {
+                    b.Navigation("Tasks");
                 });
 
             modelBuilder.Entity("TaskGenie.Domain.Entities.Team", b =>

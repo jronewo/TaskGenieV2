@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaskGenie.Domain.Entities;
 using TaskEntity = TaskGenie.Domain.Entities.Task;
 
@@ -23,6 +24,18 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<AiRecommendation> AiRecommendations { get; set; }
 
+    public virtual DbSet<AiExecutionLog> AiExecutionLogs { get; set; }
+
+    public virtual DbSet<Attachment> Attachments { get; set; }
+
+    public virtual DbSet<TaskEvidence> TaskEvidences { get; set; }
+
+    public virtual DbSet<RiskRule> RiskRules { get; set; }
+
+    public virtual DbSet<RiskFactor> RiskFactors { get; set; }
+
+    public virtual DbSet<RiskScoreHistory> RiskScoreHistories { get; set; }
+
     public virtual DbSet<Evaluation> Evaluations { get; set; }
 
     public virtual DbSet<Invitation> Invitations { get; set; }
@@ -32,6 +45,8 @@ public partial class AppDbContext : DbContext
     public virtual DbSet<ProjectEvaluation> ProjectEvaluations { get; set; }
 
     public virtual DbSet<Organization> Organizations { get; set; }
+
+    public virtual DbSet<TaskType> TaskTypes { get; set; }
 
     public virtual DbSet<Skill> Skills { get; set; }
 
@@ -66,6 +81,45 @@ public partial class AppDbContext : DbContext
     public virtual DbSet<Meeting> Meetings { get; set; }
 
     public virtual DbSet<MeetingAttendee> MeetingAttendees { get; set; }
+
+    public virtual DbSet<RefreshToken> RefreshTokens { get; set; }
+
+    public virtual DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
+
+    public virtual DbSet<OrganizationMember> OrganizationMembers { get; set; }
+
+    public virtual DbSet<Plan> Plans { get; set; }
+
+    public virtual DbSet<Subscription> Subscriptions { get; set; }
+
+    public virtual DbSet<PaymentTransaction> PaymentTransactions { get; set; }
+
+    /// <summary>
+    /// Every DateTime read from the database is UTC.
+    ///
+    /// SQL Server's `datetime` carries no offset, so EF materialises it with
+    /// <c>DateTimeKind.Unspecified</c>. System.Text.Json then writes it without the trailing `Z`,
+    /// and a browser or React Native client reads a `Z`-less timestamp as *local* time — so a
+    /// notification written at 10:17 UTC displayed as 10:17 in Vietnam, seven hours early.
+    ///
+    /// The values were always stored as UTC (`DateTime.UtcNow` throughout the domain); the only
+    /// thing missing was saying so on the way back out. Applied through a convention so a new
+    /// entity cannot forget it, and stated once rather than repeated per property.
+    /// </summary>
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        configurationBuilder.Properties<DateTime>().HaveConversion<UtcDateTimeConverter>();
+        configurationBuilder.Properties<DateTime?>().HaveConversion<NullableUtcDateTimeConverter>();
+    }
+
+    /// <summary>Writes the value untouched, tags what comes back as UTC.</summary>
+    private sealed class UtcDateTimeConverter() : ValueConverter<DateTime, DateTime>(
+        v => v,
+        v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
+
+    private sealed class NullableUtcDateTimeConverter() : ValueConverter<DateTime?, DateTime?>(
+        v => v,
+        v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : v);
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -126,6 +180,23 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.Score).HasColumnName("score");
             entity.Property(e => e.SuggestedUserId).HasColumnName("suggested_user_id");
             entity.Property(e => e.TaskId).HasColumnName("task_id");
+            entity.Property(e => e.RunId).HasColumnName("run_id");
+            entity.Property(e => e.Rank).HasColumnName("rank");
+            entity.Property(e => e.SkillMatchScore).HasColumnName("skill_match_score");
+            entity.Property(e => e.SemanticSimilarityScore).HasColumnName("semantic_similarity_score");
+            entity.Property(e => e.WorkloadScore).HasColumnName("workload_score");
+            entity.Property(e => e.PerformanceScore).HasColumnName("performance_score");
+            entity.Property(e => e.Status).HasMaxLength(20).HasDefaultValue("GENERATED").HasColumnName("status");
+            entity.Property(e => e.DecidedBy).HasColumnName("decided_by");
+            entity.Property(e => e.DecidedAt).HasColumnType("datetime").HasColumnName("decided_at");
+            entity.Property(e => e.Outcome).HasColumnName("outcome");
+            entity.Property(e => e.ModelVersion).HasMaxLength(50).HasColumnName("model_version");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("(getdate())")
+                .HasColumnType("datetime")
+                .HasColumnName("created_at");
+
+            entity.HasIndex(e => new { e.TaskId, e.RunId, e.Rank });
 
             entity.HasOne(d => d.SuggestedUser).WithMany(p => p.AiRecommendations)
                 .HasForeignKey(d => d.SuggestedUserId)
@@ -134,6 +205,157 @@ public partial class AppDbContext : DbContext
             entity.HasOne(d => d.Task).WithMany(p => p.AiRecommendations)
                 .HasForeignKey(d => d.TaskId)
                 .HasConstraintName("FK__ai_recomm__task___70DDC3D8");
+        });
+
+        modelBuilder.Entity<AiExecutionLog>(entity =>
+        {
+            entity.HasKey(e => e.AiExecutionLogId).HasName("PK_ai_execution_logs");
+            entity.ToTable("ai_execution_logs");
+            entity.HasIndex(e => e.RunId).IsUnique();
+            entity.Property(e => e.AiExecutionLogId).HasColumnName("ai_execution_log_id");
+            entity.Property(e => e.RunId).HasColumnName("run_id");
+            entity.Property(e => e.TaskId).HasColumnName("task_id");
+            entity.Property(e => e.Feature).HasMaxLength(50).HasColumnName("feature");
+            entity.Property(e => e.Provider).HasMaxLength(100).HasColumnName("provider");
+            entity.Property(e => e.ModelVersion).HasMaxLength(100).HasColumnName("model_version");
+            entity.Property(e => e.InputSnapshot).HasColumnName("input_snapshot");
+            entity.Property(e => e.OutputSnapshot).HasColumnName("output_snapshot");
+            entity.Property(e => e.Status).HasMaxLength(30).HasColumnName("status");
+            entity.Property(e => e.LatencyMs).HasColumnName("latency_ms");
+            entity.Property(e => e.ErrorMessage).HasColumnName("error_message");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("created_at");
+            entity.HasOne(e => e.Task).WithMany()
+                .HasForeignKey(e => e.TaskId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("FK_ai_execution_logs_tasks");
+        });
+
+        modelBuilder.Entity<Attachment>(entity =>
+        {
+            entity.HasKey(e => e.AttachmentId).HasName("PK_attachments");
+            entity.ToTable("attachments");
+            entity.Property(e => e.AttachmentId).HasColumnName("attachment_id");
+            entity.Property(e => e.TaskId).HasColumnName("task_id");
+            entity.Property(e => e.FileName).HasMaxLength(255).HasColumnName("file_name");
+            entity.Property(e => e.MimeType).HasMaxLength(100).HasColumnName("mime_type");
+            entity.Property(e => e.SizeBytes).HasColumnName("size_bytes");
+            entity.Property(e => e.StorageUrl).HasMaxLength(2048).HasColumnName("storage_url");
+            entity.Property(e => e.StoragePublicId).HasMaxLength(500).HasColumnName("storage_public_id");
+            entity.Property(e => e.UploadedBy).HasColumnName("uploaded_by");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("created_at");
+            entity.HasOne(e => e.Task).WithMany()
+                .HasForeignKey(e => e.TaskId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_attachments_tasks");
+            entity.HasOne(e => e.Uploader).WithMany()
+                .HasForeignKey(e => e.UploadedBy)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_attachments_users");
+        });
+
+        modelBuilder.Entity<TaskEvidence>(entity =>
+        {
+            entity.HasKey(e => e.EvidenceId).HasName("PK_task_evidences");
+            entity.ToTable("task_evidences");
+            entity.Property(e => e.EvidenceId).HasColumnName("evidence_id");
+            entity.Property(e => e.TaskId).HasColumnName("task_id");
+            entity.Property(e => e.TaskLogId).HasColumnName("task_log_id");
+            entity.Property(e => e.AttachmentId).HasColumnName("attachment_id");
+            entity.Property(e => e.ExternalUrl).HasMaxLength(2048).HasColumnName("external_url");
+            entity.Property(e => e.EvidenceType).HasMaxLength(50).HasColumnName("evidence_type");
+            entity.Property(e => e.Description).HasMaxLength(1000).HasColumnName("description");
+            entity.Property(e => e.SubmittedBy).HasColumnName("submitted_by");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("created_at");
+            entity.HasOne(e => e.Task).WithMany()
+                .HasForeignKey(e => e.TaskId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_task_evidences_tasks");
+            entity.HasOne(e => e.TaskLog).WithMany()
+                .HasForeignKey(e => e.TaskLogId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_task_evidences_task_logs");
+            entity.HasOne(e => e.Attachment).WithMany()
+                .HasForeignKey(e => e.AttachmentId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_task_evidences_attachments");
+            entity.HasOne(e => e.Submitter).WithMany()
+                .HasForeignKey(e => e.SubmittedBy)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_task_evidences_users");
+        });
+
+        modelBuilder.Entity<RiskRule>(entity =>
+        {
+            entity.HasKey(e => e.RiskRuleId).HasName("PK_risk_rules");
+            entity.ToTable("risk_rules");
+            entity.HasIndex(e => new { e.Code, e.Version }).IsUnique();
+            entity.Property(e => e.RiskRuleId).HasColumnName("risk_rule_id");
+            entity.Property(e => e.Code).HasMaxLength(50).HasColumnName("code");
+            entity.Property(e => e.Name).HasMaxLength(150).HasColumnName("name");
+            entity.Property(e => e.FactorType).HasMaxLength(50).HasColumnName("factor_type");
+            entity.Property(e => e.Weight).HasColumnName("weight");
+            entity.Property(e => e.Description).HasMaxLength(1000).HasColumnName("description");
+            entity.Property(e => e.Version).HasMaxLength(50).HasColumnName("version");
+            entity.Property(e => e.IsActive).HasColumnName("is_active");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("created_at");
+
+            var seededAt = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc);
+            entity.HasData(
+                new { RiskRuleId = 1, Code = "DEADLINE", Name = "Deadline pressure", FactorType = "DEADLINE", Weight = 0.30, Description = "Deadline proximity and remaining effort.", Version = "risk-v1", IsActive = true, CreatedAt = seededAt },
+                new { RiskRuleId = 2, Code = "PROGRESS", Name = "Progress variance", FactorType = "PROGRESS", Weight = 0.25, Description = "Expected versus actual progress.", Version = "risk-v1", IsActive = true, CreatedAt = seededAt },
+                new { RiskRuleId = 3, Code = "DEPENDENCY", Name = "Dependencies and blockers", FactorType = "DEPENDENCY", Weight = 0.20, Description = "Incomplete dependencies and reported blockers.", Version = "risk-v1", IsActive = true, CreatedAt = seededAt },
+                new { RiskRuleId = 4, Code = "WORKLOAD", Name = "Assignee workload", FactorType = "WORKLOAD", Weight = 0.15, Description = "Active workload and declared capacity.", Version = "risk-v1", IsActive = true, CreatedAt = seededAt },
+                new { RiskRuleId = 5, Code = "HISTORICAL", Name = "Historical delivery", FactorType = "HISTORICAL", Weight = 0.10, Description = "Historical deadline performance.", Version = "risk-v1", IsActive = true, CreatedAt = seededAt });
+        });
+
+        modelBuilder.Entity<RiskScoreHistory>(entity =>
+        {
+            entity.HasKey(e => e.RiskScoreHistoryId).HasName("PK_risk_score_history");
+            entity.ToTable("risk_score_history");
+            entity.HasIndex(e => e.RunId).IsUnique();
+            entity.Property(e => e.RiskScoreHistoryId).HasColumnName("risk_score_history_id");
+            entity.Property(e => e.RunId).HasColumnName("run_id");
+            entity.Property(e => e.TaskId).HasColumnName("task_id");
+            entity.Property(e => e.ProjectId).HasColumnName("project_id");
+            entity.Property(e => e.TotalScore).HasColumnName("total_score");
+            entity.Property(e => e.RiskLevel).HasMaxLength(20).HasColumnName("risk_level");
+            entity.Property(e => e.RuleVersion).HasMaxLength(50).HasColumnName("rule_version");
+            entity.Property(e => e.CalculationMode).HasMaxLength(50).HasColumnName("calculation_mode");
+            entity.Property(e => e.Explanation).HasColumnName("explanation");
+            entity.Property(e => e.MitigationActions).HasColumnName("mitigation_actions");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("created_at");
+            entity.HasOne(e => e.Task).WithMany()
+                .HasForeignKey(e => e.TaskId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_risk_score_history_tasks");
+            entity.HasOne(e => e.Project).WithMany()
+                .HasForeignKey(e => e.ProjectId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_risk_score_history_projects");
+        });
+
+        modelBuilder.Entity<RiskFactor>(entity =>
+        {
+            entity.HasKey(e => e.RiskFactorId).HasName("PK_risk_factors");
+            entity.ToTable("risk_factors");
+            entity.Property(e => e.RiskFactorId).HasColumnName("risk_factor_id");
+            entity.Property(e => e.RiskScoreHistoryId).HasColumnName("risk_score_history_id");
+            entity.Property(e => e.RiskRuleId).HasColumnName("risk_rule_id");
+            entity.Property(e => e.FactorCode).HasMaxLength(50).HasColumnName("factor_code");
+            entity.Property(e => e.RawValue).HasMaxLength(1000).HasColumnName("raw_value");
+            entity.Property(e => e.NormalizedScore).HasColumnName("normalized_score");
+            entity.Property(e => e.Weight).HasColumnName("weight");
+            entity.Property(e => e.Contribution).HasColumnName("contribution");
+            entity.Property(e => e.Evidence).HasMaxLength(2000).HasColumnName("evidence");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("created_at");
+            entity.HasOne(e => e.RiskScoreHistory).WithMany(history => history.Factors)
+                .HasForeignKey(e => e.RiskScoreHistoryId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_risk_factors_risk_score_history");
+            entity.HasOne(e => e.RiskRule).WithMany()
+                .HasForeignKey(e => e.RiskRuleId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_risk_factors_risk_rules");
         });
 
         modelBuilder.Entity<Evaluation>(entity =>
@@ -260,7 +482,10 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.Progress)
                 .HasDefaultValue(0)
                 .HasColumnName("progress");
+            entity.Property(e => e.WorkingHoursPerDay).HasColumnName("working_hours_per_day");
             entity.Property(e => e.PredictedEndDate).HasColumnName("predicted_end_date");
+            entity.Property(e => e.RiskAutomationHourUtc).HasColumnName("risk_automation_hour_utc");
+            entity.Property(e => e.RiskAutomationLastRunAt).HasColumnType("datetime").HasColumnName("risk_automation_last_run_at");
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("(getdate())")
                 .HasColumnType("datetime")
@@ -279,6 +504,31 @@ public partial class AppDbContext : DbContext
                 .HasConstraintName("FK_projects_organizations");
         });
 
+        modelBuilder.Entity<TaskType>(entity =>
+        {
+            entity.ToTable("task_types");
+
+            entity.HasIndex(e => e.Code).IsUnique();
+
+            entity.Property(e => e.TaskTypeId).HasColumnName("task_type_id");
+            entity.Property(e => e.Code).HasMaxLength(30).HasColumnName("code");
+            entity.Property(e => e.Name).HasMaxLength(60).HasColumnName("name");
+            entity.Property(e => e.ColorHex).HasMaxLength(9).HasColumnName("color_hex");
+            entity.Property(e => e.IsActive).HasDefaultValue(true).HasColumnName("is_active");
+
+            // Seeded through the model rather than a runtime seeder: these are reference data the
+            // application's own filters depend on, not sample content.
+            entity.HasData(
+                new { TaskTypeId = 1, Code = "DEVELOP", Name = "Develop", ColorHex = "#3B82F6", IsActive = true },
+                new { TaskTypeId = 2, Code = "BUG", Name = "Bug", ColorHex = "#EF4444", IsActive = true },
+                new { TaskTypeId = 3, Code = "TESTING", Name = "Testing", ColorHex = "#10B981", IsActive = true },
+                new { TaskTypeId = 4, Code = "MIGRATION", Name = "Migration", ColorHex = "#F59E0B", IsActive = true },
+                new { TaskTypeId = 5, Code = "RESEARCH", Name = "Research", ColorHex = "#8B5CF6", IsActive = true },
+                new { TaskTypeId = 6, Code = "DOCUMENTATION", Name = "Documentation", ColorHex = "#64748B", IsActive = true },
+                new { TaskTypeId = 7, Code = "DESIGN", Name = "Design", ColorHex = "#EC4899", IsActive = true },
+                new { TaskTypeId = 8, Code = "DEVOPS", Name = "DevOps", ColorHex = "#0EA5E9", IsActive = true });
+        });
+
         modelBuilder.Entity<Skill>(entity =>
         {
             entity.HasKey(e => e.SkillId).HasName("PK__skills__FBBA837902EF6DE9");
@@ -291,6 +541,9 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.SkillName)
                 .HasMaxLength(100)
                 .HasColumnName("skill_name");
+            entity.Property(e => e.IsActive)
+                .HasDefaultValue(true)
+                .HasColumnName("is_active");
         });
 
         modelBuilder.Entity<TaskEntity>(entity =>
@@ -307,8 +560,14 @@ public partial class AppDbContext : DbContext
                 .HasColumnName("created_at");
             entity.Property(e => e.CreatedBy).HasColumnName("created_by");
             entity.Property(e => e.Deadline).HasColumnName("deadline");
+            entity.Property(e => e.StartDate).HasColumnName("start_date");
             entity.Property(e => e.Description).HasColumnName("description");
             entity.Property(e => e.Difficulty).HasColumnName("difficulty");
+            entity.Property(e => e.TaskTypeId).HasColumnName("task_type_id");
+            entity.HasOne(e => e.TaskType)
+                .WithMany(t => t.Tasks)
+                .HasForeignKey(e => e.TaskTypeId)
+                .OnDelete(DeleteBehavior.SetNull);
             entity.Property(e => e.EstimatedTime).HasColumnName("estimated_time");
             entity.Property(e => e.AiEstimatedTime).HasColumnName("ai_estimated_time");
             entity.Property(e => e.ActualTime).HasColumnName("actual_time");
@@ -481,6 +740,9 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.Name)
                 .HasMaxLength(255)
                 .HasColumnName("name");
+            entity.Property(e => e.IsProjectManaged)
+                .HasDefaultValue(false)
+                .HasColumnName("is_project_managed");
 
             entity.HasOne(d => d.CreatedByNavigation).WithMany(p => p.Teams)
                 .HasForeignKey(d => d.CreatedBy)
@@ -545,6 +807,187 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.UpdatedAt)
                 .HasColumnType("datetime")
                 .HasColumnName("updated_at");
+        });
+
+        modelBuilder.Entity<Plan>(entity =>
+        {
+            entity.HasKey(e => e.PlanId).HasName("PK_plans");
+            entity.ToTable("plans");
+            entity.Property(e => e.PlanId).HasColumnName("plan_id");
+            entity.Property(e => e.Code).HasMaxLength(50).HasColumnName("code");
+            entity.Property(e => e.Name).HasMaxLength(150).HasColumnName("name");
+            entity.Property(e => e.Audience).HasMaxLength(20).HasColumnName("audience");
+            entity.Property(e => e.BillingInterval).HasMaxLength(20).HasColumnName("billing_interval");
+            entity.Property(e => e.PriceMinor).HasColumnName("price_minor");
+            entity.Property(e => e.Currency).HasMaxLength(3).HasColumnName("currency");
+            entity.Property(e => e.ProjectLimit).HasColumnName("project_limit");
+            entity.Property(e => e.MemberLimit).HasColumnName("member_limit");
+            entity.Property(e => e.IsActive).HasColumnName("is_active");
+            entity.Property(e => e.SortOrder).HasColumnName("sort_order");
+            entity.Property(e => e.AiChatbotEnabled).HasDefaultValue(false).HasColumnName("ai_chatbot_enabled");
+            entity.Property(e => e.DurationDays).HasColumnName("duration_days");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime").HasColumnName("updated_at");
+            entity.HasIndex(e => e.Code).IsUnique();
+
+            // Plan catalog is reference/configuration data (same treatment as RiskRules), not demo
+            // business data. Admins edit it through the admin plan API; prices are never hardcoded
+            // in the client. Priced in VND (whole đồng — VND has no minor subdivision) because PayOS,
+            // the production payment provider, settles VND only; see migration
+            // UpdatePlanCatalogToVnd for the USD -> VND cutover.
+            var catalogSeededAt = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
+            // FREE_ORGANIZATION is archived rather than deleted: organizations are a paid-only
+            // feature now, but subscriptions still reference the row by foreign key, so removing it
+            // would fail the migration. Archived means it never appears on the pricing page and can
+            // never be checked out again.
+            entity.HasData(
+                new { PlanId = 1, Code = "FREE_PERSONAL", Name = "Free", Audience = "PERSONAL", BillingInterval = "NONE", PriceMinor = 0, Currency = "VND", ProjectLimit = (int?)2, MemberLimit = (int?)null, IsActive = true, SortOrder = 1, AiChatbotEnabled = false, DurationDays = (int?)null, CreatedAt = catalogSeededAt },
+                new { PlanId = 2, Code = "PRO_PERSONAL", Name = "Pro", Audience = "PERSONAL", BillingInterval = "MONTHLY", PriceMinor = 249000, Currency = "VND", ProjectLimit = (int?)null, MemberLimit = (int?)null, IsActive = true, SortOrder = 2, AiChatbotEnabled = true, DurationDays = (int?)null, CreatedAt = catalogSeededAt },
+                new { PlanId = 3, Code = "FREE_ORGANIZATION", Name = "Organization Free", Audience = "ORGANIZATION", BillingInterval = "NONE", PriceMinor = 0, Currency = "VND", ProjectLimit = (int?)2, MemberLimit = (int?)5, IsActive = false, SortOrder = 1, AiChatbotEnabled = false, DurationDays = (int?)null, CreatedAt = catalogSeededAt },
+                new { PlanId = 4, Code = "PRO_ORGANIZATION", Name = "Organization Pro", Audience = "ORGANIZATION", BillingInterval = "MONTHLY", PriceMinor = 1199000, Currency = "VND", ProjectLimit = (int?)null, MemberLimit = (int?)null, IsActive = true, SortOrder = 2, AiChatbotEnabled = true, DurationDays = (int?)null, CreatedAt = catalogSeededAt });
+        });
+
+        modelBuilder.Entity<Subscription>(entity =>
+        {
+            entity.HasKey(e => e.SubscriptionId).HasName("PK_subscriptions");
+            entity.ToTable("subscriptions");
+            entity.Property(e => e.SubscriptionId).HasColumnName("subscription_id");
+            entity.Property(e => e.PlanId).HasColumnName("plan_id");
+            entity.Property(e => e.OwnerType).HasMaxLength(20).HasColumnName("owner_type");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.OrganizationId).HasColumnName("organization_id");
+            entity.Property(e => e.Status).HasMaxLength(20).HasColumnName("status");
+            entity.Property(e => e.StartedAt).HasColumnType("datetime").HasColumnName("started_at");
+            entity.Property(e => e.CurrentPeriodEnd).HasColumnType("datetime").HasColumnName("current_period_end");
+            entity.Property(e => e.CanceledAt).HasColumnType("datetime").HasColumnName("canceled_at");
+            entity.Property(e => e.CancelAtPeriodEnd).HasColumnName("cancel_at_period_end");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime").HasColumnName("updated_at");
+
+            entity.HasIndex(e => new { e.UserId, e.Status });
+            entity.HasIndex(e => new { e.OrganizationId, e.Status });
+
+            entity.HasOne(e => e.Plan).WithMany()
+                .HasForeignKey(e => e.PlanId).OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_subscriptions_plans");
+            entity.HasOne(e => e.User).WithMany()
+                .HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_subscriptions_users");
+            entity.HasOne(e => e.Organization).WithMany()
+                .HasForeignKey(e => e.OrganizationId).OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_subscriptions_organizations");
+
+            // Exactly one owner: personal XOR organization.
+            entity.ToTable(t => t.HasCheckConstraint(
+                "CK_subscriptions_owner_xor",
+                "(user_id IS NOT NULL AND organization_id IS NULL) OR (user_id IS NULL AND organization_id IS NOT NULL)"));
+        });
+
+        modelBuilder.Entity<PaymentTransaction>(entity =>
+        {
+            entity.HasKey(e => e.PaymentTransactionId).HasName("PK_payment_transactions");
+            entity.ToTable("payment_transactions");
+            entity.Property(e => e.PaymentTransactionId).HasColumnName("payment_transaction_id");
+            entity.Property(e => e.SubscriptionId).HasColumnName("subscription_id");
+            entity.Property(e => e.PlanId).HasColumnName("plan_id");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.OrganizationId).HasColumnName("organization_id");
+            entity.Property(e => e.AmountMinor).HasColumnName("amount_minor");
+            entity.Property(e => e.Currency).HasMaxLength(3).HasColumnName("currency");
+            entity.Property(e => e.Status).HasMaxLength(20).HasColumnName("status");
+            entity.Property(e => e.IdempotencyKey).HasMaxLength(100).HasColumnName("idempotency_key");
+            entity.Property(e => e.Provider).HasMaxLength(50).HasColumnName("provider");
+            entity.Property(e => e.ProviderReference).HasMaxLength(200).HasColumnName("provider_reference");
+            entity.Property(e => e.IsTest).HasColumnName("is_test");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("created_at");
+            entity.Property(e => e.CompletedAt).HasColumnType("datetime").HasColumnName("completed_at");
+
+            // Guarantees a replayed checkout/callback cannot create or settle a second payment.
+            entity.HasIndex(e => e.IdempotencyKey).IsUnique();
+            entity.HasIndex(e => e.SubscriptionId);
+
+            entity.HasOne(e => e.Subscription).WithMany()
+                .HasForeignKey(e => e.SubscriptionId).OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_payment_transactions_subscriptions");
+            entity.HasOne(e => e.Plan).WithMany()
+                .HasForeignKey(e => e.PlanId).OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_payment_transactions_plans");
+        });
+
+        modelBuilder.Entity<OrganizationMember>(entity =>
+        {
+            entity.HasKey(e => e.OrganizationMemberId).HasName("PK_organization_members");
+            entity.ToTable("organization_members");
+
+            entity.Property(e => e.OrganizationMemberId).HasColumnName("organization_member_id");
+            entity.Property(e => e.OrganizationId).HasColumnName("organization_id");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.Role).HasMaxLength(20).HasDefaultValue("MEMBER").HasColumnName("role");
+            entity.Property(e => e.Status).HasMaxLength(20).HasDefaultValue("ACTIVE").HasColumnName("status");
+            entity.Property(e => e.JoinedAt).HasColumnType("datetime").HasColumnName("joined_at");
+            entity.Property(e => e.InvitedBy).HasColumnName("invited_by");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime").HasColumnName("updated_at");
+
+            // One membership row per (organization, user); status flips instead of inserting twice.
+            entity.HasIndex(e => new { e.OrganizationId, e.UserId }).IsUnique();
+            entity.HasIndex(e => e.UserId);
+
+            entity.HasOne(e => e.Organization).WithMany()
+                .HasForeignKey(e => e.OrganizationId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_organization_members_organizations");
+
+            entity.HasOne(e => e.User).WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_organization_members_users");
+        });
+
+        modelBuilder.Entity<RefreshToken>(entity =>
+        {
+            entity.HasKey(e => e.RefreshTokenId).HasName("PK_refresh_tokens");
+            entity.ToTable("refresh_tokens");
+
+            entity.Property(e => e.RefreshTokenId).HasColumnName("refresh_token_id");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.FamilyId).HasColumnName("family_id");
+            entity.Property(e => e.TokenHash).HasMaxLength(128).HasColumnName("token_hash");
+            entity.Property(e => e.ExpiresAtUtc).HasColumnType("datetime").HasColumnName("expires_at_utc");
+            entity.Property(e => e.CreatedAtUtc).HasColumnType("datetime").HasColumnName("created_at_utc");
+            entity.Property(e => e.RevokedAtUtc).HasColumnType("datetime").HasColumnName("revoked_at_utc");
+            entity.Property(e => e.ReplacedByTokenId).HasColumnName("replaced_by_token_id");
+
+            entity.HasIndex(e => e.TokenHash).IsUnique();
+            entity.HasIndex(e => e.FamilyId);
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.ExpiresAtUtc);
+
+            entity.HasOne(e => e.User).WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_refresh_tokens_users");
+        });
+
+        modelBuilder.Entity<PasswordResetToken>(entity =>
+        {
+            entity.HasKey(e => e.PasswordResetTokenId).HasName("PK_password_reset_tokens");
+            entity.ToTable("password_reset_tokens");
+
+            entity.Property(e => e.PasswordResetTokenId).HasColumnName("password_reset_token_id");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.TokenHash).HasMaxLength(128).HasColumnName("token_hash");
+            entity.Property(e => e.ExpiresAtUtc).HasColumnType("datetime").HasColumnName("expires_at_utc");
+            entity.Property(e => e.CreatedAtUtc).HasColumnType("datetime").HasColumnName("created_at_utc");
+            entity.Property(e => e.UsedAtUtc).HasColumnType("datetime").HasColumnName("used_at_utc");
+
+            entity.HasIndex(e => e.TokenHash).IsUnique();
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.ExpiresAtUtc);
+
+            entity.HasOne(e => e.User).WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_password_reset_tokens_users");
         });
 
         modelBuilder.Entity<UserAvailability>(entity =>
@@ -615,7 +1058,14 @@ public partial class AppDbContext : DbContext
             entity.HasOne(d => d.User).WithMany()
                 .HasForeignKey(d => d.UserId)
                 .HasConstraintName("FK_notifications_users");
-        });
+        
+            entity.Property(e => e.ImageUrl).HasMaxLength(500).HasColumnName("image_url");
+            entity.Property(e => e.ProjectId).HasColumnName("project_id");
+            entity.HasOne(e => e.Project)
+                .WithMany()
+                .HasForeignKey(e => e.ProjectId)
+                .OnDelete(DeleteBehavior.SetNull);
+});
 
         modelBuilder.Entity<UserScore>(entity =>
         {

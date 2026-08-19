@@ -23,12 +23,15 @@ public class TaskRequiredSkillRepository : ITaskRequiredSkillRepository
             .ToListAsync(ct);
     }
 
-    public async Task ReplaceTaskSkillsAsync(int taskId, List<int> skillIds, CancellationToken ct = default)
+    public async Task ReplaceTaskSkillsAsync(
+        int taskId,
+        IReadOnlyList<(int SkillId, int RequiredLevel)> skills,
+        CancellationToken ct = default)
     {
         var existing = await _context.TaskRequiredSkills.Where(trs => trs.TaskId == taskId).ToListAsync(ct);
         _context.TaskRequiredSkills.RemoveRange(existing);
 
-        var newSkills = skillIds.Select(skillId => TaskRequiredSkill.Create(taskId, skillId));
+        var newSkills = skills.Select(skill => TaskRequiredSkill.Create(taskId, skill.SkillId, skill.RequiredLevel));
 
         await _context.TaskRequiredSkills.AddRangeAsync(newSkills, ct);
         await _context.SaveChangesAsync(ct);

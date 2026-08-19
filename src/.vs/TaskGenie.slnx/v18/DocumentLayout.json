@@ -1,0 +1,53 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Capstone\\TaskGenieV2\\src\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{09E94F01-3688-3716-DB45-EBF9FDBBB94B}|TaskGenie.API\\TaskGenie.API.csproj|c:\\capstone\\taskgeniev2\\src\\taskgenie.api\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{09E94F01-3688-3716-DB45-EBF9FDBBB94B}|TaskGenie.API\\TaskGenie.API.csproj|solutionrelative:taskgenie.api\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{8EE9D7FF-47FD-ACF5-A375-676B32A1455A}|TaskGenie.Infrastructure\\TaskGenie.Infrastructure.csproj|c:\\capstone\\taskgeniev2\\src\\taskgenie.infrastructure\\persistence\\appdbcontext.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{8EE9D7FF-47FD-ACF5-A375-676B32A1455A}|TaskGenie.Infrastructure\\TaskGenie.Infrastructure.csproj|solutionrelative:taskgenie.infrastructure\\persistence\\appdbcontext.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 1,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "AppDbContext.cs",
+              "DocumentMoniker": "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Infrastructure\\Persistence\\AppDbContext.cs",
+              "RelativeDocumentMoniker": "TaskGenie.Infrastructure\\Persistence\\AppDbContext.cs",
+              "ToolTip": "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.Infrastructure\\Persistence\\AppDbContext.cs",
+              "RelativeToolTip": "TaskGenie.Infrastructure\\Persistence\\AppDbContext.cs",
+              "ViewState": "AgIAAH4CAAAAAAAAAAAIwIgCAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-06-28T07:11:53.988Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "Program.cs",
+              "DocumentMoniker": "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.API\\Program.cs",
+              "RelativeDocumentMoniker": "TaskGenie.API\\Program.cs",
+              "ToolTip": "C:\\Capstone\\TaskGenieV2\\src\\TaskGenie.API\\Program.cs",
+              "RelativeToolTip": "TaskGenie.API\\Program.cs",
+              "ViewState": "AgIAABgAAAAAAAAAAAAAACcAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-06-28T06:56:57.775Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

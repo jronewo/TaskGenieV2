@@ -1,6 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
-using TaskGenie.API.Middleware;
+using TaskGenie.API.Extensions;
 using TaskGenie.Application.Features.Projects.Commands;
 using TaskGenie.Application.Features.Projects.Queries;
 using TaskGenie.Application.Features.Projects.DTOs;
@@ -11,9 +11,13 @@ namespace TaskGenie.API.Controllers;
 [ApiController]
 public class ProjectsController(IMediator mediator) : ControllerBase
 {
+    /// <summary>
+    /// The caller's active projects. Pass <c>?closed=true</c> for the ones that have been ended —
+    /// they are excluded by default so a finished project stops filling the workspace.
+    /// </summary>
     [HttpGet]
-    public async Task<IActionResult> GetAll()
-        => Ok(await mediator.Send(new GetProjectsByUserQuery(HttpContext.GetCurrentUserId())));
+    public async Task<IActionResult> GetAll([FromQuery] bool closed = false)
+        => Ok(await mediator.Send(new GetProjectsByUserQuery(HttpContext.GetCurrentUserId(), closed)));
 
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(int id)
@@ -25,10 +29,28 @@ public class ProjectsController(IMediator mediator) : ControllerBase
         var project = await mediator.Send(new CreateProjectCommand(
             request.Name,
             request.Description,
-            request.CreatedBy,
             request.OrganizationId,
             request.Deadline));
         return CreatedAtAction(nameof(GetById), new { id = project.ProjectId }, project);
+    }
+
+    /// <summary>Only a project leader may change this — the handler enforces it, not the UI.</summary>
+    [HttpPut("{id}/working-hours")]
+    public async Task<IActionResult> SetWorkingHours(int id, [FromBody] SetWorkingHoursRequest request)
+    {
+        var hours = await mediator.Send(new SetProjectWorkingHoursCommand(id, request.WorkingHoursPerDay));
+        return Ok(new { workingHoursPerDay = hours });
+    }
+
+    /// <summary>
+    /// Schedules the daily automated risk estimate at an hour of the day (UTC), or switches it off
+    /// with a null hour. Leader-only — the handler enforces it, not the UI.
+    /// </summary>
+    [HttpPut("{id}/risk-automation")]
+    public async Task<IActionResult> SetRiskAutomation(int id, [FromBody] SetRiskAutomationRequest request)
+    {
+        var hour = await mediator.Send(new SetProjectRiskAutomationCommand(id, request.HourUtc));
+        return Ok(new { riskAutomationHourUtc = hour });
     }
 
     [HttpPut("{id}")]
@@ -72,9 +94,11 @@ public class ProjectsController(IMediator mediator) : ControllerBase
 public record CreateProjectRequest(
     string Name,
     string? Description,
-    int CreatedBy,
     int? OrganizationId,
     DateOnly? Deadline);
+
+/// <summary>Null switches the daily automated risk estimate off.</summary>
+public record SetRiskAutomationRequest(int? HourUtc);
 
 public record UpdateProjectRequest(
     string? Name,
@@ -84,3 +108,5 @@ public record UpdateProjectRequest(
     DateOnly? Deadline);
 
 public record AddProjectMemberRequest(string Email, string Role);
+
+public record SetWorkingHoursRequest(int WorkingHoursPerDay);

@@ -1,0 +1,197 @@
+/*
+ * Dark theme.
+ *
+ * The console was written with light utilities baked into ~25 components (`bg-white`,
+ * `text-gray-900`, `border-gray-200`…). Rather than editing every one of them — which risks the
+ * half-finished palettes that produced invisible text before — this remaps the specific utilities
+ * the app actually uses, scoped under `.dark` on <html>.
+ *
+ * The trade-off: a component that introduces a light utility not listed here will stay light in
+ * dark mode. If you add one, add it here too.
+ */
+
+.dark {
+  color-scheme: dark;
+}
+
+/* Surfaces */
+.dark .bg-white { background-color: #1B1F27; }
+.dark .bg-gray-50,
+.dark .bg-gray-50\/70 { background-color: #171A21; }
+.dark .bg-gray-100 { background-color: #252A34; }
+.dark .bg-gray-200 { background-color: #2E3440; }
+.dark .bg-\[\#F4F5F7\] { background-color: #171A21; }
+.dark body,
+.dark .bg-gray-900\/40 { background-color: rgba(0, 0, 0, 0.6); }
+
+/* Text */
+.dark .text-gray-900 { color: #E6E8EC; }
+.dark .text-gray-800 { color: #D7DAE0; }
+.dark .text-gray-700 { color: #C3C7D0; }
+.dark .text-gray-600 { color: #A9AEBA; }
+.dark .text-gray-500 { color: #8F95A3; }
+.dark .text-gray-400 { color: #767D8C; }
+.dark .text-gray-300 { color: #5E6574; }
+.dark .placeholder-gray-400::placeholder { color: #767D8C; }
+
+/* Borders and dividers */
+.dark .border-gray-200 { border-color: #2E3440; }
+.dark .border-gray-100 { border-color: #262B35; }
+.dark .border-gray-300 { border-color: #3A4150; }
+.dark .divide-gray-100 > * + * { border-color: #262B35; }
+.dark .ring-gray-200 { --tw-ring-color: #2E3440; }
+
+/* Hover states have to be remapped separately — same utility, different selector. */
+.dark .hover\:bg-gray-50:hover { background-color: #232833; }
+.dark .hover\:bg-gray-100:hover { background-color: #2A303B; }
+.dark .hover\:bg-white:hover { background-color: #252A34; }
+.dark .hover\:text-gray-900:hover { color: #E6E8EC; }
+.dark .hover\:text-gray-700:hover { color: #C3C7D0; }
+
+/* Tinted status panels: keep the hue, drop the brightness. */
+.dark .bg-red-50 { background-color: rgba(239, 68, 68, 0.14); }
+.dark .bg-amber-50 { background-color: rgba(245, 158, 11, 0.14); }
+.dark .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.14); }
+.dark .bg-blue-50 { background-color: rgba(59, 130, 246, 0.14); }
+.dark .bg-red-100 { background-color: rgba(239, 68, 68, 0.22); }
+.dark .bg-amber-100 { background-color: rgba(245, 158, 11, 0.22); }
+.dark .bg-emerald-100 { background-color: rgba(16, 185, 129, 0.22); }
+.dark .bg-blue-100 { background-color: rgba(59, 130, 246, 0.22); }
+
+.dark .text-red-700, .dark .text-red-800 { color: #FCA5A5; }
+.dark .text-amber-700, .dark .text-amber-800 { color: #FCD34D; }
+.dark .text-emerald-700, .dark .text-emerald-800 { color: #6EE7B7; }
+.dark .text-blue-700, .dark .text-blue-800 { color: #93C5FD; }
+
+
+.dark .border-red-200 { border-color: rgba(239, 68, 68, 0.35); }
+.dark .border-amber-200, .dark .border-amber-300 { border-color: rgba(245, 158, 11, 0.35); }
+.dark .border-emerald-200 { border-color: rgba(16, 185, 129, 0.35); }
+
+/* Form controls don't inherit the utility remap. */
+.dark input,
+.dark select,
+.dark textarea {
+  background-color: #1B1F27;
+  color: #E6E8EC;
+}
+.dark option {
+  background-color: #1B1F27;
+  color: #E6E8EC;
+}
+
+/* Recharts draws its axes and grid straight into the SVG. */
+.dark .recharts-cartesian-axis-tick text,
+.dark .recharts-legend-item-text,
+.dark .recharts-label { fill: #A9AEBA; }
+.dark .recharts-cartesian-grid line { stroke: #2E3440; }
+.dark .recharts-tooltip-wrapper .recharts-default-tooltip {
+  background-color: #1B1F27 !important;
+  border-color: #2E3440 !important;
+  color: #E6E8EC;
+}
+
+/*
+ * The brand navy is a foreground colour in places (panel icons, the selected chip in a radio
+ * group). On a dark surface it reads as almost black, so it has to lift — the filled buttons that
+ * use it as a *background* keep their white text and are left alone.
+ */
+.dark .text-\[\#1A237E\] { color: #A5B4FC; }
+.dark .border-\[\#1A237E\] { border-color: #6366F1; }
+.dark .focus\:border-\[\#1A237E\]:focus { border-color: #6366F1; }
+.dark .focus-visible\:ring-\[\#1A237E\]:focus-visible { --tw-ring-color: #6366F1; }
+
+/*
+ * The slate scale. ProjectManagement and the organization pages were written against slate rather
+ * than gray, and only a couple of slate utilities were listed here — which is exactly why the
+ * Projects page stayed light-on-light in dark mode. The whole scale is mapped now.
+ */
+.dark .bg-slate-50 { background-color: #171A21; }
+.dark .bg-slate-100 { background-color: #252A34; }
+.dark .bg-slate-200 { background-color: #2E3440; }
+.dark .bg-slate-700 { background-color: #2A303B; }
+.dark .bg-slate-800 { background-color: #343B49; }
+
+.dark .text-slate-900 { color: #E6E8EC; }
+.dark .text-slate-800 { color: #D7DAE0; }
+.dark .text-slate-700 { color: #C3C7D0; }
+.dark .text-slate-600 { color: #A9AEBA; }
+.dark .text-slate-500 { color: #8F95A3; }
+.dark .text-slate-400 { color: #767D8C; }
+.dark .text-slate-300 { color: #5E6574; }
+.dark .text-slate-200 { color: #D7DAE0; }
+
+.dark .border-slate-200 { border-color: #2E3440; }
+.dark .border-slate-300 { border-color: #3A4150; }
+.dark .border-slate-500 { border-color: #4C5566; }
+.dark .divide-slate-100 > * + * { border-color: #262B35; }
+.dark .ring-slate-400 { --tw-ring-color: #4C5566; }
+
+.dark .hover\:bg-slate-50:hover { background-color: #232833; }
+.dark .hover\:bg-slate-100:hover { background-color: #2A303B; }
+.dark .hover\:bg-slate-700:hover { background-color: #343B49; }
+.dark .hover\:border-slate-300:hover { border-color: #3A4150; }
+
+/*
+ * shadcn components colour themselves from CSS variables, not utilities. theme.css already ships a
+ * .dark block for them, so nothing is remapped here — but a card that looked white in dark mode was
+ * using bg-white directly, which the surfaces block above now covers.
+ */
+
+/*
+ * The sidebar is navy in both themes. Remapping the slate scale for dark mode therefore dimmed text
+ * on a surface that never darkened, which is why it read as washed out — these restore contrast.
+ */
+.dark .tg-sidebar .text-slate-200 { color: #EDF0F7; }
+.dark .tg-sidebar .text-slate-300 { color: #DDE2EF; }
+.dark .tg-sidebar .text-slate-400 { color: #B7C0DA; }
+.dark .tg-sidebar .text-white { color: #FFFFFF; }
+
+/*
+ * Notification centre.
+ *
+ * The reading pane puts two surfaces side by side, so the feed needs to read as a distinct column
+ * rather than a slab. `bg-blue-50/40` was the original defect: the opacity modifier produced a
+ * utility name that no rule above matches, so an unread row kept its light-mode tint and turned
+ * into flat grey with unreadable timestamps.
+ */
+.dark .tg-notify { background-color: #14171D; }
+.dark .tg-notify aside { background-color: #1B1F27; }
+
+/* Selected row: brand tint rather than the darker `bg-gray-50`, which read as disabled. */
+.dark .tg-notify [aria-current="true"] { background-color: rgba(99, 102, 241, 0.18); }
+
+/* Timestamps and preview lines sit on tinted rows, so they need more lift than the global scale. */
+.dark .tg-notify .text-gray-500 { color: #A6AEC0; }
+.dark .tg-notify .text-gray-600 { color: #B9C1D1; }
+
+/* The unread dot is brand navy — invisible against a dark row. */
+.dark .tg-notify .bg-\[\#1A237E\] { background-color: #818CF8; }
+
+/*
+ * Kanban board.
+ *
+ * `bg-[#F4F5F7]` maps to the same near-black as the page, so four columns read as one dark field.
+ * Columns lift off the page, and cards lift off the columns — each surface one step lighter.
+ */
+.dark .tg-column { background-color: #1A1D24; border-color: #2E3440; }
+.dark .tg-column .bg-white { background-color: #242932; }
+.dark .tg-column .hover\:bg-gray-50:hover { background-color: #2C323D; }
+.dark .tg-column .hover\:bg-white:hover { background-color: #2C323D; }
+
+/*
+ * Dependency diagram.
+ *
+ * The node fills are chosen against a light surface; on a dark one the same pastels glare and the
+ * dark label text inside them disappears. Each state keeps its hue and swaps to a dark-surface step
+ * — the icon and the written label carry the meaning either way.
+ */
+.dark .tg-depgraph rect[fill="#FEE2E2"] { fill: rgba(239, 68, 68, 0.20); stroke: #F87171; }
+.dark .tg-depgraph rect[fill="#D1FAE5"] { fill: rgba(16, 185, 129, 0.18); stroke: #34D399; }
+.dark .tg-depgraph rect[fill="#DBEAFE"] { fill: rgba(59, 130, 246, 0.20); stroke: #60A5FA; }
+.dark .tg-depgraph rect[fill="#F1F5F9"] { fill: #232833; stroke: #4C5566; }
+
+/* Label ink, not series colour: one readable value on every card. */
+.dark .tg-depgraph text { fill: #E6E8EC; }
+.dark .tg-depgraph path[stroke="#94A3B8"] { stroke: #6B7488; }
+.dark .tg-depgraph path[stroke="#1A237E"] { stroke: #A5B4FC; }

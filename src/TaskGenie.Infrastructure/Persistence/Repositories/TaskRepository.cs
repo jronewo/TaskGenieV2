@@ -20,6 +20,7 @@ public class TaskRepository : ITaskRepository
     {
         return await _context.Tasks
             .Include(t => t.Project)
+            .Include(t => t.TaskType)
             .FirstOrDefaultAsync(t => t.TaskId == taskId, ct);
     }
 
@@ -27,6 +28,7 @@ public class TaskRepository : ITaskRepository
     {
         return await _context.Tasks
             .Include(t => t.Project)
+            .Include(t => t.TaskType)
             .Include(t => t.TaskAssignees).ThenInclude(ta => ta.User)
             .Include(t => t.TaskDependencies).ThenInclude(td => td.DependsOnTask)
             .Include(t => t.TaskRequiredSkills)
@@ -116,6 +118,9 @@ public class TaskRepository : ITaskRepository
     {
         return await _context.Tasks
             .Where(t => t.ProjectId == projectId)
+            // Without this the board's cards get a taskTypeId but no name or colour, so every card
+            // silently fell back to the old title-guessing icon.
+            .Include(t => t.TaskType)
             .Include(t => t.TaskAssignees)
                 .ThenInclude(ta => ta.User)
             .Include(t => t.TaskDependencies)
@@ -128,6 +133,7 @@ public class TaskRepository : ITaskRepository
     {
         return await _context.Tasks
             .Include(t => t.Project)
+            .Include(t => t.TaskType)
             .Include(t => t.TaskAssignees).ThenInclude(ta => ta.User)
             .Include(t => t.TaskDependencies).ThenInclude(td => td.DependsOnTask)
             .Where(t => t.TaskAssignees.Any(ta => ta.UserId == userId))

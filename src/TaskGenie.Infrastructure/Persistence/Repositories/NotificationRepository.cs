@@ -18,6 +18,7 @@ public class NotificationRepository : INotificationRepository
     public async Task<List<Notification>> GetByUserIdAsync(int userId, int limit = 50, CancellationToken ct = default)
     {
         return await _context.Notifications
+            .Include(n => n.Project)
             .Where(n => n.UserId == userId)
             .OrderByDescending(n => n.CreatedAt)
             .Take(limit)

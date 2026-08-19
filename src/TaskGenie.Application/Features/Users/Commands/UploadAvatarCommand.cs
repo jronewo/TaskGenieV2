@@ -2,4 +2,5 @@ using MediatR;
 
 namespace TaskGenie.Application.Features.Users.Commands;
 
-public record UploadAvatarCommand(int UserId, Stream ImageStream, string FileName) : IRequest<string>;
+/// <summary>Always applies to the authenticated user — the actor is never taken from the client.</summary>
+public record UploadAvatarCommand(Stream ImageStream, string FileName) : IRequest<string>;

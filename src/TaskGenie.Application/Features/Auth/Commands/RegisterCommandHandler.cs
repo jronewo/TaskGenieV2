@@ -1,14 +1,18 @@
 using MediatR;
+using TaskGenie.Application.Features.Auth.DTOs;
 using TaskGenie.Application.Interfaces;
 using TaskGenie.Domain.Entities;
 using TaskGenie.Domain.Interfaces.Repositories;
 
 namespace TaskGenie.Application.Features.Auth.Commands;
 
-public class RegisterCommandHandler(IUserRepository userRepository, IPasswordHasher passwordHasher)
-    : IRequestHandler<RegisterCommand, string>
+public class RegisterCommandHandler(
+    IUserRepository userRepository,
+    IPasswordHasher passwordHasher,
+    IAuthTokenIssuer authTokenIssuer)
+    : IRequestHandler<RegisterCommand, AuthResponse>
 {
-    public async Task<string> Handle(RegisterCommand request, CancellationToken ct)
+    public async Task<AuthResponse> Handle(RegisterCommand request, CancellationToken ct)
     {
         var existing = await userRepository.GetByEmailAsync(request.Email, ct);
         if (existing != null)
@@ -20,6 +24,6 @@ public class RegisterCommandHandler(IUserRepository userRepository, IPasswordHas
             passwordHasher.Hash(request.Password));
 
         await userRepository.AddUserAsync(user, ct);
-        return "Đăng ký thành công.";
+        return await authTokenIssuer.IssueAsync(user, "Đăng ký thành công", ct);
     }
 }

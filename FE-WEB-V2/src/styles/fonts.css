@@ -1,0 +1,5 @@
+/*
+ * Space Grotesk carries headings and the brand mark; DM Sans carries running text.
+ * Inter/Roboto stay loaded because ~25 components still name them inline.
+ */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Inter:wght@300;400;500;600;700;800;900&family=Roboto:wght@300;400;500;700&display=swap');

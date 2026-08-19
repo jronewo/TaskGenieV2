@@ -8,4 +8,6 @@ public record CreateNotificationCommand(
     string Title,
     string? Message,
     int? ReferenceId,
-    string? ReferenceType) : IRequest<Unit>;
+    string? ReferenceType,
+    int? ProjectId = null,
+    string? ImageUrl = null) : IRequest<Unit>;

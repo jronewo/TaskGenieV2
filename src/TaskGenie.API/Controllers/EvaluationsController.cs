@@ -26,7 +26,6 @@ public class EvaluationsController(IMediator mediator) : ControllerBase
     {
         var evaluation = await mediator.Send(new CreateEvaluationCommand(
             request.UserId,
-            request.LeaderId,
             request.SkillScore,
             request.TeamworkScore,
             request.DeadlineScore,
@@ -44,7 +43,6 @@ public class EvaluationsController(IMediator mediator) : ControllerBase
 
 public record CreateEvaluationRequest(
     int UserId,
-    int LeaderId,
     int? SkillScore,
     int? TeamworkScore,
     int? DeadlineScore,

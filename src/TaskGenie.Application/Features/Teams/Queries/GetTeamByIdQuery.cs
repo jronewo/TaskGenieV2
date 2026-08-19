@@ -1,18 +1,18 @@
 using MediatR;
 using TaskGenie.Application.Features.Teams.DTOs;
-using TaskGenie.Domain.Interfaces.Repositories;
+using TaskGenie.Application.Interfaces;
 
 namespace TaskGenie.Application.Features.Teams.Queries;
 
 public sealed record GetTeamByIdQuery(int TeamId) : IRequest<TeamDto?>;
 
 public sealed class GetTeamByIdQueryHandler(
-    ITeamRepository teamRepo
+    IResourceAuthorizationService authz
 ) : IRequestHandler<GetTeamByIdQuery, TeamDto?>
 {
     public async Task<TeamDto?> Handle(GetTeamByIdQuery query, CancellationToken ct)
     {
-        var team = await teamRepo.GetByIdAsync(query.TeamId, ct);
-        return team is not null ? TeamDto.FromEntity(team) : null;
+        var team = await authz.EnsureCanAccessTeamAsync(query.TeamId, ct);
+        return TeamDto.FromEntity(team);
     }
 }

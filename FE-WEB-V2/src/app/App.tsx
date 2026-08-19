@@ -629,7 +629,7 @@ export default function App() {
                       className="flex-1 overflow-hidden"
                       {...pageMotion}
                     >
-                      <ReportsDashboard />
+                      <ReportsDashboard onOpenTask={setSelectedTaskId} />
                     </motion.div>
                   )}
 

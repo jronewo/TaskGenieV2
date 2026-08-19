@@ -151,6 +151,7 @@ const ProjectItem = ({
 const navItems = [
   { id: "dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
   { id: "board", labelKey: "nav.board", icon: Kanban },
+  { id: "reports", labelKey: "nav.reports", icon: BarChart2 },
   { id: "projects", labelKey: "nav.projects", icon: Briefcase },
   { id: "team", labelKey: "nav.team", icon: Users },
   { id: "organizations", labelKey: "nav.organizations", icon: Building2 },

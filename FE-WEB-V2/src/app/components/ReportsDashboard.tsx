@@ -17,6 +17,7 @@ import {
   shortLabel,
 } from "./charts/chartTheme";
 import { useWorkspace, summariseWorkspace } from "../hooks/useWorkspace";
+import { ProjectGanttChart } from "./ProjectGanttChart";
 
 const STATUS_COLORS: Record<string, string> = {
   Done: "#10B981",
@@ -39,7 +40,7 @@ const ALL = "ALL";
  * task rows the user is already authorised to read, so scoping to a project is a filter here
  * rather than a new server-side query.
  */
-export const ReportsDashboard = () => {
+export const ReportsDashboard = ({ onOpenTask }: { onOpenTask?: (taskId: number) => void } = {}) => {
   const { projects, tasks, loading, error } = useWorkspace();
   const [scope, setScope] = useState<string>(ALL);
 
@@ -250,26 +251,32 @@ export const ReportsDashboard = () => {
         </ChartPanel>
 
         {selected ? (
-          <div className="lg:col-span-2">
-            <ChartPanel title="Tasks by priority">
-              {priorityData.length === 0 ? (
-                <ChartEmpty message="Dự án này chưa có task nào." />
-              ) : (
-                <div style={{ height: Math.max(120, priorityData.length * 34) }} className="text-gray-500">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={priorityData} layout="vertical" margin={{ top: 4, right: 28, left: 4, bottom: 4 }}>
-                      <XAxis type="number" allowDecimals={false} hide />
-                      <YAxis type="category" dataKey="name" width={78} {...axisProps} />
-                      <Tooltip cursor={{ fill: "rgba(148,163,184,0.12)" }} content={ChartTooltip("task")} />
-                      <Bar dataKey="value" name="Task" fill={CHART_COLORS.brand} radius={[0, 4, 4, 0]} barSize={16}>
-                        <LabelList dataKey="value" position="right" style={{ fontSize: 10, fill: "currentColor" }} />
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </ChartPanel>
-          </div>
+          <>
+            <div className="lg:col-span-2">
+              <ChartPanel title="Tasks by priority">
+                {priorityData.length === 0 ? (
+                  <ChartEmpty message="Dự án này chưa có task nào." />
+                ) : (
+                  <div style={{ height: Math.max(120, priorityData.length * 34) }} className="text-gray-500">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={priorityData} layout="vertical" margin={{ top: 4, right: 28, left: 4, bottom: 4 }}>
+                        <XAxis type="number" allowDecimals={false} hide />
+                        <YAxis type="category" dataKey="name" width={78} {...axisProps} />
+                        <Tooltip cursor={{ fill: "rgba(148,163,184,0.12)" }} content={ChartTooltip("task")} />
+                        <Bar dataKey="value" name="Task" fill={CHART_COLORS.brand} radius={[0, 4, 4, 0]} barSize={16}>
+                          <LabelList dataKey="value" position="right" style={{ fontSize: 10, fill: "currentColor" }} />
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </ChartPanel>
+            </div>
+
+            <div className="lg:col-span-2">
+              <ProjectGanttChart projectId={selected.projectId} onOpenTask={onOpenTask} />
+            </div>
+          </>
         ) : (
           <div className="lg:col-span-2">
             <ChartPanel title="Risk distribution">

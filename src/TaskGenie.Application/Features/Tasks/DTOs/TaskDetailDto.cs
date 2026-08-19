@@ -11,6 +11,7 @@ public sealed class TaskDetailDto
     public string? Status { get; init; }
     public string? Priority { get; init; }
     public DateOnly? Deadline { get; init; }
+    public DateOnly? StartDate { get; init; }
     public int? EstimatedTime { get; init; }
     public int? AiEstimatedTime { get; init; }
     public int? ActualTime { get; init; }
@@ -51,6 +52,7 @@ public sealed class TaskDetailDto
         Status = t.Status,
         Priority = t.Priority,
         Deadline = t.Deadline,
+        StartDate = t.StartDate,
         EstimatedTime = t.EstimatedTime,
         AiEstimatedTime = t.AiEstimatedTime,
         ActualTime = t.ActualTime,

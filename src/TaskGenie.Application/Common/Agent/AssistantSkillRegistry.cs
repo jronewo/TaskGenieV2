@@ -146,7 +146,7 @@ public static class AssistantSkillRegistry
                 var priority = NormalisePriority(args.Text("priority")) ?? "Medium";
 
                 var task = await context.Mediator.Send(
-                    new CreateTaskCommand(projectId, title, null, priority, deadline?.ToString("yyyy-MM-dd"), null), ct);
+                    new CreateTaskCommand(projectId, title, null, priority, deadline?.ToString("yyyy-MM-dd"), null, null), ct);
 
                 return $"Đã tạo task \"{task.Title}\" (#{task.TaskId}), ưu tiên {priority}"
                        + (deadline is null ? "." : $", hạn {deadline}.");

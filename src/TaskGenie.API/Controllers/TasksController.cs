@@ -59,6 +59,7 @@ public class TasksController(IMediator mediator) : ControllerBase
             request.Description,
             request.Priority,
             request.Deadline,
+            request.StartDate,
             request.Difficulty,
             request.TaskTypeId));
         return CreatedAtAction(nameof(GetById), new { id = task.TaskId }, task);
@@ -74,6 +75,7 @@ public class TasksController(IMediator mediator) : ControllerBase
             request.Status,
             request.Priority,
             request.Deadline,
+            request.StartDate,
             request.EstimatedTime,
             request.ActualTime,
             request.Difficulty));
@@ -139,6 +141,7 @@ public record CreateTaskRequest(
     string? Description,
     string? Priority,
     string? Deadline,
+    string? StartDate,
     int? Difficulty,
     int? TaskTypeId = null);
 
@@ -148,6 +151,7 @@ public record UpdateTaskRequest(
     string? Status,
     string? Priority,
     string? Deadline,
+    string? StartDate,
     int? EstimatedTime,
     int? ActualTime,
     int? Difficulty);

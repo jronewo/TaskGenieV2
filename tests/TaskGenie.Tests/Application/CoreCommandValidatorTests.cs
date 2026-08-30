@@ -1,11 +1,45 @@
 using TaskGenie.Application.Features.AI;
 using TaskGenie.Application.Features.AI.Commands;
 using TaskGenie.Application.Features.Evidence;
+using TaskGenie.Application.Features.Projects.Commands;
 
 namespace TaskGenie.Tests.Application;
 
 public sealed class CoreCommandValidatorTests
 {
+    private static CreateProjectCommand ProjectWithDeadline(DateOnly? deadline) =>
+        new("Project", null, null, deadline);
+
+    [Fact]
+    public void CreateProjectValidator_RejectsDeadlineInThePast()
+    {
+        var yesterday = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-1);
+        var result = new CreateProjectCommandValidator().Validate(ProjectWithDeadline(yesterday));
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.ErrorMessage.Contains("Project deadline cannot be in the past"));
+    }
+
+    [Fact]
+    public void CreateProjectValidator_AcceptsDeadlineToday()
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        Assert.True(new CreateProjectCommandValidator().Validate(ProjectWithDeadline(today)).IsValid);
+    }
+
+    [Fact]
+    public void CreateProjectValidator_AcceptsNoDeadline()
+    {
+        Assert.True(new CreateProjectCommandValidator().Validate(ProjectWithDeadline(null)).IsValid);
+    }
+
+    [Fact]
+    public void CreateProjectValidator_RejectsEmptyName()
+    {
+        var result = new CreateProjectCommandValidator().Validate(new CreateProjectCommand("", null, null, null));
+        Assert.False(result.IsValid);
+    }
+
     [Fact]
     public void RiskValidator_RejectsNonPositiveTaskId()
     {

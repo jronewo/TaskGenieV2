@@ -26,11 +26,11 @@ public class TasksController(IMediator mediator) : ControllerBase
     public IActionResult DownloadTemplateCsv()
     {
         const string template =
-            "ID,Task name,Description,Type,Priority,Deadline,Required skills,Depends on\r\n" +
-            "1,Thiet ke man hinh dang nhap,Wireframe va luong dang nhap,Design,High,2026-09-01,UI/UX:4,\r\n" +
-            "2,Dung API dang nhap,\"Endpoint, JWT, refresh token\",Develop,High,2026-09-05,\"C#:4, SQL:3\",1\r\n" +
-            "3,Dung giao dien dang nhap,Noi API vao man hinh,Develop,Medium,2026-09-06,React:4,1\r\n" +
-            "4,Kiem thu luong dang nhap,Ca kiem thu dang nhap,Testing,Medium,2026-09-10,Testing:3,\"2, 3\"\r\n";
+            "ID,Task name,Description,Type,Priority,Deadline,Required skills,Depends on,Start date\r\n" +
+            "1,Thiet ke man hinh dang nhap,Wireframe va luong dang nhap,Design,High,2026-09-01,UI/UX:4,,2026-08-25\r\n" +
+            "2,Dung API dang nhap,\"Endpoint, JWT, refresh token\",Develop,High,2026-09-05,\"C#:4, SQL:3\",1,2026-09-02\r\n" +
+            "3,Dung giao dien dang nhap,Noi API vao man hinh,Develop,Medium,2026-09-06,React:4,1,2026-09-02\r\n" +
+            "4,Kiem thu luong dang nhap,Ca kiem thu dang nhap,Testing,Medium,2026-09-10,Testing:3,\"2, 3\",2026-09-07\r\n";
 
         var bytes = System.Text.Encoding.UTF8.GetBytes(template);
         // The BOM is what makes Excel read the file as UTF-8 rather than the local codepage.

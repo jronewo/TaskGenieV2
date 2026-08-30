@@ -200,9 +200,13 @@ export const OrganizationCenter = () => {
     );
   };
 
-  const handleCreateProject = () =>
-    selectedId != null &&
-    run(
+  const handleCreateProject = () => {
+    if (selectedId == null) return;
+    if (newProject.deadline && newProject.deadline < new Date().toISOString().slice(0, 10)) {
+      setError("Project deadline cannot be in the past.");
+      return;
+    }
+    return run(
       "new-project",
       async () => {
         await projectApi.create({
@@ -216,6 +220,7 @@ export const OrganizationCenter = () => {
       },
       "Project created in this organization."
     );
+  };
 
   const handleAssign = () =>
     selectedId != null &&
@@ -453,6 +458,7 @@ export const OrganizationCenter = () => {
                       <input
                         type="date"
                         value={newProject.deadline}
+                        min={new Date().toISOString().slice(0, 10)}
                         onChange={(e) => setNewProject((f) => ({ ...f, deadline: e.target.value }))}
                         aria-label="Project deadline"
                         className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "../../../test/renderWithProviders";
+import { render, screen, waitFor, fireEvent } from "../../../test/renderWithProviders";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CreateTaskModal } from "../CreateTaskModal";
@@ -114,5 +114,41 @@ describe("CreateTaskModal required skills", () => {
 
     expect(await screen.findByText(/no skills in the catalog yet/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /create task/i })).toBeInTheDocument();
+  });
+});
+
+describe("CreateTaskModal project deadline", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tasks.types.mockResolvedValue([]);
+    skills.catalog.mockResolvedValue([]);
+    tasks.create.mockResolvedValue(CREATED);
+  });
+
+  it("refuses a deadline set after the project's own deadline", async () => {
+    const user = userEvent.setup();
+    render(
+      <CreateTaskModal open projectId={1} projectDeadline="2026-09-05" onClose={vi.fn()} onCreated={vi.fn()} />
+    );
+
+    await user.type(screen.getByLabelText(/title/i), "Build the board");
+    fireEvent.change(screen.getByLabelText(/deadline/i), { target: { value: "2026-09-10" } });
+    await user.click(screen.getByRole("button", { name: /create task/i }));
+
+    expect(await screen.findByText(/cannot be later than the project's deadline/i)).toBeInTheDocument();
+    expect(tasks.create).not.toHaveBeenCalled();
+  });
+
+  it("allows a deadline on or before the project's own deadline", async () => {
+    const user = userEvent.setup();
+    render(
+      <CreateTaskModal open projectId={1} projectDeadline="2026-09-05" onClose={vi.fn()} onCreated={vi.fn()} />
+    );
+
+    await user.type(screen.getByLabelText(/title/i), "Build the board");
+    fireEvent.change(screen.getByLabelText(/deadline/i), { target: { value: "2026-09-05" } });
+    await user.click(screen.getByRole("button", { name: /create task/i }));
+
+    await waitFor(() => expect(tasks.create).toHaveBeenCalled());
   });
 });

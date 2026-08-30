@@ -34,7 +34,7 @@ interface Props {
   projectId: number | null;
   tasks: TaskDetailDto[];
   /** Reported up so the board can build issue keys without fetching the project again. */
-  onProjectLoaded?: (name: string | null, canManageTasks: boolean) => void;
+  onProjectLoaded?: (name: string | null, canManageTasks: boolean, deadline?: string | null) => void;
   /** Shown only to someone who may add tasks here. */
   onImportTasks?: () => void;
   /** Lets the dependency diagram open a task, so it is a way in rather than a dead end. */
@@ -155,7 +155,7 @@ export const ProjectBoardHeader = ({
       const loaded = await projectApi.getById(projectId);
       setProject(loaded);
       setHours(String(loaded.workingHoursPerDay ?? DEFAULT_WORKING_HOURS));
-      onLoadedRef.current?.(loaded.name, loaded.canManageTasks ?? false);
+      onLoadedRef.current?.(loaded.name, loaded.canManageTasks ?? false, loaded.deadline ?? null);
     } catch {
       setProject(null);
       onLoadedRef.current?.(null, false);

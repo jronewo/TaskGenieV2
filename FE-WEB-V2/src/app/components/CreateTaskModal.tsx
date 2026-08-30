@@ -8,6 +8,8 @@ import { ApiError } from "../services/apiClient";
 interface CreateTaskModalProps {
   open: boolean;
   projectId: number | null;
+  /** Caps the deadline picker so a task can't be scheduled past the project's own deadline. */
+  projectDeadline?: string | null;
   onClose: () => void;
   onCreated: (task: TaskDetailDto) => void;
 }
@@ -35,7 +37,7 @@ function errorMessage(err: unknown): string {
   return "Something went wrong. Please try again.";
 }
 
-export const CreateTaskModal = ({ open, projectId, onClose, onCreated }: CreateTaskModalProps) => {
+export const CreateTaskModal = ({ open, projectId, projectDeadline, onClose, onCreated }: CreateTaskModalProps) => {
   const [form, setForm] = useState<FormState>(EMPTY);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,10 +82,20 @@ export const CreateTaskModal = ({ open, projectId, onClose, onCreated }: CreateT
     requiredLevel,
   }));
 
+  const projectDeadlineDate = projectDeadline ? projectDeadline.slice(0, 10) : null;
+
   const submit = async () => {
     if (projectId == null || busy) return; // double-submit guard
     if (form.startDate && form.deadline && form.startDate > form.deadline) {
       setError("Start date must be on or before the deadline.");
+      return;
+    }
+    if (projectDeadlineDate && form.deadline && form.deadline > projectDeadlineDate) {
+      setError("Task deadline cannot be later than the project's deadline.");
+      return;
+    }
+    if (projectDeadlineDate && form.startDate && form.startDate > projectDeadlineDate) {
+      setError("Task start date cannot be later than the project's deadline.");
       return;
     }
     setBusy(true);
@@ -224,7 +236,7 @@ export const CreateTaskModal = ({ open, projectId, onClose, onCreated }: CreateT
                   <input
                     type="date"
                     value={form.startDate}
-                    max={form.deadline || undefined}
+                    max={form.deadline || projectDeadlineDate || undefined}
                     onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
                     className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm"
                   />
@@ -235,9 +247,15 @@ export const CreateTaskModal = ({ open, projectId, onClose, onCreated }: CreateT
                     type="date"
                     value={form.deadline}
                     min={form.startDate || undefined}
+                    max={projectDeadlineDate || undefined}
                     onChange={(e) => setForm((f) => ({ ...f, deadline: e.target.value }))}
                     className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm"
                   />
+                  {projectDeadlineDate && (
+                    <span className="mt-1 block text-[10px] text-gray-500">
+                      Project deadline: {projectDeadlineDate}
+                    </span>
+                  )}
                 </label>
               </div>
 

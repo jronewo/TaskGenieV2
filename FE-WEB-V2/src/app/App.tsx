@@ -352,6 +352,7 @@ export default function App() {
   const [activePage, setActivePage] = useState("dashboard");
   const [landedAsAdmin, setLandedAsAdmin] = useState(false);
   const [boardProjectName, setBoardProjectName] = useState<string | null>(null);
+  const [boardProjectDeadline, setBoardProjectDeadline] = useState<string | null>(null);
   // Only a project leader (or owner/admin) may add tasks; the API decides, this just mirrors it.
   const [canManageBoardTasks, setCanManageBoardTasks] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
@@ -594,9 +595,10 @@ export default function App() {
                       className="flex-1 overflow-hidden flex flex-col"
                       {...pageMotion}
                     >
-                      <ProjectBoardHeader projectId={activeProjectId} tasks={boardTasks} onProjectLoaded={(name, canManage) => {
+                      <ProjectBoardHeader projectId={activeProjectId} tasks={boardTasks} onProjectLoaded={(name, canManage, deadline) => {
                           setBoardProjectName(name);
                           setCanManageBoardTasks(canManage);
+                          setBoardProjectDeadline(deadline ?? null);
                         }}
                         onImportTasks={() => setShowImportModal(true)}
                         onOpenTask={setSelectedTaskId}
@@ -772,6 +774,7 @@ export default function App() {
       <CreateTaskModal
         open={showNewTaskModal}
         projectId={activeProjectId}
+        projectDeadline={boardProjectDeadline}
         onClose={() => setShowNewTaskModal(false)}
         onCreated={() => setBoardRefresh((n) => n + 1)}
       />

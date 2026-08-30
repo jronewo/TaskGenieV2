@@ -1,9 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { differenceInCalendarDays, eachWeekOfInterval, format, isWithinInterval, parseISO, startOfDay } from "date-fns";
-import { GanttChartSquare, Loader2 } from "lucide-react";
+import { GanttChartSquare, Loader2, Download } from "lucide-react";
 import { taskApi, TaskDetailDto } from "../services/taskApi";
+import { projectApi, ProjectDto } from "../services/projectApi";
 import { ApiError } from "../services/apiClient";
 import { ChartEmpty, ChartPanel, STATUS_COLOR, CHART_COLORS } from "./charts/chartTheme";
+import { pdf } from "@react-pdf/renderer";
+import { GanttPdfDocument } from "./GanttPdfDocument";
 
 function errorMessage(err: unknown): string {
   if (err instanceof ApiError) return err.message || `Request failed (${err.status}).`;
@@ -34,17 +37,24 @@ interface Props {
  */
 export const ProjectGanttChart = ({ projectId, onOpenTask }: Props) => {
   const [tasks, setTasks] = useState<TaskDetailDto[]>([]);
+  const [project, setProject] = useState<ProjectDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    taskApi
-      .byProject(projectId)
-      .then((list) => {
-        if (!cancelled) setTasks(list);
+    Promise.all([
+      taskApi.byProject(projectId),
+      projectApi.getById(projectId).catch(() => null),
+    ])
+      .then(([taskList, proj]) => {
+        if (!cancelled) {
+          setTasks(taskList);
+          if (proj) setProject(proj);
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(errorMessage(err));
@@ -94,6 +104,34 @@ export const ProjectGanttChart = ({ projectId, onOpenTask }: Props) => {
 
   const today = startOfDay(new Date());
   const todayInRange = range ? isWithinInterval(today, { start: range.rangeStart, end: range.rangeEnd }) : false;
+
+  const handleExportPDF = async () => {
+    if (scheduled.length === 0 || !range) return;
+    setExporting(true);
+    try {
+      const doc = (
+        <GanttPdfDocument
+          project={project}
+          scheduledTasks={scheduled}
+          unscheduledCount={unscheduledCount}
+          rangeStart={range.rangeStart}
+          rangeEnd={range.rangeEnd}
+          weekTicks={weekTicks}
+        />
+      );
+      const blob = await pdf(doc).toBlob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Gantt-${project?.name || `Project-${projectId}`}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("PDF export failed:", err);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const body = () => {
     if (loading) {
@@ -210,8 +248,33 @@ export const ProjectGanttChart = ({ projectId, onOpenTask }: Props) => {
     );
   };
 
+  const exportButton = scheduled.length > 0 && (
+    <button
+      type="button"
+      onClick={handleExportPDF}
+      disabled={exporting}
+      className="inline-flex cursor-pointer items-center gap-1 rounded bg-brand px-2 py-1 text-[10px] font-semibold text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      {exporting ? (
+        <>
+          <Loader2 size={10} className="animate-spin" aria-hidden />
+          Exporting...
+        </>
+      ) : (
+        <>
+          <Download size={10} aria-hidden />
+          Export PDF
+        </>
+      )}
+    </button>
+  );
+
   return (
-    <ChartPanel title="Gantt · Project schedule" icon={<GanttChartSquare size={14} aria-hidden />}>
+    <ChartPanel
+      title="Gantt · Project schedule"
+      icon={<GanttChartSquare size={14} aria-hidden />}
+      action={exportButton}
+    >
       {body()}
     </ChartPanel>
   );

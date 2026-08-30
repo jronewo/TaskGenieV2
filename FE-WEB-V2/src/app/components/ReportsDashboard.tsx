@@ -200,7 +200,16 @@ export const ReportsDashboard = ({ onOpenTask }: { onOpenTask?: (taskId: number)
                   <XAxis type="number" domain={[0, 100]} hide />
                   <YAxis type="category" dataKey="name" width={110} {...axisProps} />
                   <Tooltip cursor={{ fill: "rgba(148,163,184,0.12)" }} content={ChartTooltip("%")} />
-                  <Bar dataKey="progress" fill={CHART_COLORS.brand} name="Tiến độ" radius={[0, 4, 4, 0]} barSize={16}>
+                  <Bar
+                    dataKey="progress"
+                    fill={CHART_COLORS.brand}
+                    name="Tiến độ"
+                    radius={[0, 4, 4, 0]}
+                    barSize={16}
+                    // Otherwise a genuine 0% project renders a zero-width bar — indistinguishable
+                    // from the chart being broken. The track makes "zero" visibly a real value.
+                    background={{ fill: "rgba(148,163,184,0.14)", radius: [0, 4, 4, 0] }}
+                  >
                     <LabelList
                       dataKey="progress"
                       position="right"

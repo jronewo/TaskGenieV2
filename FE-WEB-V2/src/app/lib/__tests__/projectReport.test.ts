@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildProjectReport } from "../projectReport";
+import { buildProjectReport, renderReportHtml } from "../projectReport";
 import { ProjectDto } from "../../services/projectApi";
 import { TaskDetailDto } from "../../services/taskApi";
 
@@ -180,5 +180,96 @@ describe("buildProjectReport", () => {
     const row = report.members[0];
     expect(row.userName).toBe("Chưa phân công");
     expect(row.assignedTasks).toBe(1);
+  });
+
+  describe("gantt", () => {
+    it("draws a planned bar for tasks with an explicit start date and deadline, sorted by start", () => {
+      const report = buildProjectReport(project(), [
+        task({ taskId: 1, title: "B", startDate: "2026-02-01", deadline: "2026-02-10", progress: 50, status: "InProgress" }),
+        task({ taskId: 2, title: "A", startDate: "2026-01-15", deadline: "2026-01-20", progress: 100, status: "Done" }),
+      ]);
+
+      expect(report.gantt).not.toBeNull();
+      expect(report.gantt!.rows.map((r) => r.title)).toEqual(["A", "B"]);
+      expect(report.gantt!.rows.every((r) => r.estimated)).toBe(false);
+      expect(report.gantt!.estimatedCount).toBe(0);
+      expect(report.gantt!.rangeStart).toEqual(new Date(2026, 0, 15));
+      expect(report.gantt!.rangeEnd).toEqual(new Date(2026, 1, 10));
+    });
+
+    it("still places a task missing a date, inferring from created/completed and flagging it estimated", () => {
+      const report = buildProjectReport(project(), [
+        task({ taskId: 1, title: "Deadline only", deadline: "2026-01-20", createdAt: "2026-01-05T00:00:00Z" }),
+        task({ taskId: 2, title: "Done, no plan", status: "Done", createdAt: "2026-01-02T00:00:00Z", completedAt: "2026-01-12T00:00:00Z" }),
+      ]);
+
+      const deadlineOnly = report.gantt!.rows.find((r) => r.title === "Deadline only")!;
+      expect(deadlineOnly.estimated).toBe(true);
+      expect(deadlineOnly.start).toEqual(new Date(2026, 0, 5)); // from createdAt
+      expect(deadlineOnly.end).toEqual(new Date(2026, 0, 20)); // from deadline
+
+      const donePlan = report.gantt!.rows.find((r) => r.title === "Done, no plan")!;
+      expect(donePlan.start).toEqual(new Date(2026, 0, 2));
+      expect(donePlan.end).toEqual(new Date(2026, 0, 12)); // from completedAt
+
+      expect(report.gantt!.estimatedCount).toBe(2);
+      expect(report.gantt!.undatedCount).toBe(0);
+    });
+
+    it("counts a task with no date at all as undated and leaves it off the chart", () => {
+      const report = buildProjectReport(project(), [
+        task({ taskId: 1, title: "Scheduled", startDate: "2026-01-05", deadline: "2026-01-10" }),
+        task({ taskId: 2, title: "Nothing" }),
+      ]);
+
+      expect(report.gantt!.rows.map((r) => r.title)).toEqual(["Scheduled"]);
+      expect(report.gantt!.undatedCount).toBe(1);
+    });
+
+    it("emits a weekly tick from the range start", () => {
+      const report = buildProjectReport(project(), [
+        task({ taskId: 1, startDate: "2026-01-01", deadline: "2026-01-16" }),
+      ]);
+
+      expect(report.gantt!.weekTicks).toHaveLength(3); // Jan 1, Jan 8, Jan 15
+    });
+
+    it("is null only when no task carries any date", () => {
+      const report = buildProjectReport(project(), [task({ taskId: 1 }), task({ taskId: 2 })]);
+      expect(report.gantt).toBeNull();
+    });
+  });
+
+  describe("renderReportHtml", () => {
+    it("adds a Gantt page (section 04) with a bar and table row per placed task", () => {
+      const report = buildProjectReport(project(), [
+        task({ taskId: 1, title: "Design", startDate: "2026-01-05", deadline: "2026-01-20", progress: 100, status: "Done" }),
+      ]);
+      const html = renderReportHtml(report);
+
+      expect(html).toContain("Sơ đồ Gantt tiến độ dự án");
+      expect(html).toContain("<svg");
+      expect(html).toContain("Design");
+      expect(html).toContain('<div class="no">04</div>');
+    });
+
+    it("keeps the signature block on the final page, after the Gantt", () => {
+      const report = buildProjectReport(project(), [
+        task({ taskId: 1, title: "Design", startDate: "2026-01-05", deadline: "2026-01-20" }),
+      ]);
+      const html = renderReportHtml(report);
+
+      expect(html.indexOf("Sơ đồ Gantt tiến độ dự án")).toBeLessThan(html.indexOf("NGƯỜI LẬP BÁO CÁO"));
+      // The signature's page is the last <section>.
+      expect(html.lastIndexOf("NGƯỜI LẬP BÁO CÁO")).toBeGreaterThan(html.lastIndexOf("<section"));
+    });
+
+    it("shows a placeholder on the Gantt page when no task carries a date", () => {
+      const report = buildProjectReport(project(), [task({ taskId: 1 })]);
+      const html = renderReportHtml(report);
+
+      expect(html).toContain("Sơ đồ Gantt tiến độ dự án");
+      expect(html).toContain("Dự án không có công việc nào mang ngày");
+    });
   });
 });

@@ -75,6 +75,9 @@ export const AiTaskInsights = ({ task, onChanged }: Props) => {
   const analyseRisk = () =>
     run("risk", async () => {
       setRisk(await coreAiApi.analyzeRisk(taskId));
+      // The endpoint writes the task's riskLevel server-side, so callers relying on the cached
+      // task list (Kanban board, dashboard) need telling — same as autoEstimate above.
+      onChanged?.();
     });
 
   return (

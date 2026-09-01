@@ -212,13 +212,28 @@ const DashboardPage = ({
   onSelectProject,
   onOpenTask,
   showMyTasks,
+  refreshToken,
 }: {
   onSelectProject: (projectId: number) => void;
   onOpenTask: (taskId: number) => void;
   /** Administrators have no assigned work of their own, so the queue would always be empty. */
   showMyTasks: boolean;
+  /** Bumped by the shell when the workspace changed elsewhere (new project, accepted invite,
+   *  AI risk write) — this page holds its own snapshot and would otherwise never refetch. */
+  refreshToken: number;
 }) => {
-  const { projects, tasks, loading, error } = useWorkspace();
+  const { projects, tasks, loading, error, reload } = useWorkspace();
+
+  // Skip the first render: useWorkspace() already fetched once on mount.
+  const firstRefresh = useRef(true);
+  useEffect(() => {
+    if (firstRefresh.current) {
+      firstRefresh.current = false;
+      return;
+    }
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshToken]);
 
   return (
     <>
@@ -261,11 +276,19 @@ const TeamView = () => {
 const ProjectView = ({
   activeProject,
   setActiveProject,
+  onWorkspaceChanged,
 }: {
   activeProject: string;
   setActiveProject: (id: string) => void;
+  onWorkspaceChanged?: () => void;
 }) => {
-  return <ProjectManagement selectedProjectId={activeProject} onProjectSelect={(projectId) => setActiveProject(projectId)} />;
+  return (
+    <ProjectManagement
+      selectedProjectId={activeProject}
+      onProjectSelect={(projectId) => setActiveProject(projectId)}
+      onProjectsChanged={onWorkspaceChanged}
+    />
+  );
 };
 
 const NotificationsView = ({
@@ -273,17 +296,20 @@ const NotificationsView = ({
   onOpenTask,
   onOpenProject,
   refreshToken,
+  onWorkspaceChanged,
 }: {
   onUnreadChange: (count: number) => void;
   onOpenTask: (taskId: number) => void;
   onOpenProject: (projectId: number) => void;
   refreshToken: number;
+  onWorkspaceChanged?: () => void;
 }) => (
   <NotificationsCenter
     onUnreadChange={onUnreadChange}
     onOpenTask={onOpenTask}
     onOpenProject={onOpenProject}
     refreshToken={refreshToken}
+    onInvitationAccepted={onWorkspaceChanged}
   />
 );
 
@@ -585,6 +611,7 @@ export default function App() {
                           setActiveProject(String(projectId));
                           setActivePage("board");
                         }}
+                        refreshToken={workspaceRefresh}
                       />
                     </motion.div>
                   )}
@@ -641,7 +668,11 @@ export default function App() {
                       className="flex-1 overflow-y-auto"
                       {...pageMotion}
                     >
-                      <ProjectView activeProject={activeProject} setActiveProject={setActiveProject} />
+                      <ProjectView
+                        activeProject={activeProject}
+                        setActiveProject={setActiveProject}
+                        onWorkspaceChanged={() => setWorkspaceRefresh((n) => n + 1)}
+                      />
                     </motion.div>
                   )}
 
@@ -736,6 +767,7 @@ export default function App() {
                           setActivePage("board");
                         }}
                         refreshToken={notificationNonce}
+                        onWorkspaceChanged={() => setWorkspaceRefresh((n) => n + 1)}
                       />
                     </motion.div>
                   )}
@@ -797,7 +829,12 @@ export default function App() {
         taskId={selectedTaskId}
         projectName={boardProjectName}
         onClose={() => setSelectedTaskId(null)}
-        onChanged={() => setBoardRefresh((n) => n + 1)}
+        onChanged={() => {
+          setBoardRefresh((n) => n + 1);
+          // A task can change (status, risk, assignment) while opened from Dashboard or MyTasksPanel
+          // too, not just the board — those views hold their own workspace snapshot and need telling.
+          setWorkspaceRefresh((n) => n + 1);
+        }}
       />
 
       {/* Logout Confirmation Modal (Screen 9) */}

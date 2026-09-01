@@ -27,6 +27,8 @@ interface ProjectFormState {
 interface ProjectManagementProps {
   selectedProjectId?: string;
   onProjectSelect?: (projectId: string) => void;
+  /** Lets the shell refresh workspace-wide views (sidebar, dashboard) after the project list changes. */
+  onProjectsChanged?: () => void;
 }
 
 const EMPTY_FORM: ProjectFormState = { name: "", description: "", deadline: "" };
@@ -44,7 +46,7 @@ function errorMessage(err: unknown): string {
   return "Something went wrong. Please try again.";
 }
 
-export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, onProjectSelect }: ProjectManagementProps) => {
+export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, onProjectSelect, onProjectsChanged }: ProjectManagementProps) => {
   const { t } = usePreferences();
   const [projects, setProjects] = useState<ProjectDto[]>([]);
   const [tasks, setTasks] = useState<TaskSummaryDto[]>([]);
@@ -205,6 +207,7 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
       setForm(EMPTY_FORM);
       setShowCreateForm(false);
       setFeedback({ type: "success", message: "Project created successfully." });
+      onProjectsChanged?.();
     } catch (err) {
       setFeedback({ type: "error", message: errorMessage(err) });
     } finally {

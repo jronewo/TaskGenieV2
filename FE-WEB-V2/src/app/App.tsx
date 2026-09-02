@@ -6,6 +6,7 @@ import { MobileDashboard } from "./components/MobileDashboard";
 import { ReportsDashboard } from "./components/ReportsDashboard";
 import { AuthModule } from "./components/AuthModule";
 import { LandingPage } from "./components/LandingPage";
+import { SupportCenter } from "./components/SupportCenter";
 import { TeamManagement } from "./components/TeamManagement";
 import { EvaluationCenter } from "./components/EvaluationCenter";
 import { AdministrationCenter } from "./components/AdministrationCenter";
@@ -211,13 +212,28 @@ const DashboardPage = ({
   onSelectProject,
   onOpenTask,
   showMyTasks,
+  refreshToken,
 }: {
   onSelectProject: (projectId: number) => void;
   onOpenTask: (taskId: number) => void;
   /** Administrators have no assigned work of their own, so the queue would always be empty. */
   showMyTasks: boolean;
+  /** Bumped by the shell when the workspace changed elsewhere (new project, accepted invite,
+   *  AI risk write) — this page holds its own snapshot and would otherwise never refetch. */
+  refreshToken: number;
 }) => {
-  const { projects, tasks, loading, error } = useWorkspace();
+  const { projects, tasks, loading, error, reload } = useWorkspace();
+
+  // Skip the first render: useWorkspace() already fetched once on mount.
+  const firstRefresh = useRef(true);
+  useEffect(() => {
+    if (firstRefresh.current) {
+      firstRefresh.current = false;
+      return;
+    }
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshToken]);
 
   return (
     <>
@@ -260,11 +276,19 @@ const TeamView = () => {
 const ProjectView = ({
   activeProject,
   setActiveProject,
+  onWorkspaceChanged,
 }: {
   activeProject: string;
   setActiveProject: (id: string) => void;
+  onWorkspaceChanged?: () => void;
 }) => {
-  return <ProjectManagement selectedProjectId={activeProject} onProjectSelect={(projectId) => setActiveProject(projectId)} />;
+  return (
+    <ProjectManagement
+      selectedProjectId={activeProject}
+      onProjectSelect={(projectId) => setActiveProject(projectId)}
+      onProjectsChanged={onWorkspaceChanged}
+    />
+  );
 };
 
 const NotificationsView = ({
@@ -272,17 +296,20 @@ const NotificationsView = ({
   onOpenTask,
   onOpenProject,
   refreshToken,
+  onWorkspaceChanged,
 }: {
   onUnreadChange: (count: number) => void;
   onOpenTask: (taskId: number) => void;
   onOpenProject: (projectId: number) => void;
   refreshToken: number;
+  onWorkspaceChanged?: () => void;
 }) => (
   <NotificationsCenter
     onUnreadChange={onUnreadChange}
     onOpenTask={onOpenTask}
     onOpenProject={onOpenProject}
     refreshToken={refreshToken}
+    onInvitationAccepted={onWorkspaceChanged}
   />
 );
 
@@ -337,6 +364,9 @@ export default function App() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   // Signed-out visitors land on the marketing page; the sign-in form is one step behind it.
   const [showAuth, setShowAuth] = useState(false);
+  // The Help Center is a third top-level view for signed-out visitors, reached from the landing
+  // page navbar — independent of whether the auth form is also open.
+  const [showSupport, setShowSupport] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
   // Narrowing the window collapses the sidebar; widening restores whatever the user last chose.
@@ -348,6 +378,7 @@ export default function App() {
   const [activePage, setActivePage] = useState("dashboard");
   const [landedAsAdmin, setLandedAsAdmin] = useState(false);
   const [boardProjectName, setBoardProjectName] = useState<string | null>(null);
+  const [boardProjectDeadline, setBoardProjectDeadline] = useState<string | null>(null);
   // Only a project leader (or owner/admin) may add tasks; the API decides, this just mirrors it.
   const [canManageBoardTasks, setCanManageBoardTasks] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
@@ -485,7 +516,15 @@ export default function App() {
     return (
       <>
         <Toaster position="top-right" richColors />
-        {showAuth ? (
+        {showSupport ? (
+          <SupportCenter
+            onBack={() => setShowSupport(false)}
+            onSignIn={() => {
+              setShowSupport(false);
+              setShowAuth(true);
+            }}
+          />
+        ) : showAuth ? (
           <div className="relative">
             {/* Overlaid so the auth screens themselves stay untouched. */}
             <button
@@ -498,7 +537,7 @@ export default function App() {
             <AuthModule />
           </div>
         ) : (
-          <LandingPage onEnter={() => setShowAuth(true)} />
+          <LandingPage onEnter={() => setShowAuth(true)} onSupport={() => setShowSupport(true)} />
         )}
       </>
     );
@@ -572,6 +611,7 @@ export default function App() {
                           setActiveProject(String(projectId));
                           setActivePage("board");
                         }}
+                        refreshToken={workspaceRefresh}
                       />
                     </motion.div>
                   )}
@@ -582,9 +622,10 @@ export default function App() {
                       className="flex-1 overflow-hidden flex flex-col"
                       {...pageMotion}
                     >
-                      <ProjectBoardHeader projectId={activeProjectId} tasks={boardTasks} onProjectLoaded={(name, canManage) => {
+                      <ProjectBoardHeader projectId={activeProjectId} tasks={boardTasks} onProjectLoaded={(name, canManage, deadline) => {
                           setBoardProjectName(name);
                           setCanManageBoardTasks(canManage);
+                          setBoardProjectDeadline(deadline ?? null);
                         }}
                         onImportTasks={() => setShowImportModal(true)}
                         onOpenTask={setSelectedTaskId}
@@ -617,7 +658,7 @@ export default function App() {
                       className="flex-1 overflow-hidden"
                       {...pageMotion}
                     >
-                      <ReportsDashboard />
+                      <ReportsDashboard onOpenTask={setSelectedTaskId} />
                     </motion.div>
                   )}
 
@@ -627,7 +668,11 @@ export default function App() {
                       className="flex-1 overflow-y-auto"
                       {...pageMotion}
                     >
-                      <ProjectView activeProject={activeProject} setActiveProject={setActiveProject} />
+                      <ProjectView
+                        activeProject={activeProject}
+                        setActiveProject={setActiveProject}
+                        onWorkspaceChanged={() => setWorkspaceRefresh((n) => n + 1)}
+                      />
                     </motion.div>
                   )}
 
@@ -722,6 +767,7 @@ export default function App() {
                           setActivePage("board");
                         }}
                         refreshToken={notificationNonce}
+                        onWorkspaceChanged={() => setWorkspaceRefresh((n) => n + 1)}
                       />
                     </motion.div>
                   )}
@@ -760,6 +806,7 @@ export default function App() {
       <CreateTaskModal
         open={showNewTaskModal}
         projectId={activeProjectId}
+        projectDeadline={boardProjectDeadline}
         onClose={() => setShowNewTaskModal(false)}
         onCreated={() => setBoardRefresh((n) => n + 1)}
       />
@@ -781,8 +828,14 @@ export default function App() {
       <TaskDetailModal
         taskId={selectedTaskId}
         projectName={boardProjectName}
+        canManageTasks={canManageBoardTasks}
         onClose={() => setSelectedTaskId(null)}
-        onChanged={() => setBoardRefresh((n) => n + 1)}
+        onChanged={() => {
+          setBoardRefresh((n) => n + 1);
+          // A task can change (status, risk, assignment) while opened from Dashboard or MyTasksPanel
+          // too, not just the board — those views hold their own workspace snapshot and need telling.
+          setWorkspaceRefresh((n) => n + 1);
+        }}
       />
 
       {/* Logout Confirmation Modal (Screen 9) */}

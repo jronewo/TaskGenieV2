@@ -51,7 +51,7 @@ public sealed class AiCorePersistenceIntegrationTests
         var taskRepo = new TaskRepository(context);
         var task = await taskRepo.AddAsync(TaskEntity.Create(
             projectId, "Risk integration", "Persistence flow", deadline: DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1)));
-        task.Update(null, null, "InProgress", null, null, 40, 2, null);
+        task.Update(null, null, "InProgress", null, null, null, 40, 2, null);
         await taskRepo.UpdateAsync(task);
         var textService = new Mock<ITextGenerationService>();
         textService.Setup(service => service.GenerateTextAsync(It.IsAny<string>(), It.IsAny<int>()))

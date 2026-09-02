@@ -6,17 +6,20 @@
  * and every key here still resolves to exactly one task id, which is what the UI needs.
  */
 
-export type WorkflowStatus = "Todo" | "InProgress" | "Done";
+export type WorkflowStatus = "Todo" | "InProgress" | "Done" | "Backlog";
 
 export const WORKFLOW: { id: WorkflowStatus; label: string; category: "todo" | "progress" | "done" }[] = [
+  { id: "Backlog", label: "BACKLOG", category: "todo" },
   { id: "Todo", label: "TO DO", category: "todo" },
   { id: "InProgress", label: "IN PROGRESS", category: "progress" },
   { id: "InReview", label: "IN REVIEW", category: "progress" },
   { id: "Done", label: "DONE", category: "done" },
 ];
 
-/** Lozenge colours follow Jira's status categories: grey → blue → green. */
+/** Lozenge colours follow Jira's status categories: grey → blue → green. Backlog is red — it only
+ *  exists because of a bug, and that needs to read differently from a routine "not started yet". */
 export const STATUS_LOZENGE: Record<string, string> = {
+  Backlog: "bg-red-100 text-red-800",
   Todo: "bg-gray-200 text-gray-700",
   InProgress: "bg-blue-100 text-blue-800",
   InReview: "bg-amber-100 text-amber-800",
@@ -24,8 +27,8 @@ export const STATUS_LOZENGE: Record<string, string> = {
 };
 
 /**
- * Progress implied by a column drop. Todo and Done are absolute; the middle columns keep whatever
- * the task already reported, because how far along a review is isn't something the board knows.
+ * Progress implied by a column drop. Todo and Done are absolute; the middle columns — and Backlog —
+ * keep whatever the task already reported, because a bug found at 80% doesn't erase that work.
  */
 export function progressFor(status: WorkflowStatus, current?: number | null): number {
   if (status === "Done") return 100;

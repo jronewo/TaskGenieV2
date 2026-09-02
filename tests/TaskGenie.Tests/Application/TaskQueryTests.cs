@@ -23,7 +23,7 @@ public sealed class TaskQueryTests
         int? difficulty = null,
         bool assigned = false)
     {
-        var task = TaskEntity.Create(1, title, null, "Medium", deadline, difficulty);
+        var task = TaskEntity.Create(1, title, null, "Medium", deadline, difficulty: difficulty);
         typeof(TaskEntity).GetProperty(nameof(TaskEntity.TaskId))!.SetValue(task, id);
         task.UpdateProgress(status, null, risk, null);
         if (assigned) task.TaskAssignees.Add(TaskAssignee.Create(id, 9));

@@ -13,6 +13,7 @@ public sealed record UpdateTaskCommand(
     string? Status,
     string? Priority,
     string? Deadline,
+    string? StartDate,
     int? EstimatedTime,
     int? ActualTime,
     int? Difficulty
@@ -30,6 +31,7 @@ public sealed class UpdateTaskCommandHandler(
         if (task.ProjectId is null) return false;
 
         var deadline = !string.IsNullOrEmpty(cmd.Deadline) && DateOnly.TryParse(cmd.Deadline, out var dl) ? dl : (DateOnly?)null;
+        var startDate = !string.IsNullOrEmpty(cmd.StartDate) && DateOnly.TryParse(cmd.StartDate, out var sd) ? sd : (DateOnly?)null;
 
         task.Update(
             title: cmd.Title,
@@ -37,6 +39,7 @@ public sealed class UpdateTaskCommandHandler(
             status: cmd.Status,
             priority: cmd.Priority,
             deadline: deadline,
+            startDate: startDate,
             estimatedTime: cmd.EstimatedTime,
             actualTime: cmd.ActualTime,
             difficulty: cmd.Difficulty

@@ -13,6 +13,7 @@ public sealed record CreateTaskCommand(
     string? Description,
     string? Priority,
     string? Deadline,
+    string? StartDate,
     int? Difficulty,
     /// <summary>Which kind of work this is; null keeps the task unclassified.</summary>
     int? TaskTypeId = null
@@ -35,6 +36,7 @@ public sealed class CreateTaskCommandHandler(
             description: cmd.Description,
             priority: cmd.Priority ?? "Medium",
             deadline: !string.IsNullOrEmpty(cmd.Deadline) && DateOnly.TryParse(cmd.Deadline, out var dl) ? dl : null,
+            startDate: !string.IsNullOrEmpty(cmd.StartDate) && DateOnly.TryParse(cmd.StartDate, out var sd) ? sd : null,
             difficulty: cmd.Difficulty,
             createdBy: currentUser.UserId
         );

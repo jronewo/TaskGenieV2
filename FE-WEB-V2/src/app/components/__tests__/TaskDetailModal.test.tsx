@@ -42,6 +42,7 @@ describe("TaskDetailModal", () => {
     vi.clearAllMocks();
     api.getById.mockResolvedValue(TASK);
     comments.byTask.mockResolvedValue([]);
+    api.progressLogs.mockResolvedValue([]);
   });
 
   it("renders the task instead of an empty overlay", async () => {
@@ -78,5 +79,62 @@ describe("TaskDetailModal", () => {
   it("renders nothing when no task is selected", () => {
     const { container } = render(<TaskDetailModal taskId={null} onClose={vi.fn()} />);
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("TaskDetailModal Done gating", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    comments.byTask.mockResolvedValue([]);
+    api.progressLogs.mockResolvedValue([]);
+  });
+
+  it("hides Done from a non-Lead viewer", async () => {
+    api.getById.mockResolvedValue({ ...TASK, status: "InReview" });
+    render(<TaskDetailModal taskId={42} projectName="Website Revamp" canManageTasks={false} onClose={vi.fn()} />);
+
+    await screen.findByText("Fix broken login redirect");
+    const options = screen.getByLabelText("Status").querySelectorAll("option");
+    expect(Array.from(options).map((o) => o.value)).not.toContain("Done");
+  });
+
+  it("offers Done to a Lead even when the task hasn't reached In Review yet", async () => {
+    const user = userEvent.setup();
+    api.getById.mockResolvedValue({ ...TASK, status: "Todo", dependencies: [] });
+    api.updateProgress.mockResolvedValue({ ...TASK, status: "Done", progress: 100 });
+    render(<TaskDetailModal taskId={42} projectName="Website Revamp" canManageTasks onClose={vi.fn()} />);
+
+    await screen.findByText("Fix broken login redirect");
+    await user.selectOptions(screen.getByLabelText("Status"), "Done");
+
+    await waitFor(() => expect(api.updateProgress).toHaveBeenCalledWith(42, expect.objectContaining({ status: "Done" })));
+  });
+
+  it("lets a Lead move an In Review task to Done directly when nothing is blocking it", async () => {
+    const user = userEvent.setup();
+    api.getById.mockResolvedValue({ ...TASK, status: "InReview", dependencies: [] });
+    api.updateProgress.mockResolvedValue({ ...TASK, status: "Done", progress: 100 });
+    render(<TaskDetailModal taskId={42} projectName="Website Revamp" canManageTasks onClose={vi.fn()} />);
+
+    await screen.findByText("Fix broken login redirect");
+    await user.selectOptions(screen.getByLabelText("Status"), "Done");
+
+    await waitFor(() => expect(api.updateProgress).toHaveBeenCalledWith(42, expect.objectContaining({ status: "Done" })));
+  });
+
+  it("opens the force-complete modal instead of calling the API when a dependency is open", async () => {
+    const user = userEvent.setup();
+    api.getById.mockResolvedValue({
+      ...TASK,
+      status: "InReview",
+      dependencies: [{ dependencyId: 1, dependsOnTaskId: 10, dependsOnTaskTitle: "Set up the database", status: "Todo" }],
+    });
+    render(<TaskDetailModal taskId={42} projectName="Website Revamp" canManageTasks onClose={vi.fn()} />);
+
+    await screen.findByText("Fix broken login redirect");
+    await user.selectOptions(screen.getByLabelText("Status"), "Done");
+
+    expect(await screen.findByRole("dialog", { name: /complete task/i })).toBeInTheDocument();
+    expect(api.updateProgress).not.toHaveBeenCalled();
   });
 });

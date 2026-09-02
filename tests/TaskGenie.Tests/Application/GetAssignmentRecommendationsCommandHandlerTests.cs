@@ -16,7 +16,7 @@ public sealed class GetAssignmentRecommendationsCommandHandlerTests
     {
         var task = TaskEntity.Create(20, "Build risk API", "C# risk scoring endpoint");
         task.TaskId = 5;
-        task.Update(null, null, null, null, null, 8, null, null);
+        task.Update(null, null, null, null, null, null, 8, null, null);
         var skill = Skill.Create("C#");
         skill.SkillId = 7;
         var required = TaskRequiredSkill.Create(5, 7, 4);

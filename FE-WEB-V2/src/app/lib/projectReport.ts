@@ -26,6 +26,36 @@ export interface LateTaskRow {
   daysLate: number;
 }
 
+/**
+ * One placed bar on the closure report's Gantt. Every task that carries at least one usable date
+ * gets a row: an explicit StartDate/Deadline pair is drawn as-is, and a task missing one or both is
+ * still placed from whatever it has (created date, completion date) and flagged `estimated`.
+ */
+export interface GanttTaskRow {
+  taskId: number;
+  title: string;
+  status: string;
+  /** 0–100. */
+  progress: number;
+  start: Date;
+  end: Date;
+  /** True when the start and/or end had to be inferred because the task lacked an explicit start date or deadline. */
+  estimated: boolean;
+}
+
+export interface GanttData {
+  /** Sorted by start date, then end date. */
+  rows: GanttTaskRow[];
+  rangeStart: Date;
+  rangeEnd: Date;
+  /** One tick every 7 days from rangeStart, for the timeline grid and axis labels. */
+  weekTicks: Date[];
+  /** Drawn rows whose start or end was inferred. */
+  estimatedCount: number;
+  /** Tasks with no usable date at all — they cannot be placed and are only counted. */
+  undatedCount: number;
+}
+
 export interface MemberReportRow {
   userId: number;
   userName: string;
@@ -78,6 +108,9 @@ export interface ProjectReport {
   lateTaskRows: LateTaskRow[];
   averageDaysLate: number;
   longestDelay: number;
+
+  /** The project timeline, or null when no task has both a start date and a deadline. */
+  gantt: GanttData | null;
 }
 
 const UNASSIGNED_ID = -1;
@@ -105,6 +138,77 @@ function daysLateFor(task: TaskDetailDto, closedOn: Date): number {
 }
 
 const round1 = (value: number): number => Math.round(value * 10) / 10;
+
+/** Midnight copy of a date, so day-level comparisons ignore any time component. */
+function dateOnly(value: Date): Date {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+}
+
+/**
+ * Every task placed on a timeline for the closure report.
+ *
+ * A task with both an explicit StartDate and Deadline is drawn as planned. A task missing one or
+ * both is still placed from whatever dates it has — created date, completion date, or the single
+ * date it does carry — and marked `estimated` so the chart can show it differently. Only a task
+ * with no date at all (no start, no deadline, no created, no completed) is left off and counted.
+ */
+function buildGantt(tasks: TaskDetailDto[]): GanttData | null {
+  const rows: GanttTaskRow[] = [];
+  let undatedCount = 0;
+
+  for (const task of tasks) {
+    const explicitStart = parseDate(task.startDate);
+    const explicitEnd = parseDate(task.deadline);
+    const created = parseDate(task.createdAt);
+    const completed = parseDate(task.completedAt);
+
+    // Any single date is enough to place the task; without one it cannot go on the timeline.
+    const anchor = explicitStart ?? explicitEnd ?? completed ?? created;
+    if (!anchor) {
+      undatedCount += 1;
+      continue;
+    }
+
+    let start = dateOnly(explicitStart ?? created ?? anchor);
+    let end = dateOnly(explicitEnd ?? completed ?? anchor);
+    if (end.getTime() < start.getTime()) end = start;
+
+    rows.push({
+      taskId: task.taskId,
+      title: task.title ?? `Task #${task.taskId}`,
+      status: task.status ?? "Todo",
+      progress: Math.min(100, Math.max(0, task.progress ?? 0)),
+      start,
+      end,
+      estimated: !explicitStart || !explicitEnd,
+    });
+  }
+
+  if (rows.length === 0) return null;
+
+  rows.sort((a, b) => a.start.getTime() - b.start.getTime() || a.end.getTime() - b.end.getTime());
+
+  const rangeStart = rows.reduce((min, r) => (r.start < min ? r.start : min), rows[0].start);
+  const rangeEnd = rows.reduce((max, r) => (r.end > max ? r.end : max), rows[0].end);
+
+  const weekTicks: Date[] = [];
+  for (
+    let tick = new Date(rangeStart);
+    tick.getTime() <= rangeEnd.getTime();
+    tick = new Date(tick.getFullYear(), tick.getMonth(), tick.getDate() + 7)
+  ) {
+    weekTicks.push(new Date(tick));
+  }
+
+  return {
+    rows,
+    rangeStart,
+    rangeEnd,
+    weekTicks,
+    estimatedCount: rows.filter((r) => r.estimated).length,
+    undatedCount,
+  };
+}
 
 const ROLE_LABELS: Record<string, string> = {
   LEADER: "Trưởng nhóm",
@@ -255,6 +359,8 @@ export function buildProjectReport(
     lateTaskRows,
     averageDaysLate: lateTaskRows.length === 0 ? 0 : round1(totalLateDays / lateTaskRows.length),
     longestDelay: lateTaskRows.reduce((max, row) => Math.max(max, row.daysLate), 0),
+
+    gantt: buildGantt(tasks),
   };
 }
 
@@ -280,6 +386,28 @@ const COLORS = {
   amber: "#B7791F",
   blue: "#2C6DA3",
 };
+
+/** Bar colour per task status on the Gantt — same mapping the board's columns use. */
+const GANTT_STATUS_COLOR: Record<string, string> = {
+  Done: COLORS.green,
+  InProgress: COLORS.blue,
+  InReview: COLORS.amber,
+  Todo: "#94A3B8",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  Done: "Hoàn thành",
+  InProgress: "Đang làm",
+  InReview: "Chờ duyệt",
+  Todo: "Cần làm",
+};
+
+/** dd/MM, for the timeline axis where the year is already implied by the header. */
+const formatDayMonth = (date: Date): string =>
+  `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}`;
+
+const truncate = (value: string, max: number): string =>
+  value.length > max ? `${value.slice(0, max - 1)}…` : value;
 
 /**
  * Donut drawn as inline SVG arcs.
@@ -395,6 +523,159 @@ function barChartSvg(members: MemberReportRow[]): string {
     </svg>`;
 }
 
+const ganttToday = (): Date => dateOnly(new Date());
+
+/** Colour/legend swatch, shared by every Gantt page. */
+function ganttLegend(gantt: GanttData): string {
+  const todayInRange = ganttToday() >= gantt.rangeStart && ganttToday() <= gantt.rangeEnd;
+  return `
+    <div class="legend">
+      <span><i style="background:${GANTT_STATUS_COLOR.Done}"></i> Hoàn thành</span>
+      <span><i style="background:${GANTT_STATUS_COLOR.InProgress}"></i> Đang làm</span>
+      <span><i style="background:${GANTT_STATUS_COLOR.InReview}"></i> Chờ duyệt</span>
+      <span><i style="background:${GANTT_STATUS_COLOR.Todo}"></i> Cần làm</span>
+      ${gantt.estimatedCount > 0 ? `<span><i style="border:1px dashed #6b7280;background:#f3f4f6"></i> Ước tính</span>` : ""}
+      ${todayInRange ? `<span><i style="background:${COLORS.red}"></i> Hôm nay</span>` : ""}
+    </div>`;
+}
+
+function ganttNotes(gantt: GanttData): string {
+  const notes: string[] = [];
+  if (gantt.estimatedCount > 0) {
+    notes.push(
+      `* ${gantt.estimatedCount} công việc thiếu ngày bắt đầu hoặc hạn chót — mốc thời gian được suy ra từ ngày tạo / ngày hoàn thành và vẽ bằng nét đứt.`
+    );
+  }
+  if (gantt.undatedCount > 0) {
+    notes.push(`${gantt.undatedCount} công việc không có bất kỳ ngày nào nên không thể đưa lên sơ đồ.`);
+  }
+  return notes.map((n) => `<p class="empty">${n}</p>`).join("");
+}
+
+/**
+ * One page of the project timeline as inline SVG — a bar per task, positioned StartDate → Deadline
+ * (inferred dates drawn dashed) and filled to Progress, over a weekly grid with a "today" marker.
+ *
+ * Same no-library approach as the donut and bar chart above: the report prints from a detached
+ * window, so the chart is hand-drawn. `pageRows` is the slice to draw; the scale and axis come
+ * from the whole `gantt` so every page lines up.
+ */
+function ganttSvg(gantt: GanttData, pageRows: GanttTaskRow[]): string {
+  const { rangeStart, rangeEnd, weekTicks } = gantt;
+
+  const vbWidth = 720;
+  const labelW = 150;
+  const timelineMax = vbWidth - labelW;
+  const totalDays = Math.max(dayDiff(rangeEnd, rangeStart) + 1, 1);
+  const pxPerDay = Math.min(timelineMax / totalDays, 26);
+
+  const headerH = 20;
+  const rowH = 18;
+  const bodyH = Math.max(pageRows.length, 1) * rowH;
+  const vbHeight = headerH + bodyH + 6;
+
+  const xFor = (d: Date) => labelW + dayDiff(d, rangeStart) * pxPerDay;
+
+  const today = ganttToday();
+  const todayInRange = today >= rangeStart && today <= rangeEnd;
+
+  const grid = weekTicks
+    .map((tick) => {
+      const x = xFor(tick);
+      // Skip the label (not the gridline) when it would run off the right edge.
+      const label =
+        x + 28 <= vbWidth
+          ? `<text x="${(x + 2).toFixed(1)}" y="12" font-size="8" fill="#6b7280">${formatDayMonth(tick)}</text>`
+          : "";
+      return `<line x1="${x.toFixed(1)}" y1="${headerH}" x2="${x.toFixed(1)}" y2="${headerH + bodyH}" stroke="#e5e7eb" stroke-width="0.5" />${label}`;
+    })
+    .join("");
+
+  const bars = pageRows
+    .map((row, i) => {
+      const y = headerH + i * rowH;
+      const x = xFor(row.start);
+      const w = Math.max((dayDiff(row.end, row.start) + 1) * pxPerDay, 3);
+      const color = GANTT_STATUS_COLOR[row.status] ?? GANTT_STATUS_COLOR.Todo;
+      const barY = y + 4;
+      const barH = rowH - 8;
+      const title = `${escapeHtml(truncate(row.title, 32))}${row.estimated ? " *" : ""}`;
+      const track = row.estimated
+        ? `<rect x="${x.toFixed(1)}" y="${barY}" width="${w.toFixed(1)}" height="${barH}" rx="2" fill="${color}" opacity="0.12" stroke="${color}" stroke-width="0.8" stroke-dasharray="3,2" />`
+        : `<rect x="${x.toFixed(1)}" y="${barY}" width="${w.toFixed(1)}" height="${barH}" rx="2" fill="${color}" opacity="0.22" />`;
+      const fill =
+        row.progress > 0
+          ? `<rect x="${x.toFixed(1)}" y="${barY}" width="${((w * row.progress) / 100).toFixed(1)}" height="${barH}" rx="2" fill="${color}" opacity="${row.estimated ? "0.5" : "1"}" />`
+          : "";
+      return `
+        <text x="0" y="${(y + rowH / 2 + 3).toFixed(1)}" font-size="8.5" fill="#374151">${title}</text>
+        ${track}
+        ${fill}`;
+    })
+    .join("");
+
+  const todayLine = todayInRange
+    ? `<line x1="${xFor(today).toFixed(1)}" y1="${headerH}" x2="${xFor(today).toFixed(1)}" y2="${headerH + bodyH}" stroke="${COLORS.red}" stroke-width="1" stroke-dasharray="2,2" />`
+    : "";
+
+  return `
+    <svg viewBox="0 0 ${vbWidth} ${vbHeight}" width="100%" role="img" aria-label="Sơ đồ Gantt tiến độ dự án">
+      <line x1="${labelW}" y1="${headerH}" x2="${labelW}" y2="${headerH + bodyH}" stroke="#9ca3af" stroke-width="0.5" />
+      ${grid}
+      ${bars}
+      ${todayLine}
+    </svg>`;
+}
+
+function ganttTable(gantt: GanttData): string {
+  const rows = gantt.rows
+    .map(
+      (row) => `
+      <tr>
+        <td>${escapeHtml(row.title)}${row.estimated ? ' <span style="color:#6b7280">*</span>' : ""}</td>
+        <td>${formatDate(row.start)}</td>
+        <td>${formatDate(row.end)}</td>
+        <td class="num">${dayDiff(row.end, row.start) + 1}</td>
+        <td>${STATUS_LABEL[row.status] ?? escapeHtml(row.status)}</td>
+        <td class="num">${row.progress}%</td>
+      </tr>`
+    )
+    .join("");
+
+  return `
+    <table class="grid-t" style="margin-top:14px">
+      <thead>
+        <tr><th>Công việc</th><th>Bắt đầu</th><th>Kết thúc</th><th class="num">Số ngày</th><th>Trạng thái</th><th class="num">Tiến độ</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+/**
+ * The Gantt page body (without the outer page frame): section heading, legend, the full timeline
+ * with a bar for every dated task, and the schedule table. A long project simply flows the chart
+ * onto a second printed sheet.
+ */
+function ganttSection(report: ProjectReport): string {
+  const heading = `
+    <div class="section">
+      <div class="no">04</div>
+      <div class="t"><h2>Sơ đồ Gantt tiến độ dự án</h2><p>Dòng thời gian của từng công việc: bắt đầu → hạn chót, tô theo tiến độ</p></div>
+    </div>`;
+
+  const gantt = report.gantt;
+  if (!gantt) {
+    return `${heading}
+      <p class="empty">Dự án không có công việc nào mang ngày để dựng sơ đồ Gantt.</p>`;
+  }
+
+  return `${heading}
+    ${ganttLegend(gantt)}
+    ${ganttSvg(gantt, gantt.rows)}
+    ${ganttTable(gantt)}
+    ${ganttNotes(gantt)}`;
+}
+
 function verdictCopy(report: ProjectReport): { headline: string; badgeTitle: string; badgeValue: string; tone: string } {
   switch (report.scheduleVerdict) {
     case "LATE":
@@ -452,7 +733,7 @@ function remark(report: ProjectReport): string {
   return parts.join(" ");
 }
 
-function renderReportHtml(report: ProjectReport): string {
+export function renderReportHtml(report: ProjectReport): string {
   const { project } = report;
   const v = verdictCopy(report);
 
@@ -780,11 +1061,18 @@ function renderReportHtml(report: ProjectReport): string {
   <footer><span>Xuất từ TaskGenie ngày ${formatDate(new Date())}</span><span>Trang 3</span></footer>
 </section>
 
-<!-- ── Trang 4 ─────────────────────────────────────────────────────────── -->
+<!-- ── Trang 4 · Sơ đồ Gantt ───────────────────────────────────────────── -->
+<section class="page">
+  ${runningHeader}
+  ${ganttSection(report)}
+  <footer><span>Xuất từ TaskGenie ngày ${formatDate(new Date())}</span><span>Trang 4</span></footer>
+</section>
+
+<!-- ── Trang 5 ─────────────────────────────────────────────────────────── -->
 <section class="page">
   ${runningHeader}
   <div class="section">
-    <div class="no">04</div>
+    <div class="no">05</div>
     <div class="t"><h2>Đánh giá đóng dự án so với planning</h2><p>Xác định dự án đóng sớm, đúng hạn hay quá hạn</p></div>
   </div>
 
@@ -832,7 +1120,7 @@ function renderReportHtml(report: ProjectReport): string {
     <div><div class="k">NGÀY XUẤT BÁO CÁO</div><div class="v">${formatDate(new Date())}</div></div>
   </div>
 
-  <footer><span>Xuất từ TaskGenie ngày ${formatDate(new Date())}</span><span>Trang 4</span></footer>
+  <footer><span>Xuất từ TaskGenie ngày ${formatDate(new Date())}</span><span>Trang 5</span></footer>
 </section>
 
 </body>

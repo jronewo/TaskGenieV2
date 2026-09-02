@@ -17,7 +17,7 @@ public sealed class AnalyzeTaskRiskCommandHandlerTests
     {
         var task = TaskEntity.Create(7, "Critical integration", "Integrate core API", deadline: DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1));
         task.TaskId = 42;
-        task.Update(null, null, "InProgress", null, null, 40, 4, null);
+        task.Update(null, null, "InProgress", null, null, null, 40, 4, null);
 
         var taskRepo = new Mock<ITaskRepository>();
         taskRepo.Setup(repo => repo.GetByIdAsync(42, It.IsAny<CancellationToken>())).ReturnsAsync(task);

@@ -2,13 +2,17 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { motion, AnimatePresence } from "motion/react";
 import { Plus, Inbox, Loader2, SlidersHorizontal } from "lucide-react";
 import { TaskCard } from "./TaskCard";
+import { MoveToBacklogModal } from "./MoveToBacklogModal";
+import { ForceCompleteModal } from "./ForceCompleteModal";
 import { taskApi, TaskDetailDto, TaskStatusValue } from "../services/taskApi";
 import { ApiError } from "../services/apiClient";
 import { usePreferences } from "../settings/PreferencesContext";
 import { progressFor } from "../lib/jira";
 
-/** Column ids are the backend's status values verbatim. */
+/** Column ids are the backend's status values verbatim. Backlog leads — it's the "needs triage
+ *  before normal flow" column, not a place work quietly starts. */
 const COLUMNS: { id: TaskStatusValue; labelKey: string; accent: string }[] = [
+  { id: "Backlog", labelKey: "board.backlog", accent: "#DC2626" },
   { id: "Todo", labelKey: "board.todo", accent: "#64748B" },
   { id: "InProgress", labelKey: "board.inProgress", accent: "#1E88E5" },
   { id: "InReview", labelKey: "board.inReview", accent: "#F59E0B" },
@@ -53,6 +57,8 @@ export const KanbanBoard = ({ projectId, projectName, canManageTasks = false, on
     sort: "created-desc",
   });
   const [movingId, setMovingId] = useState<number | null>(null);
+  const [backlogTarget, setBacklogTarget] = useState<TaskDetailDto | null>(null);
+  const [forceCompleteTarget, setForceCompleteTarget] = useState<TaskDetailDto | null>(null);
 
   // Ref-held so an inline parent callback can't re-create this effect on every render.
   const onTasksLoadedRef = useRef(onTasksLoaded);
@@ -300,7 +306,7 @@ export const KanbanBoard = ({ projectId, projectName, canManageTasks = false, on
           <Loader2 size={14} className="animate-spin" aria-hidden /> Loading board…
         </div>
       ) : (
-        <div className="grid flex-1 grid-cols-1 gap-3 overflow-y-auto p-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid flex-1 grid-cols-1 gap-3 overflow-y-auto p-4 sm:grid-cols-2 xl:grid-cols-5">
           {COLUMNS.map((column) => {
             const columnTasks = visibleTasks.filter((t) => (t.status ?? "Todo") === column.id);
             return (
@@ -309,7 +315,27 @@ export const KanbanBoard = ({ projectId, projectName, canManageTasks = false, on
                 aria-label={t(column.labelKey)}
                 data-testid={`column-${column.id}`}
                 onDragOver={(e) => e.preventDefault()}
-                onDrop={() => dragging && moveTask(dragging, column.id)}
+                onDrop={() => {
+                  if (!dragging) return;
+                  if (column.id === "Backlog") {
+                    setBacklogTarget(dragging);
+                    return;
+                  }
+                  if (column.id === "Done") {
+                    if (!canManageTasks) {
+                      setError("Only a Lead can complete a task.");
+                      return;
+                    }
+                    const openDependencies = dragging.dependencies.filter(
+                      (d) => (d.status ?? "").toUpperCase() !== "DONE"
+                    );
+                    if (openDependencies.length > 0) {
+                      setForceCompleteTarget(dragging);
+                      return;
+                    }
+                  }
+                  moveTask(dragging, column.id);
+                }}
                 // The accent is set inline so each column keeps its identity in both themes; the
                 // utility palette only has one board surface, which made four columns look like one.
                 style={{ borderTopColor: column.accent }}
@@ -363,6 +389,31 @@ export const KanbanBoard = ({ projectId, projectName, canManageTasks = false, on
             );
           })}
         </div>
+      )}
+
+      {backlogTarget && (
+        <MoveToBacklogModal
+          task={backlogTarget}
+          onClose={() => setBacklogTarget(null)}
+          onMoved={(updated) => {
+            setTasks((current) => current.map((t) => (t.taskId === updated.taskId ? updated : t)));
+            setBacklogTarget(null);
+          }}
+        />
+      )}
+
+      {forceCompleteTarget && (
+        <ForceCompleteModal
+          task={forceCompleteTarget}
+          openDependencies={forceCompleteTarget.dependencies.filter(
+            (d) => (d.status ?? "").toUpperCase() !== "DONE"
+          )}
+          onClose={() => setForceCompleteTarget(null)}
+          onMoved={(updated) => {
+            setTasks((current) => current.map((t) => (t.taskId === updated.taskId ? updated : t)));
+            setForceCompleteTarget(null);
+          }}
+        />
       )}
     </div>
   );

@@ -21,6 +21,8 @@ public class Task
 
     public DateOnly? Deadline { get; internal set; }
 
+    public DateOnly? StartDate { get; internal set; }
+
     public int? EstimatedTime { get; internal set; }
 
     public int? AiEstimatedTime { get; internal set; }
@@ -76,6 +78,7 @@ public class Task
         string? description,
         string priority = "Medium",
         DateOnly? deadline = null,
+        DateOnly? startDate = null,
         int? difficulty = null,
         int? createdBy = null) => new()
     {
@@ -85,6 +88,7 @@ public class Task
         Priority = priority,
         Status = "Todo",
         Deadline = deadline,
+        StartDate = startDate,
         Difficulty = difficulty,
         CreatedBy = createdBy,
         CreatedAt = DateTime.UtcNow,
@@ -98,6 +102,7 @@ public class Task
         string? status,
         string? priority,
         DateOnly? deadline,
+        DateOnly? startDate,
         int? estimatedTime,
         int? actualTime,
         int? difficulty)
@@ -107,6 +112,7 @@ public class Task
         if (status is not null) Status = status;
         if (priority is not null) Priority = priority;
         if (deadline.HasValue) Deadline = deadline;
+        if (startDate.HasValue) StartDate = startDate;
         if (estimatedTime.HasValue) EstimatedTime = estimatedTime;
         if (actualTime.HasValue) ActualTime = actualTime;
         if (difficulty.HasValue) Difficulty = difficulty;

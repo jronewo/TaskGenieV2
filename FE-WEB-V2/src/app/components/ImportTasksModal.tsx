@@ -116,6 +116,7 @@ export const ImportTasksModal = ({ open, projectId, onClose, onImported }: Props
           description: entry.row.description || null,
           priority: entry.row.priority,
           deadline: entry.row.deadline || null,
+          startDate: entry.row.startDate || null,
           // Difficulty is left for the AI estimate rather than guessed from a spreadsheet.
           difficulty: null,
           taskTypeId: resolveTypeId(entry.row.typeName, types),
@@ -221,8 +222,10 @@ export const ImportTasksModal = ({ open, projectId, onClose, onImported }: Props
               </p>
               <p>
                 Kỹ năng viết dạng <span className="font-medium text-gray-700">React:4, SQL</span> — số là mức
-                người nhận việc cần có (1–5, mặc định 3). Hạn ghi theo{" "}
-                <span className="font-medium text-gray-700">yyyy-mm-dd</span>. Độ khó do AI ước tính, không cần điền.
+                người nhận việc cần có (1–5, mặc định 3). Hạn và{" "}
+                <span className="font-medium text-gray-700">Start date</span> ghi theo{" "}
+                <span className="font-medium text-gray-700">yyyy-mm-dd</span>, Start date phải trước hoặc bằng
+                hạn. Độ khó do AI ước tính, không cần điền.
               </p>
             </div>
 

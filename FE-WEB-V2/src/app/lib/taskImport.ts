@@ -18,6 +18,9 @@ export const IMPORT_COLUMNS = [
   "Deadline",
   "Required skills",
   "Depends on",
+  // Appended rather than inserted next to Deadline: this column is read by position, so a file
+  // saved under the old 8-column layout must keep parsing correctly.
+  "Start date",
 ] as const;
 
 export const VALID_PRIORITIES = ["Low", "Medium", "High", "Critical"];
@@ -42,6 +45,8 @@ export interface ParsedTaskRow {
   priority: string;
   /** yyyy-mm-dd, or empty. */
   deadline: string;
+  /** yyyy-mm-dd, or empty. */
+  startDate: string;
   /** Skill names exactly as typed, with the level the author asked for. */
   skills: { name: string; level: number }[];
   /** Local ids of the rows this task waits on. */
@@ -63,10 +68,10 @@ function escapeCell(value: string): string {
 export function buildTemplateCsv(): string {
   const rows = [
     IMPORT_COLUMNS as unknown as string[],
-    ["1", "Thiết kế màn hình đăng nhập", "Wireframe và luồng đăng nhập", "Design", "High", "2026-09-01", "UI/UX:4", ""],
-    ["2", "Dựng API đăng nhập", "Endpoint, JWT, refresh token", "Develop", "High", "2026-09-05", "C#:4, SQL:3", "1"],
-    ["3", "Dựng giao diện đăng nhập", "Nối API vào màn hình", "Develop", "Medium", "2026-09-06", "React:4", "1"],
-    ["4", "Kiểm thử luồng đăng nhập", "Ca kiểm thử cho đăng nhập và khoá tài khoản", "Testing", "Medium", "2026-09-10", "Testing:3", "2, 3"],
+    ["1", "Thiết kế màn hình đăng nhập", "Wireframe và luồng đăng nhập", "Design", "High", "2026-09-01", "UI/UX:4", "", "2026-08-25"],
+    ["2", "Dựng API đăng nhập", "Endpoint, JWT, refresh token", "Develop", "High", "2026-09-05", "C#:4, SQL:3", "1", "2026-09-02"],
+    ["3", "Dựng giao diện đăng nhập", "Nối API vào màn hình", "Develop", "Medium", "2026-09-06", "React:4", "1", "2026-09-02"],
+    ["4", "Kiểm thử luồng đăng nhập", "Ca kiểm thử cho đăng nhập và khoá tài khoản", "Testing", "Medium", "2026-09-10", "Testing:3", "2, 3", "2026-09-07"],
   ];
   return BOM + rows.map((cells) => cells.map(escapeCell).join(",")).join("\r\n") + "\r\n";
 }
@@ -166,7 +171,7 @@ export function parseTaskCsv(text: string, knownTypeNames: string[] = []): Parse
 
   const rows: ParsedTaskRow[] = bodyLines.map((line, index) => {
     const cells = splitLine(line);
-    const [idRaw = "", title = "", description = "", typeName = "", priority = "", deadline = "", skillsRaw = "", dependsRaw = ""] = cells;
+    const [idRaw = "", title = "", description = "", typeName = "", priority = "", deadline = "", skillsRaw = "", dependsRaw = "", startDateRaw = ""] = cells;
     const errors: string[] = [];
 
     if (!title) errors.push("Thiếu tên công việc.");
@@ -185,6 +190,16 @@ export function parseTaskCsv(text: string, knownTypeNames: string[] = []): Parse
     if (deadline && !isValidDate(deadline)) {
       errors.push(`Hạn "${deadline}" phải theo dạng yyyy-mm-dd.`);
     }
+    if (startDateRaw && !isValidDate(startDateRaw)) {
+      errors.push(`Ngày bắt đầu "${startDateRaw}" phải theo dạng yyyy-mm-dd.`);
+    }
+    if (
+      deadline && startDateRaw &&
+      isValidDate(deadline) && isValidDate(startDateRaw) &&
+      startDateRaw.trim() > deadline.trim()
+    ) {
+      errors.push("Ngày bắt đầu phải trước hoặc bằng hạn chót.");
+    }
 
     const { skills, errors: skillErrors } = parseSkills(skillsRaw);
     const dependsOn = dependsRaw.split(/[,;]/).map((d) => d.trim()).filter(Boolean);
@@ -197,6 +212,7 @@ export function parseTaskCsv(text: string, knownTypeNames: string[] = []): Parse
       typeName: typeName.trim(),
       priority: normalisedPriority,
       deadline: deadline.trim(),
+      startDate: startDateRaw.trim(),
       skills,
       dependsOn,
       errors: [...errors, ...skillErrors],

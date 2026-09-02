@@ -128,6 +128,28 @@ describe("parseTaskCsv", () => {
     expect(rows[0].errors).toEqual([]);
   });
 
+  it("reads a start date from the 9th column, appended so old files still parse", () => {
+    const rows = parseTaskCsv(`${HEAD}\n1,A,,,,2026-12-31,,,2026-12-01`);
+    expect(rows[0].startDate).toBe("2026-12-01");
+    expect(rows[0].errors).toEqual([]);
+  });
+
+  it("leaves start date empty for a file saved under the old 8-column layout", () => {
+    const rows = parseTaskCsv(`${HEAD}\n1,A,,,,2026-12-31,,`);
+    expect(rows[0].startDate).toBe("");
+    expect(rows[0].errors).toEqual([]);
+  });
+
+  it("rejects a start date that is not yyyy-mm-dd", () => {
+    const rows = parseTaskCsv(`${HEAD}\n1,A,,,,,,,01/12/2026`);
+    expect(rows[0].errors[0]).toMatch(/yyyy-mm-dd/);
+  });
+
+  it("rejects a start date after the deadline", () => {
+    const rows = parseTaskCsv(`${HEAD}\n1,A,,,,2026-09-01,,,2026-09-10`);
+    expect(rows[0].errors[0]).toMatch(/trước hoặc bằng/i);
+  });
+
   it("flags a missing task name against its own row number", () => {
     const rows = parseTaskCsv(`${HEAD}\n1,Good,,,High,,,\n2,,,,High,,,`);
     expect(rows[0].errors).toEqual([]);

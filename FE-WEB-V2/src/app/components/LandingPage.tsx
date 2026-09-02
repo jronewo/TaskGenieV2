@@ -179,7 +179,7 @@ const BoardPreview = () => {
   );
 };
 
-const ThemeToggle = () => {
+export const ThemeToggle = () => {
   const { resolvedTheme, setTheme } = usePreferences();
   const next = resolvedTheme === "dark" ? "light" : "dark";
   return (
@@ -194,7 +194,7 @@ const ThemeToggle = () => {
   );
 };
 
-const Wordmark = () => (
+export const Wordmark = () => (
   <span className="flex items-center gap-2">
     <span className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center shrink-0">
       <Sparkles size={16} strokeWidth={2} />
@@ -203,7 +203,14 @@ const Wordmark = () => (
   </span>
 );
 
-export const LandingPage = ({ onEnter }: { onEnter: () => void }) => {
+export const LandingPage = ({
+  onEnter,
+  onSupport,
+}: {
+  onEnter: () => void;
+  /** Opens the standalone Help Center page — a separate top-level view, not a section of this page. */
+  onSupport: () => void;
+}) => {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [plans, setPlans] = useState<PlanDto[]>([]);
@@ -261,6 +268,13 @@ export const LandingPage = ({ onEnter }: { onEnter: () => void }) => {
                 {s.label}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={onSupport}
+              className="px-3 py-1.5 text-[13px] font-medium text-muted hover:text-strong rounded-lg hover:bg-surface-sunken transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-600)]"
+            >
+              Support
+            </button>
           </div>
 
           <div className="ml-auto flex items-center gap-2">
@@ -303,6 +317,16 @@ export const LandingPage = ({ onEnter }: { onEnter: () => void }) => {
                 {s.label}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                onSupport();
+              }}
+              className="text-left px-3 py-2 text-sm font-medium text-default hover:bg-surface-sunken rounded-lg cursor-pointer"
+            >
+              Support
+            </button>
           </div>
         )}
       </header>
@@ -591,6 +615,13 @@ export const LandingPage = ({ onEnter }: { onEnter: () => void }) => {
                 {s.label}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={onSupport}
+              className="px-3 py-1.5 text-[12px] text-muted hover:text-strong rounded-lg hover:bg-surface-sunken transition-colors cursor-pointer"
+            >
+              Support
+            </button>
             <button
               type="button"
               onClick={onEnter}

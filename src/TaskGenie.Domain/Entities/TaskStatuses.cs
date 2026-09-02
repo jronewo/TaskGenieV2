@@ -13,8 +13,9 @@ public static class TaskStatuses
     public const string InProgress = "InProgress";
     public const string InReview = "InReview";
     public const string Done = "Done";
+    public const string Backlog = "Backlog";
 
-    public static readonly IReadOnlyList<string> All = [Todo, InProgress, InReview, Done];
+    public static readonly IReadOnlyList<string> All = [Todo, InProgress, InReview, Done, Backlog];
 
     public static bool IsValid(string? status) =>
         status is not null && All.Contains(status, StringComparer.Ordinal);

@@ -27,9 +27,14 @@ interface ProjectFormState {
 interface ProjectManagementProps {
   selectedProjectId?: string;
   onProjectSelect?: (projectId: string) => void;
+  /** Lets the shell refresh workspace-wide views (sidebar, dashboard) after the project list changes. */
+  onProjectsChanged?: () => void;
 }
 
 const EMPTY_FORM: ProjectFormState = { name: "", description: "", deadline: "" };
+
+/** Today in ISO (yyyy-mm-dd), UTC — matches the backend's DateOnly.FromDateTime(DateTime.UtcNow). */
+const todayIso = () => new Date().toISOString().slice(0, 10);
 
 function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
@@ -41,7 +46,7 @@ function errorMessage(err: unknown): string {
   return "Something went wrong. Please try again.";
 }
 
-export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, onProjectSelect }: ProjectManagementProps) => {
+export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, onProjectSelect, onProjectsChanged }: ProjectManagementProps) => {
   const { t } = usePreferences();
   const [projects, setProjects] = useState<ProjectDto[]>([]);
   const [tasks, setTasks] = useState<TaskSummaryDto[]>([]);
@@ -186,6 +191,10 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
       setFeedback({ type: "error", message: "Project name is required." });
       return;
     }
+    if (form.deadline && form.deadline < todayIso()) {
+      setFeedback({ type: "error", message: "Project deadline cannot be in the past." });
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -198,6 +207,7 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
       setForm(EMPTY_FORM);
       setShowCreateForm(false);
       setFeedback({ type: "success", message: "Project created successfully." });
+      onProjectsChanged?.();
     } catch (err) {
       setFeedback({ type: "error", message: errorMessage(err) });
     } finally {
@@ -329,7 +339,7 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
             </div>
             <div>
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Deadline</label>
-              <input type="date" value={form.deadline} onChange={(e) => setForm((prev) => ({ ...prev, deadline: e.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500" />
+              <input type="date" value={form.deadline} min={todayIso()} onChange={(e) => setForm((prev) => ({ ...prev, deadline: e.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-500" />
             </div>
             <div className="md:col-span-2 flex justify-end gap-2">
               <button type="button" onClick={() => setShowCreateForm(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600">Cancel</button>

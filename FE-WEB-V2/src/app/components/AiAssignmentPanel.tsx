@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Sparkles, Check, X, Loader2, AlertTriangle } from "lucide-react";
 import { coreAiApi, AssignmentSuggestion } from "../services/coreAiApi";
 import { ApiError } from "../services/apiClient";
@@ -34,9 +34,12 @@ interface Props {
   projectId: number;
   /** Lets the parent refresh assignees after a suggestion is accepted. */
   onAssigned?: () => void;
+  /** Fires the suggestion request as soon as the panel mounts instead of waiting for a click —
+   *  used where a candidate needs to appear as fast as possible (e.g. the Backlog move modal). */
+  autoSuggest?: boolean;
 }
 
-export const AiAssignmentPanel = ({ taskId, projectId, onAssigned }: Props) => {
+export const AiAssignmentPanel = ({ taskId, projectId, onAssigned, autoSuggest = false }: Props) => {
   const [suggestions, setSuggestions] = useState<AssignmentSuggestion[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
@@ -56,6 +59,13 @@ export const AiAssignmentPanel = ({ taskId, projectId, onAssigned }: Props) => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (autoSuggest) void suggest();
+    // Only ever auto-fires once, on mount — re-running on every taskId/projectId identity change
+    // would refetch mid-edit for no reason.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const decide = async (suggestion: AssignmentSuggestion, accept: boolean) => {
     if (busy != null) return; // one decision at a time

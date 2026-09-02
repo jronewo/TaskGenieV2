@@ -17,5 +17,12 @@ public sealed class UpdateTaskProgressCommandValidator : AbstractValidator<Updat
             .Must(TaskStatuses.IsValid)
             .When(x => x.Status is not null)
             .WithMessage($"Status must be one of: {string.Join(", ", TaskStatuses.All)}.");
+
+        // Backlog only exists because of a bug — without a reason it's indistinguishable from any
+        // other status move, and nobody downstream would know why the task bounced back.
+        RuleFor(x => x.Reason)
+            .NotEmpty()
+            .When(x => x.Status == TaskStatuses.Backlog)
+            .WithMessage("A reason is required when moving a task to Backlog.");
     }
 }

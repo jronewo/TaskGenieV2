@@ -65,7 +65,9 @@ TaskGenie.API  →  TaskGenie.Application  →  TaskGenie.Domain
 ## Domain Notes
 
 - `Task` conflicts with `System.Threading.Tasks.Task` — use `using TaskEntity = TaskGenie.Domain.Entities.Task;` alias in handler files.
-- Task status values: `"Todo"`, `"InProgress"`, `"Done"`.
+- Task status values: `"Todo"`, `"InProgress"`, `"InReview"`, `"Done"`, `"Backlog"`. Backlog only
+  exists because of a bug — moving a task there requires a reason (persisted as a `TaskLog` note)
+  and keeps its existing assignee, or requires picking one if it had none.
 - Task risk levels: `"LOW"`, `"MEDIUM"`, `"HIGH"`.
 - `TaskDependency` enforces: a task cannot be `Done` if any dependency is not `Done`.
 - `CreateProjectCommand` automatically creates a 1:1 `Team` for the project and adds the creator as `LEADER`.

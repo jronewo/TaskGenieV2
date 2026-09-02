@@ -828,6 +828,7 @@ export default function App() {
       <TaskDetailModal
         taskId={selectedTaskId}
         projectName={boardProjectName}
+        canManageTasks={canManageBoardTasks}
         onClose={() => setSelectedTaskId(null)}
         onChanged={() => {
           setBoardRefresh((n) => n + 1);

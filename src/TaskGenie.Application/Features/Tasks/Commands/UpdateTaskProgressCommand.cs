@@ -1,3 +1,4 @@
+using System.Linq;
 using MediatR;
 using TaskGenie.Application.Events;
 using TaskGenie.Domain.Entities;
@@ -12,13 +13,17 @@ public sealed record UpdateTaskProgressCommand(
     string? Status,
     int? Progress,
     string? RiskLevel,
-    int? ActualTime
+    int? ActualTime,
+    string? Reason = null,
+    bool Force = false,
+    IReadOnlyList<int>? ForceDependencyTaskIds = null
 ) : IRequest<bool>;
 
 public sealed class UpdateTaskProgressCommandHandler(
     IResourceAuthorizationService authz,
     ITaskRepository taskRepo,
     ITaskDependencyRepository dependencyRepo,
+    ITaskLogRepository taskLogRepo,
     IMediator mediator
 ) : IRequestHandler<UpdateTaskProgressCommand, bool>
 {
@@ -30,16 +35,50 @@ public sealed class UpdateTaskProgressCommandHandler(
         // not every time progress is saved while it already sits there.
         var previousStatus = task.Status;
 
-        // Dependency check: if marking Done, all prerequisite tasks must be Done
+        // Reporting your own progress is not administrative, but the final sign-off is: only a Lead
+        // may close the loop on someone else's review.
+        if (cmd.Status == TaskStatuses.Done)
+        {
+            await authz.EnsureCanManageTaskAsync(cmd.TaskId, ct);
+        }
+
+        // Dependency check: if marking Done, all prerequisite tasks must be Done — unless a Lead is
+        // explicitly forcing it through, in which case only the dependencies they picked get dragged
+        // to Done with it. Anything left unchecked stays exactly where it was.
         if (cmd.Status == "Done")
         {
             var dependencies = await dependencyRepo.GetByTaskIdWithDetailsAsync(cmd.TaskId, ct);
-            foreach (var dep in dependencies)
+            var openDependencies = dependencies
+                .Where(dep => dep.DependsOnTask is not null && dep.DependsOnTask.Status != "Done")
+                .ToList();
+
+            if (openDependencies.Count > 0 && !cmd.Force)
             {
-                if (dep.DependsOnTask is not null && dep.DependsOnTask.Status != "Done")
+                var blocker = openDependencies[0].DependsOnTask!;
+                throw new InvalidOperationException(
+                    $"Cannot complete this task because it depends on '{blocker.Title}' which is not yet Done.");
+            }
+
+            if (openDependencies.Count > 0 && cmd.Force && cmd.ForceDependencyTaskIds is { Count: > 0 })
+            {
+                // Never trust the client's id list beyond what it's actually allowed to touch: only
+                // dependencies that are genuinely open and genuinely block this task qualify.
+                var forceableIds = openDependencies
+                    .Select(dep => dep.DependsOnTaskId)
+                    .Intersect(cmd.ForceDependencyTaskIds)
+                    .ToList();
+
+                foreach (var dependencyTaskId in forceableIds)
                 {
-                    throw new InvalidOperationException(
-                        $"Cannot complete this task because it depends on '{dep.DependsOnTask.Title}' which is not yet Done.");
+                    var dependencyTask = await taskRepo.GetByIdAsync(dependencyTaskId, ct);
+                    if (dependencyTask is null) continue;
+
+                    dependencyTask.UpdateProgress(status: TaskStatuses.Done, progress: 100, riskLevel: null, actualTime: null);
+                    await taskRepo.UpdateAsync(dependencyTask, ct);
+
+                    await mediator.Publish(
+                        new TaskCompletedEvent(dependencyTask.TaskId, dependencyTask.ProjectId, dependencyTask.Title),
+                        ct);
                 }
             }
         }
@@ -63,6 +102,15 @@ public sealed class UpdateTaskProgressCommandHandler(
         {
             await mediator.Publish(
                 new TaskSubmittedForReviewEvent(task.TaskId, task.ProjectId, task.Title),
+                ct);
+        }
+        else if (task.Status == TaskStatuses.Backlog)
+        {
+            var log = TaskLog.Create(task.TaskId, task.Progress ?? 0, cmd.Reason, risk: null);
+            await taskLogRepo.AddAsync(log, ct);
+
+            await mediator.Publish(
+                new TaskMovedToBacklogEvent(task.TaskId, task.ProjectId, task.Title, cmd.Reason),
                 ct);
         }
 

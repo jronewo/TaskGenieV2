@@ -22,6 +22,20 @@ const RISK_STYLES: Record<string, string> = {
   LOW: "bg-emerald-50 text-emerald-700",
 };
 
+/** Friendly names for the risk engine's factor codes — the API only sends the machine code. */
+const RISK_FACTOR_LABELS: Record<string, string> = {
+  DEADLINE: "Deadline proximity",
+  PROGRESS: "Progress vs. schedule",
+  DEPENDENCY: "Open dependencies",
+  WORKLOAD: "Assignee workload",
+  HISTORICAL: "Track record",
+};
+
+/** Scores already arrive 0–100; clamped so a bad value can never blow the bar past its track. */
+const clampScore = (v: number) => Math.min(100, Math.max(0, v ?? 0));
+const pct = (v: number) => `${Math.round(clampScore(v))}%`;
+const weightPct = (v: number) => `${Math.round((v ?? 0) * 100)}%`;
+
 interface Props {
   /** The whole task, so an estimate produced at creation time shows without pressing anything. */
   task: TaskDetailDto;
@@ -148,6 +162,40 @@ export const AiTaskInsights = ({ task, onChanged }: Props) => {
             </span>
           </div>
           {risk.explanation && <p className="mt-1 text-[11px] leading-relaxed text-gray-600">{risk.explanation}</p>}
+
+          {/* The aggregate sentence above only names the top few contributors by code; this is the
+              full weighted breakdown so it's clear exactly why the score landed where it did. */}
+          {risk.factors?.length > 0 && (
+            <div className="mt-2 space-y-2 border-t border-gray-100 pt-2">
+              {[...risk.factors]
+                .sort((a, b) => b.contribution - a.contribution)
+                .map((factor) => (
+                  <div key={factor.code}>
+                    <div className="flex items-center gap-2">
+                      <span className="w-32 shrink-0 truncate text-[10px] text-gray-500">
+                        {RISK_FACTOR_LABELS[factor.code] ?? factor.code}{" "}
+                        <span className="text-gray-400">{weightPct(factor.weight)}</span>
+                      </span>
+                      <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-gray-100">
+                        <div
+                          className="h-full rounded-full bg-amber-500"
+                          style={{ width: pct(factor.score) }}
+                        />
+                      </div>
+                      <span className="w-9 shrink-0 text-right text-[10px] tabular-nums text-gray-600">
+                        {pct(factor.score)}
+                      </span>
+                    </div>
+                    {factor.evidence && (
+                      <p className="mt-0.5 pl-[8.5rem] text-[10px] leading-relaxed text-gray-400">
+                        {factor.evidence}
+                      </p>
+                    )}
+                  </div>
+                ))}
+            </div>
+          )}
+
           {risk.mitigationActions?.length > 0 && (
             <ul className="mt-1.5 list-inside list-disc space-y-0.5 text-[11px] text-gray-500">
               {risk.mitigationActions.slice(0, 3).map((action, i) => (

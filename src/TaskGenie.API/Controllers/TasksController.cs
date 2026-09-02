@@ -99,7 +99,10 @@ public class TasksController(IMediator mediator) : ControllerBase
             request.Status,
             request.Progress,
             request.RiskLevel,
-            request.ActualTime));
+            request.ActualTime,
+            request.Reason,
+            request.Force,
+            request.ForceDependencyTaskIds));
 
         return Ok(await mediator.Send(new GetTaskByIdQuery(id)));
     }
@@ -160,7 +163,10 @@ public record UpdateProgressRequest(
     string? Status,
     int? Progress,
     string? RiskLevel,
-    int? ActualTime);
+    int? ActualTime,
+    string? Reason = null,
+    bool Force = false,
+    IReadOnlyList<int>? ForceDependencyTaskIds = null);
 
 public record AddDependencyRequest(int DependsOnTaskId);
 

@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { authApi } from '../api';
-import { setAccessToken, setUnauthorizedHandler } from '../api/client';
+import { setAccessToken, setRefreshToken, setTokenRefreshedHandler, setUnauthorizedHandler } from '../api/client';
 import { clearSession, readSession, StoredSession, StoredUser, writeSession } from '../api/session';
 
 interface AuthState {
@@ -47,13 +47,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signOut = useCallback(async () => {
     setAccessToken(null);
+    setRefreshToken(null);
     setToken(null);
     setUser(null);
     await clearSession();
   }, []);
 
-  // A token the server no longer accepts must end the session, rather than leaving the app in a
-  // state where every screen shows the same error.
+  // A token the server no longer accepts, even after a silent refresh attempt, must end the
+  // session — otherwise the app is left showing the same 401 error on every screen forever.
   useEffect(() => {
     setUnauthorizedHandler(() => {
       void signOut();
@@ -61,11 +62,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return () => setUnauthorizedHandler(null);
   }, [signOut]);
 
+  // A 401 that the client silently recovered from by rotating the refresh token still needs its
+  // new token pair written to disk — otherwise the very next app launch presents the old,
+  // already-rotated refresh token and gets treated as reuse.
+  useEffect(() => {
+    setTokenRefreshedHandler((newAccessToken, newRefreshToken, expiresAtUtc) => {
+      setToken(newAccessToken);
+      void readSession().then((stored) => {
+        if (!stored) return;
+        void writeSession({ ...stored, accessToken: newAccessToken, refreshToken: newRefreshToken, expiresAtUtc });
+      });
+    });
+    return () => setTokenRefreshedHandler(null);
+  }, []);
+
   useEffect(() => {
     void (async () => {
       const stored = await readSession();
       if (stored) {
         setAccessToken(stored.accessToken);
+        setRefreshToken(stored.refreshToken);
         setToken(stored.accessToken);
         setUser(stored.user);
         // The stored copy goes stale (name, avatar, role); /auth/me is the authority.
@@ -103,6 +119,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const establish = async (dto: any) => {
     const session = toSession(dto);
     setAccessToken(session.accessToken);
+    setRefreshToken(session.refreshToken);
     setToken(session.accessToken);
     setUser(session.user);
     await writeSession(session);

@@ -20,6 +20,7 @@ public sealed class ProjectDto
     public DateOnly? Deadline { get; init; }
     public int Progress { get; init; }
     public DateOnly? PredictedEndDate { get; init; }
+    public int? WorkingHoursPerDay { get; init; }
 
     /// <summary>Hour of day (UTC) the risk estimate re-runs by itself; null means the automation is off.</summary>
     public int? RiskAutomationHourUtc { get; init; }
@@ -43,6 +44,7 @@ public sealed class ProjectDto
         Deadline = p.Deadline,
         Progress = p.Progress ?? 0,
         PredictedEndDate = p.PredictedEndDate,
+        WorkingHoursPerDay = p.WorkingHoursPerDay,
         RiskAutomationHourUtc = p.RiskAutomationHourUtc,
         RiskAutomationLastRunAt = p.RiskAutomationLastRunAt,
         RiskLevel = "LOW",

@@ -13,7 +13,7 @@ public sealed class DeleteProjectCommandHandler(
     public async Task<bool> Handle(DeleteProjectCommand cmd, CancellationToken ct)
     {
         var project = await authz.EnsureCanManageProjectAsync(cmd.ProjectId, ct);
-        await lifecycle.DeleteProjectAsync(project, ct);
+        await lifecycle.SoftDeleteProjectAsync(project, ct);
         return true;
     }
 }

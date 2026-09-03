@@ -54,20 +54,161 @@ public sealed class ProjectLifecycleApiTests
         });
     }
 
+    /// <summary>
+    /// Regression guard for a bug found in real UAT: PUT /working-hours persisted correctly, but
+    /// GetProjectByIdQuery's response never carried the field back — ProjectDto simply had no
+    /// property for it — so the saved value was invisible on every reload and the UI kept showing
+    /// the fallback default forever, looking exactly like the save silently failed.
+    /// </summary>
     [Fact]
-    public async Task Delete_CleansUpDedicatedTeamMembersAndInvitations_NoOrphans()
+    public async Task SetWorkingHours_PersistsAndIsReturnedByGetProject()
     {
         await using var factory = new ProjectLifecycleApiFactory();
         using var client = factory.CreateClient();
         var owner = await factory.SeedUserAsync();
+        var (project, _) = await factory.SeedProjectWithDedicatedTeamAsync(owner);
+        await factory.AuthenticateAsync(client, owner);
+
+        var put = await client.PutAsJsonAsync($"/api/projects/{project.ProjectId}/working-hours", new { workingHoursPerDay = 6 });
+        Assert.Equal(HttpStatusCode.OK, put.StatusCode);
+
+        var get = await client.GetAsync($"/api/projects/{project.ProjectId}");
+        var payload = await get.Content.ReadFromJsonAsync<ProjectDto>();
+
+        Assert.Equal(HttpStatusCode.OK, get.StatusCode);
+        Assert.Equal(6, payload!.WorkingHoursPerDay);
+    }
+
+    /// <summary>
+    /// Delete is now a 30-day-grace soft-delete, not an immediate hard delete: the project must
+    /// disappear from every list and free its quota slot right away, while every row underneath it
+    /// (the project itself included) stays intact until the purge worker's grace period elapses.
+    /// </summary>
+    [Fact]
+    public async Task Delete_SoftDeletes_HidesImmediatelyButKeepsTheRowAndFreesQuota()
+    {
+        await using var factory = new ProjectLifecycleApiFactory();
+        using var client = factory.CreateClient();
+        var owner = await factory.SeedUserAsync();
+        var (project, _) = await factory.SeedProjectWithDedicatedTeamAsync(owner);
+        await factory.AuthenticateAsync(client, owner);
+
+        var beforeEntitlement = await client.GetFromJsonAsync<EffectiveEntitlement>("/api/billing/entitlement");
+        Assert.Equal(1, beforeEntitlement!.ProjectUsage);
+
+        var response = await client.DeleteAsync($"/api/projects/{project.ProjectId}");
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        // Hidden from the active list immediately.
+        var active = await client.GetFromJsonAsync<List<ProjectDto>>("/api/projects");
+        Assert.DoesNotContain(active!, p => p.ProjectId == project.ProjectId);
+
+        // Also hidden from the closed list — a deleted project is not a finished one either.
+        var closed = await client.GetFromJsonAsync<List<ProjectDto>>("/api/projects?closed=true");
+        Assert.DoesNotContain(closed!, p => p.ProjectId == project.ProjectId);
+
+        // Quota freed right away — no need to wait for the purge.
+        var afterEntitlement = await client.GetFromJsonAsync<EffectiveEntitlement>("/api/billing/entitlement");
+        Assert.Equal(0, afterEntitlement!.ProjectUsage);
+
+        // But nothing was actually destroyed yet.
+        await factory.WithDbAsync(context =>
+        {
+            var row = context.Projects.Single(p => p.ProjectId == project.ProjectId);
+            Assert.Equal(Project.DeletedStatus, row.Status);
+            Assert.True(row.IsDeleted);
+        });
+    }
+
+    /// <summary>A soft-deleted project is visible in exactly one place — the Trash view — for as
+    /// long as it's within its grace period, and nowhere else.</summary>
+    [Fact]
+    public async Task Delete_MakesTheProjectVisibleOnlyInTheTrashView()
+    {
+        await using var factory = new ProjectLifecycleApiFactory();
+        using var client = factory.CreateClient();
+        var owner = await factory.SeedUserAsync();
+        var (project, _) = await factory.SeedProjectWithDedicatedTeamAsync(owner);
+        await factory.AuthenticateAsync(client, owner);
+
+        await client.DeleteAsync($"/api/projects/{project.ProjectId}");
+
+        var trash = await client.GetFromJsonAsync<List<ProjectDto>>("/api/projects?deleted=true");
+        var row = Assert.Single(trash!, p => p.ProjectId == project.ProjectId);
+        Assert.Equal("Deleted", row.Status);
+    }
+
+    /// <summary>
+    /// Restore is the whole point of the grace period: the project must come back to life exactly
+    /// as if it had never been deleted — visible again, its quota slot reclaimed, and gone from the
+    /// Trash view once it's no longer sitting in it.
+    /// </summary>
+    [Fact]
+    public async Task Restore_BringsTheProjectBackAndReclaimsItsQuotaSlot()
+    {
+        await using var factory = new ProjectLifecycleApiFactory();
+        using var client = factory.CreateClient();
+        var owner = await factory.SeedUserAsync();
+        var (project, _) = await factory.SeedProjectWithDedicatedTeamAsync(owner);
+        await factory.AuthenticateAsync(client, owner);
+
+        await client.DeleteAsync($"/api/projects/{project.ProjectId}");
+        var whileDeleted = await client.GetFromJsonAsync<EffectiveEntitlement>("/api/billing/entitlement");
+        Assert.Equal(0, whileDeleted!.ProjectUsage);
+
+        var restoreResponse = await client.PostAsync($"/api/projects/{project.ProjectId}/restore", null);
+        Assert.Equal(HttpStatusCode.NoContent, restoreResponse.StatusCode);
+
+        var active = await client.GetFromJsonAsync<List<ProjectDto>>("/api/projects");
+        var row = Assert.Single(active!, p => p.ProjectId == project.ProjectId);
+        Assert.Equal("Planning", row.Status);
+
+        var trash = await client.GetFromJsonAsync<List<ProjectDto>>("/api/projects?deleted=true");
+        Assert.DoesNotContain(trash!, p => p.ProjectId == project.ProjectId);
+
+        var afterRestore = await client.GetFromJsonAsync<EffectiveEntitlement>("/api/billing/entitlement");
+        Assert.Equal(1, afterRestore!.ProjectUsage);
+    }
+
+    [Fact]
+    public async Task Restore_IsRefusedToSomeoneWhoDoesNotManageTheProject()
+    {
+        await using var factory = new ProjectLifecycleApiFactory();
+        using var client = factory.CreateClient();
+        var owner = await factory.SeedUserAsync();
+        var outsider = await factory.SeedUserAsync();
+        var (project, _) = await factory.SeedProjectWithDedicatedTeamAsync(owner);
+        await factory.AuthenticateAsync(client, owner);
+        await client.DeleteAsync($"/api/projects/{project.ProjectId}");
+
+        await factory.AuthenticateAsync(client, outsider);
+        var response = await client.PostAsync($"/api/projects/{project.ProjectId}/restore", null);
+
+        Assert.True(
+            response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound,
+            $"Expected 403 or 404 for a non-manager, got {(int)response.StatusCode}.");
+        await factory.WithDbAsync(context =>
+            Assert.True(context.Projects.Single(p => p.ProjectId == project.ProjectId).IsDeleted));
+    }
+
+    /// <summary>
+    /// The user-facing DELETE endpoint only soft-deletes now (see
+    /// Delete_SoftDeletes_HidesImmediatelyButKeepsTheRowAndFreesQuota) — the cascading hard-delete
+    /// these three tests exercise is what the purge worker runs once the grace period elapses, via
+    /// IProjectLifecycleService.DeleteProjectAsync directly. That is exactly what these test: the
+    /// cascade/orphan-cleanup logic itself is unchanged, only who calls it and when.
+    /// </summary>
+    [Fact]
+    public async Task HardDelete_CleansUpDedicatedTeamMembersAndInvitations_NoOrphans()
+    {
+        await using var factory = new ProjectLifecycleApiFactory();
+        var owner = await factory.SeedUserAsync();
         var member = await factory.SeedUserAsync();
         var (project, teamId) = await factory.SeedProjectWithDedicatedTeamAsync(owner, extraMemberUserIds: [member]);
         await factory.SeedInvitationAsync(teamId, "invitee@authz.test");
-        await factory.AuthenticateAsync(client, owner);
 
-        var response = await client.DeleteAsync($"/api/projects/{project.ProjectId}");
+        await factory.HardDeleteProjectAsync(project);
 
-        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         await factory.WithDbAsync(context =>
         {
             Assert.False(context.Projects.Any(p => p.ProjectId == project.ProjectId));
@@ -78,19 +219,16 @@ public sealed class ProjectLifecycleApiTests
     }
 
     [Fact]
-    public async Task Delete_DoesNotDeleteStandaloneTeam()
+    public async Task HardDelete_DoesNotDeleteStandaloneTeam()
     {
         await using var factory = new ProjectLifecycleApiFactory();
-        using var client = factory.CreateClient();
         var owner = await factory.SeedUserAsync();
         // A team created independently (e.g. via TeamsController.Create) is never IsProjectManaged.
         var teamId = await factory.SeedStandaloneTeamAsync(owner);
         var project = await factory.SeedProjectOnExistingTeamAsync(owner, teamId);
-        await factory.AuthenticateAsync(client, owner);
 
-        var response = await client.DeleteAsync($"/api/projects/{project.ProjectId}");
+        await factory.HardDeleteProjectAsync(project);
 
-        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         await factory.WithDbAsync(context =>
         {
             Assert.False(context.Projects.Any(p => p.ProjectId == project.ProjectId));
@@ -99,19 +237,16 @@ public sealed class ProjectLifecycleApiTests
     }
 
     [Fact]
-    public async Task Delete_DoesNotDeleteDedicatedTeamStillReferencedByAnotherProject()
+    public async Task HardDelete_DoesNotDeleteDedicatedTeamStillReferencedByAnotherProject()
     {
         await using var factory = new ProjectLifecycleApiFactory();
-        using var client = factory.CreateClient();
         var owner = await factory.SeedUserAsync();
         var (firstProject, teamId) = await factory.SeedProjectWithDedicatedTeamAsync(owner);
         // A second project shares the same (still IsProjectManaged) team.
         var secondProject = await factory.SeedProjectOnExistingTeamAsync(owner, teamId);
-        await factory.AuthenticateAsync(client, owner);
 
-        var response = await client.DeleteAsync($"/api/projects/{firstProject.ProjectId}");
+        await factory.HardDeleteProjectAsync(firstProject);
 
-        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         await factory.WithDbAsync(context =>
         {
             Assert.False(context.Projects.Any(p => p.ProjectId == firstProject.ProjectId));
@@ -359,5 +494,17 @@ public sealed class ProjectLifecycleApiFactory : WebApplicationFactory<Program>
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         assertion(context);
         await Task.CompletedTask;
+    }
+
+    /// <summary>Drives the cascading hard-delete directly — what the purge worker calls once a
+    /// soft-deleted project's grace period elapses. Bypasses the HTTP endpoint, which only
+    /// soft-deletes, so these tests can still exercise the cascade/orphan-cleanup logic itself.</summary>
+    public async Task HardDeleteProjectAsync(Project project)
+    {
+        using var scope = Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var lifecycle = scope.ServiceProvider.GetRequiredService<IProjectLifecycleService>();
+        var tracked = await context.Projects.SingleAsync(p => p.ProjectId == project.ProjectId);
+        await lifecycle.DeleteProjectAsync(tracked);
     }
 }

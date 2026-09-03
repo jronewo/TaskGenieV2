@@ -159,12 +159,14 @@ public static class DependencyInjection
         // Tests that cover the sweeps drive RunOnceAsync directly instead.
         services.Configure<SubscriptionLifecycleOptions>(configuration.GetSection(SubscriptionLifecycleOptions.SectionName));
         services.Configure<RiskAutomationOptions>(configuration.GetSection(RiskAutomationOptions.SectionName));
+        services.Configure<ProjectPurgeOptions>(configuration.GetSection(ProjectPurgeOptions.SectionName));
 
         var isTestEnvironment = string.Equals(environmentName, "Testing", StringComparison.OrdinalIgnoreCase);
         if (!isTestEnvironment)
         {
             services.AddHostedService<SubscriptionLifecycleWorker>();
             services.AddHostedService<RiskAutomationWorker>();
+            services.AddHostedService<ProjectPurgeWorker>();
         }
 
         services.AddSingleton<ITokenRevocationService, InMemoryTokenRevocationService>();

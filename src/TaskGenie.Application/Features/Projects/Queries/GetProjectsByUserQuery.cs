@@ -6,13 +6,15 @@ using TaskGenie.Domain.Interfaces.Repositories;
 namespace TaskGenie.Application.Features.Projects.Queries;
 
 /// <summary>
-/// The caller's projects, split by whether they have been closed.
+/// The caller's projects, split three ways: active, closed, or soft-deleted (the Trash view).
 ///
 /// A closed project is finished work, not a workspace: left in, it would keep occupying the
 /// sidebar, the board switcher and the dashboard grid forever. It stays fully readable through
-/// <c>Closed = true</c>, which is what the profile's finished-projects list asks for.
+/// <c>Closed = true</c>, which is what the profile's finished-projects list asks for. A deleted
+/// project stays out of both unless <c>Deleted = true</c> is asked for explicitly — that is the
+/// Trash list, the only place a soft-deleted project is still visible during its grace period.
 /// </summary>
-public sealed record GetProjectsByUserQuery(int UserId, bool Closed = false) : IRequest<List<ProjectDto>>;
+public sealed record GetProjectsByUserQuery(int UserId, bool Closed = false, bool Deleted = false) : IRequest<List<ProjectDto>>;
 
 public sealed class GetProjectsByUserQueryHandler(
     IProjectRepository projectRepo,
@@ -23,7 +25,12 @@ public sealed class GetProjectsByUserQueryHandler(
     public async Task<List<ProjectDto>> Handle(GetProjectsByUserQuery query, CancellationToken ct)
     {
         var projects = await projectRepo.GetProjectsByUserIdAsync(query.UserId, ct);
-        var visible = projects.Where(p => p.IsClosed == query.Closed).ToList();
+        var visible = query.Deleted
+            // Trash view: only what's still recoverable, regardless of what it was before deletion.
+            ? projects.Where(p => p.IsDeleted).ToList()
+            // Every other view must never show a soft-deleted project while it waits out its grace
+            // period — the purge worker is what eventually removes the row for real.
+            : projects.Where(p => !p.IsDeleted && p.IsClosed == query.Closed).ToList();
 
         // Organizations are a paid feature. When an organization's subscription lapses its projects
         // drop out of every list at once — sidebar, dashboard, project page, profile — because they

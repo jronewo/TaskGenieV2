@@ -55,6 +55,28 @@ public sealed class ProjectLifecycleService(AppDbContext context) : IProjectLife
         }, ct);
     }
 
+    public Task SoftDeleteProjectAsync(Project project, CancellationToken ct = default)
+    {
+        return ExecuteInTransactionAsync(async () =>
+        {
+            project.MarkDeleted();
+            context.Projects.Update(project);
+            await context.SaveChangesAsync(ct);
+            return true;
+        }, ct);
+    }
+
+    public Task RestoreProjectAsync(Project project, CancellationToken ct = default)
+    {
+        return ExecuteInTransactionAsync(async () =>
+        {
+            project.Restore();
+            context.Projects.Update(project);
+            await context.SaveChangesAsync(ct);
+            return true;
+        }, ct);
+    }
+
     /// <summary>
     /// Removes everything hanging off a project before the project row itself goes.
     ///

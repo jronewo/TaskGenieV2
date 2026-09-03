@@ -77,12 +77,14 @@ public sealed class ProjectClosureApiTests
     }
 
     /// <summary>
-    /// Deleting a project used to remove the project row alone, leaving its tasks' assignments,
-    /// comments, logs, dependencies, scores and activity entries pointing at ids that no longer
-    /// existed. Nothing may survive the delete.
+    /// DELETE now only soft-deletes (30-day grace period) — the project's tasks and every row hung
+    /// off them must survive it, exactly like Close does. The actual cascade this test used to drive
+    /// through the endpoint is HardDelete_RemovesEveryTaskRelatedRowOfTheProject below, run through
+    /// IProjectLifecycleService.DeleteProjectAsync directly — what the purge worker calls once the
+    /// grace period elapses.
     /// </summary>
     [Fact]
-    public async Task Delete_RemovesEveryTaskRelatedRowOfTheProject()
+    public async Task Delete_SoftDeletesAndLeavesTasksAndTheirChildrenIntact()
     {
         await using var factory = new ProjectLifecycleApiFactory();
         using var client = factory.CreateClient();
@@ -94,6 +96,31 @@ public sealed class ProjectClosureApiTests
         var response = await client.DeleteAsync($"/api/projects/{project.ProjectId}");
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        await factory.WithDbAsync(context =>
+        {
+            var stored = context.Projects.Single(p => p.ProjectId == project.ProjectId);
+            Assert.Equal("Deleted", stored.Status);
+            Assert.True(context.Tasks.Any(t => t.TaskId == taskId));
+            Assert.True(context.TaskAssignees.Any(a => a.TaskId == taskId));
+            Assert.True(context.TaskComments.Any(c => c.TaskId == taskId));
+        });
+    }
+
+    /// <summary>
+    /// Hard-deleting a project used to remove the project row alone, leaving its tasks' assignments,
+    /// comments, logs, dependencies, scores and activity entries pointing at ids that no longer
+    /// existed. Nothing may survive the cascade the purge worker eventually runs.
+    /// </summary>
+    [Fact]
+    public async Task HardDelete_RemovesEveryTaskRelatedRowOfTheProject()
+    {
+        await using var factory = new ProjectLifecycleApiFactory();
+        var owner = await factory.SeedUserAsync();
+        var (project, _) = await factory.SeedProjectWithDedicatedTeamAsync(owner);
+        var taskId = await factory.SeedTaskWithChildrenAsync(project.ProjectId, owner);
+
+        await factory.HardDeleteProjectAsync(project);
+
         await factory.WithDbAsync(context =>
         {
             Assert.False(context.Projects.Any(p => p.ProjectId == project.ProjectId));

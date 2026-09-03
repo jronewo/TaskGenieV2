@@ -72,14 +72,14 @@ describe("SubscriptionCenter", () => {
     mockLoaded();
     render(<SubscriptionCenter />);
 
-    expect(await screen.findByText("1/2 dự án")).toBeInTheDocument();
+    expect(await screen.findByText("1/2")).toBeInTheDocument();
   });
 
   it("describes an unlimited plan without inventing a number", async () => {
     mockLoaded({ projectLimit: null, projectUsage: 5, isPremium: true } as never);
     render(<SubscriptionCenter />);
 
-    expect(await screen.findByText("5 dự án · không giới hạn")).toBeInTheDocument();
+    expect(await screen.findByText(/5 · unlimited/i)).toBeInTheDocument();
   });
 
   /// Being refused with no way forward is the failure mode: the cap has to say that deleting is
@@ -88,8 +88,8 @@ describe("SubscriptionCenter", () => {
     mockLoaded({ projectLimit: 2, projectUsage: 2 } as never);
     render(<SubscriptionCenter />);
 
-    expect(await screen.findByText("2/2 dự án")).toBeInTheDocument();
-    expect(screen.getByText(/xoá bớt dự án/i)).toBeInTheDocument();
+    expect(await screen.findByText("2/2")).toBeInTheDocument();
+    expect(screen.getByText(/delete projects/i)).toBeInTheDocument();
   });
 
   /// The organization list resolves a moment after mount and fills `organizationId` in. On the
@@ -198,9 +198,9 @@ describe("SubscriptionCenter", () => {
     await screen.findByText("Pro");
     await user.click(screen.getByRole("tab", { name: /organization/i }));
 
-    expect(await screen.findByText(/bạn chưa có công ty nào/i)).toBeInTheDocument();
+    expect(await screen.findByText(/don't have a company yet/i)).toBeInTheDocument();
     // Naming the company happens inside the checkout modal, not as a separate step before it.
-    expect(screen.queryByRole("button", { name: /^tạo công ty$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^create company$/i })).not.toBeInTheDocument();
   });
 
   /// Naming the company is the first step of checkout, not a separate action beforehand — that is

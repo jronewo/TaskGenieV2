@@ -277,16 +277,19 @@ const ProjectView = ({
   activeProject,
   setActiveProject,
   onWorkspaceChanged,
+  onNavigateToSubscription,
 }: {
   activeProject: string;
   setActiveProject: (id: string) => void;
   onWorkspaceChanged?: () => void;
+  onNavigateToSubscription?: () => void;
 }) => {
   return (
     <ProjectManagement
       selectedProjectId={activeProject}
       onProjectSelect={(projectId) => setActiveProject(projectId)}
       onProjectsChanged={onWorkspaceChanged}
+      onNavigateToSubscription={onNavigateToSubscription}
     />
   );
 };
@@ -672,6 +675,7 @@ export default function App() {
                         activeProject={activeProject}
                         setActiveProject={setActiveProject}
                         onWorkspaceChanged={() => setWorkspaceRefresh((n) => n + 1)}
+                        onNavigateToSubscription={() => setActivePage("subscription")}
                       />
                     </motion.div>
                   )}

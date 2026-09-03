@@ -258,10 +258,18 @@ export const ProjectBoardHeader = ({
               type="button"
               onClick={saveHours}
               disabled={savingHours || !isValidHours(hours) || Number(hours) === currentHours}
+              title={
+                isValidHours(hours) && Number(hours) === currentHours
+                  ? t("project.hoursPerDayUnchanged")
+                  : undefined
+              }
               className="rounded px-1.5 py-0.5 text-[10px] font-medium text-[#1A237E] hover:bg-gray-50 disabled:opacity-40"
             >
               {savingHours ? "…" : t("project.save")}
             </button>
+            {isValidHours(hours) && Number(hours) === currentHours && (
+              <span className="text-[10px] text-gray-400">{t("project.hoursPerDayUnchanged")}</span>
+            )}
           </div>
         )}
         {/* Visible to everyone: knowing what is waiting on what is not an administrative act. */}

@@ -16,6 +16,7 @@ import { ApiError } from "../services/apiClient";
 import { useConfirm } from "./ConfirmDialog";
 import { SubscriptionExpiryBanner } from "./SubscriptionExpiryBanner";
 import { OrganizationCheckoutModal } from "./OrganizationCheckoutModal";
+import { usePreferences } from "../settings/PreferencesContext";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -24,13 +25,26 @@ import { Progress } from "./ui/progress";
 import { Skeleton } from "./ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 
-function errorMessage(err: unknown): string {
+/**
+ * The API's `sources` entries are internal bookkeeping strings — "personal:PRO_PERSONAL" or
+ * "organization:{id}:{planCode}" — never meant for display. This turns one into the plan code
+ * alone (e.g. "PRO_PERSONAL"), which is at least a recognizable label instead of raw debug text.
+ */
+function friendlySource(source: string): string {
+  const parts = source.split(":");
+  return parts[parts.length - 1] || source;
+}
+
+// Backend exception messages (ForbiddenException etc.) are English-only by convention — this maps
+// the handful that reach this screen to the active language rather than showing raw English next
+// to Vietnamese copy everywhere else on the page.
+function errorMessage(err: unknown, t: (key: string, vars?: Record<string, string | number>) => string): string {
   if (err instanceof ApiError) {
+    if (err.status === 403) return t("subscription.error.forbidden");
     if (err.message) return err.message;
-    if (err.status === 403) return "You don't have permission to perform this action.";
-    return `Request failed (${err.status}).`;
+    return t("subscription.error.requestFailed", { status: err.status });
   }
-  return "Something went wrong. Please try again.";
+  return t("subscription.error.generic");
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -50,6 +64,7 @@ interface Props {
 
 export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
   const confirm = useConfirm();
+  const { t } = usePreferences();
 
   const [scope, setScope] = useState<PlanAudience>("PERSONAL");
   const [organizations, setOrganizations] = useState<MyOrganizationSummaryDto[]>([]);
@@ -120,7 +135,7 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
       const stillPending = history.find((p) => p.provider === "FAKE" && p.status === "PENDING");
       if (stillPending) setPendingPaymentId(stillPending.paymentTransactionId);
     } catch (err) {
-      setError(errorMessage(err));
+      setError(errorMessage(err, t));
     } finally {
       setLoading(false);
     }
@@ -136,7 +151,7 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
         try {
           setPlans(await billingApi.plans("ORGANIZATION"));
         } catch (err) {
-          setError(errorMessage(err));
+          setError(errorMessage(err, t));
         } finally {
           setLoading(false);
         }
@@ -160,11 +175,7 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
     if (!returnedPaymentId) return;
 
     const canceled = params.get("canceled") === "1";
-    setNotice(
-      canceled
-        ? "Payment was canceled."
-        : "Payment received — confirming with the gateway. This can take a few seconds."
-    );
+    setNotice(canceled ? t("subscription.paymentCanceled") : t("subscription.paymentConfirming"));
 
     params.delete("paymentId");
     params.delete("canceled");
@@ -193,7 +204,7 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
       await action();
       if (successMessage) setNotice(successMessage);
     } catch (err) {
-      setError(errorMessage(err));
+      setError(errorMessage(err, t));
     } finally {
       setBusy(null);
     }
@@ -235,15 +246,15 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
         setPendingPaymentId(null);
         await load(true);
       },
-      `Payment marked ${status.toLowerCase()}.`
+      t("subscription.paymentMarked", { status: status.toLowerCase() })
     );
 
   const handleCancel = async () => {
     if (!(await confirm({
-      title: "Hủy gói đăng ký?",
-      description: "Gói vẫn chạy đến hết chu kỳ hiện tại, sau đó không gia hạn nữa.",
-      confirmLabel: "Hủy gói",
-      cancelLabel: "Giữ gói",
+      title: t("subscription.cancelTitle"),
+      description: t("subscription.cancelBody"),
+      confirmLabel: t("subscription.cancelConfirm"),
+      cancelLabel: t("subscription.cancelKeep"),
       tone: "danger",
     }))) return;
     void run(
@@ -252,15 +263,15 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
         await billingApi.cancel(orgScopeId, true);
         await load(true);
       },
-      "Subscription will end at the period end."
+      t("subscription.cancelNotice")
     );
   };
 
   const quotaLabel = entitlement
     ? entitlement.projectLimit == null
-      ? `${entitlement.projectUsage} dự án · không giới hạn`
-      : `${entitlement.projectUsage}/${entitlement.projectLimit} dự án`
-    : "—";
+      ? t("subscription.quotaUnlimited", { used: entitlement.projectUsage })
+      : t("subscription.quotaLimited", { used: entitlement.projectUsage, limit: entitlement.projectLimit })
+    : t("common.none");
 
   /** At or over the cap: creating another is refused until one is deleted. */
   const quotaExhausted =
@@ -277,8 +288,8 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
       : Math.min(100, Math.round((entitlement.projectUsage / entitlement.projectLimit) * 100));
 
   const scopeTabs: { id: PlanAudience; label: string; Icon: typeof User }[] = [
-    { id: "PERSONAL", label: "Personal", Icon: User },
-    { id: "ORGANIZATION", label: "Organization", Icon: Building2 },
+    { id: "PERSONAL", label: t("subscription.scopePersonal"), Icon: User },
+    { id: "ORGANIZATION", label: t("subscription.scopeOrganization"), Icon: Building2 },
   ];
 
   const reduceMotion = useReducedMotion();
@@ -311,12 +322,14 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
         }`}
       >
         {isCurrent && (
-          <Badge className="absolute -top-2.5 right-4 bg-[var(--brand-600)] text-white">Current</Badge>
+          <Badge className="absolute -top-2.5 right-4 bg-[var(--brand-600)] text-white">
+            {t("subscription.current")}
+          </Badge>
         )}
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-semibold text-strong">{plan.name}</CardTitle>
           <CardDescription className="font-display text-2xl font-bold text-strong">
-            {plan.priceMinor === 0 ? "Free" : formatMoney(plan.priceMinor, plan.currency)}
+            {plan.priceMinor === 0 ? t("subscription.free") : formatMoney(plan.priceMinor, plan.currency)}
             {plan.billingInterval !== "NONE" && (
               <span className="ml-1 text-xs font-normal text-subtle">
                 /{plan.billingInterval.toLowerCase().replace("ly", "")}
@@ -329,12 +342,14 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
           <ul className="space-y-1.5 text-xs text-muted">
             <li className="flex items-center gap-2">
               <Check className="h-3.5 w-3.5 shrink-0 text-emerald-500" aria-hidden />
-              {plan.projectLimit == null ? "Unlimited projects" : `${plan.projectLimit} projects`}
+              {plan.projectLimit == null
+                ? t("subscription.unlimitedProjects")
+                : t("subscription.projectsCount", { count: plan.projectLimit })}
             </li>
             {plan.memberLimit != null && (
               <li className="flex items-center gap-2">
                 <Check className="h-3.5 w-3.5 shrink-0 text-emerald-500" aria-hidden />
-                {plan.memberLimit} members
+                {t("subscription.membersCount", { count: plan.memberLimit })}
               </li>
             )}
             {/* Listed on every plan, not only the paid ones: a feature missing from the free card
@@ -345,7 +360,7 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
               ) : (
                 <Check className="h-3.5 w-3.5 shrink-0 text-emerald-500" aria-hidden />
               )}
-              Trợ lý AI chatbot
+              {t("subscription.aiChatbot")}
             </li>
           </ul>
         </CardContent>
@@ -359,7 +374,7 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
               className="w-full bg-[var(--brand-600)] text-white hover:bg-[var(--brand-700)]"
             >
               {busy === `checkout-${plan.planId}` && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-              Choose plan
+              {t("subscription.choosePlan")}
             </Button>
           )}
         </CardFooter>
@@ -373,9 +388,9 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
         <div>
           <h1 className="flex items-center gap-2 font-display text-2xl font-bold text-strong">
             <CreditCard className="h-6 w-6 text-brand" aria-hidden />
-            Subscription
+            {t("subscription.title")}
           </h1>
-          <p className="mt-0.5 text-sm text-subtle">Gói đăng ký, hạn mức dự án và lịch sử thanh toán.</p>
+          <p className="mt-0.5 text-sm text-subtle">{t("subscription.subtitle")}</p>
         </div>
         {entitlement && (
           <Badge variant="secondary" className="gap-1.5 px-2.5 py-1 text-xs">
@@ -474,18 +489,15 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center py-10 text-center">
               <Building2 className="mb-3 h-9 w-9 text-subtle" aria-hidden />
-              <p className="text-sm font-medium text-strong">Bạn chưa có công ty nào.</p>
-              <p className="mt-1 max-w-md text-xs text-subtle">
-                Không còn gói miễn phí cho tổ chức. Chọn một gói bên dưới — bạn sẽ nhập tên công ty
-                rồi thanh toán ngay trong cùng một bước.
-              </p>
+              <p className="text-sm font-medium text-strong">{t("subscription.noCompanyTitle")}</p>
+              <p className="mt-1 max-w-md text-xs text-subtle">{t("subscription.noCompanyBody")}</p>
             </CardContent>
           </Card>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{plans.map(planCard)}</div>
         </div>
       ) : loading ? (
-        <div className="space-y-4" role="status" aria-label="Đang tải thông tin gói">
+        <div className="space-y-4" role="status" aria-label={t("subscription.loading")}>
           <div className="grid gap-4 sm:grid-cols-3">
             {[0, 1, 2].map((i) => <Skeleton key={i} className="h-28 w-full rounded-xl" />)}
           </div>
@@ -499,17 +511,20 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
             <Card>
               <CardHeader className="pb-2">
                 <CardDescription className="text-[10px] font-semibold uppercase tracking-wide text-subtle">
-                  Current plan
+                  {t("subscription.currentPlan")}
                 </CardDescription>
                 <CardTitle className="flex items-center gap-2 text-lg text-strong">
-                  {entitlement?.planName ?? "Free"}
+                  {entitlement?.planName ?? t("subscription.free")}
                   {entitlement?.isPremium && <Sparkles className="h-4 w-4 text-amber-500" aria-label="Premium" />}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {entitlement && entitlement.sources.length > 0 && (
-                  <p className="truncate text-[11px] text-subtle" title={entitlement.sources.join(", ")}>
-                    via {entitlement.sources.join(", ")}
+                  <p
+                    className="truncate text-[11px] text-subtle"
+                    title={entitlement.sources.map(friendlySource).join(", ")}
+                  >
+                    {t("subscription.via", { source: entitlement.sources.map(friendlySource).join(", ") })}
                   </p>
                 )}
               </CardContent>
@@ -518,7 +533,7 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
             <Card>
               <CardHeader className="pb-2">
                 <CardDescription className="text-[10px] font-semibold uppercase tracking-wide text-subtle">
-                  Project quota
+                  {t("subscription.projectQuota")}
                 </CardDescription>
                 <CardTitle className={`text-lg ${quotaExhausted ? "text-red-600 dark:text-red-400" : "text-strong"}`}>
                   {quotaLabel}
@@ -529,7 +544,7 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
                 {quotaRatio != null && (
                   <Progress
                     value={quotaRatio}
-                    aria-label="Đã dùng bao nhiêu hạn mức dự án"
+                    aria-label={t("subscription.quotaProgress")}
                     className={quotaExhausted ? "[&>div]:bg-red-500" : ""}
                   />
                 )}
@@ -537,8 +552,7 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
                     someone stuck on a refusal they cannot act on. */}
                 {quotaExhausted && (
                   <p className="mt-2 text-xs text-red-600 dark:text-red-400">
-                    Đã hết hạn mức. Nâng cấp gói, hoặc xoá bớt dự án cho đến khi còn dưới{" "}
-                    {entitlement!.projectLimit} thì mới tạo mới được.
+                    {t("subscription.quotaExhausted", { limit: entitlement!.projectLimit! })}
                   </p>
                 )}
               </CardContent>
@@ -547,14 +561,14 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
             <Card>
               <CardHeader className="pb-2">
                 <CardDescription className="text-[10px] font-semibold uppercase tracking-wide text-subtle">
-                  Subscription
+                  {t("subscription.subscription")}
                 </CardDescription>
-                <CardTitle className="text-lg text-strong">{subscription?.status ?? "None"}</CardTitle>
+                <CardTitle className="text-lg text-strong">{subscription?.status ?? t("subscription.none")}</CardTitle>
               </CardHeader>
               <CardContent>
                 {subscription?.cancelAtPeriodEnd && (
                   <p className="text-xs text-amber-700 dark:text-amber-400">
-                    Ends {subscription.currentPeriodEnd?.slice(0, 10)}
+                    {t("subscription.ends", { date: subscription.currentPeriodEnd?.slice(0, 10) ?? "" })}
                   </p>
                 )}
                 {subscription?.status === "ACTIVE" && !subscription.cancelAtPeriodEnd && (
@@ -567,7 +581,7 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
                     className="mt-1"
                   >
                     {busy === "cancel" && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
-                    Hủy gia hạn
+                    {t("subscription.cancelRenewal")}
                   </Button>
                 )}
               </CardContent>
@@ -585,7 +599,7 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
               <CardContent className="flex flex-wrap items-center gap-3 py-4">
                 <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" aria-hidden />
                 <p className="flex-1 text-sm text-amber-900 dark:text-amber-200">
-                  Payment #{pendingPaymentId} is pending. The gateway is simulated in this environment — choose an outcome.
+                  {t("subscription.simulatedGatewayNotice", { id: pendingPaymentId })}
                 </p>
                 {(["SUCCEEDED", "FAILED"] as PaymentStatus[]).map((status) => (
                   <Button
@@ -596,7 +610,7 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
                     onClick={() => handleSimulate(status)}
                     disabled={busy?.startsWith("simulate") ?? false}
                   >
-                    Simulate {status.toLowerCase()}
+                    {status === "SUCCEEDED" ? t("subscription.simulateSucceeded") : t("subscription.simulateFailed")}
                   </Button>
                 ))}
               </CardContent>
@@ -605,28 +619,30 @@ export const SubscriptionCenter = ({ onOrganizationsChanged }: Props = {}) => {
 
           <section>
             <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-strong">
-              <Receipt className="h-4 w-4 text-brand" aria-hidden /> Payment history
+              <Receipt className="h-4 w-4 text-brand" aria-hidden /> {t("subscription.paymentHistory")}
             </h2>
             {payments.length === 0 ? (
               <Card className="border-dashed">
-                <CardContent className="py-8 text-center text-sm text-subtle">No payments yet.</CardContent>
+                <CardContent className="py-8 text-center text-sm text-subtle">
+                  {t("subscription.noPayments")}
+                </CardContent>
               </Card>
             ) : (
               <Card className="overflow-hidden p-0">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Plan</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Provider</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Date</TableHead>
+                      <TableHead>{t("subscription.colPlan")}</TableHead>
+                      <TableHead>{t("subscription.colAmount")}</TableHead>
+                      <TableHead>{t("subscription.colProvider")}</TableHead>
+                      <TableHead>{t("subscription.colStatus")}</TableHead>
+                      <TableHead>{t("subscription.colDate")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {payments.map((p) => (
                       <TableRow key={p.paymentTransactionId}>
-                        <TableCell className="text-strong">{p.planName ?? "—"}</TableCell>
+                        <TableCell className="text-strong">{p.planName ?? t("common.none")}</TableCell>
                         <TableCell className="tabular-nums">{formatMoney(p.amountMinor, p.currency)}</TableCell>
                         <TableCell className="text-subtle">
                           {p.provider}

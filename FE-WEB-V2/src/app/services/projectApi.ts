@@ -104,12 +104,19 @@ export const projectApi = {
   /** The projects that have been ended, for the finished-work list on the profile. */
   listClosed: () => apiRequest<ProjectDto[]>("/projects?closed=true"),
 
+  /** The Trash: projects deleted but still inside their 30-day grace period, recoverable via restore. */
+  listDeleted: () => apiRequest<ProjectDto[]>("/projects?deleted=true"),
+
   /**
    * Ends the project: status becomes "Completed", it leaves every active list, and the API awards
    * the closure scores. Irreversible from the UI, so always confirm first.
    */
   close: (projectId: number) =>
     apiRequest<ProjectSummaryDto>(`/projects/${projectId}/close`, { method: "POST" }),
+
+  /** Undoes a delete while the project is still inside its 30-day grace period. */
+  restore: (projectId: number) =>
+    apiRequest<void>(`/projects/${projectId}/restore`, { method: "POST" }),
 
   getById: (projectId: number) => apiRequest<ProjectDto>(`/projects/${projectId}`),
 

@@ -21,9 +21,21 @@ public interface IProjectLifecycleService
         DateOnly? deadline,
         CancellationToken ct = default);
 
-    /// <summary>Deletes the project and, if its team is project-managed and no longer referenced
-    /// by any other project, deletes that team's invitations, members, and the team row too.</summary>
+    /// <summary>Hard-deletes the project — the cascade through every table hanging off it, then the
+    /// project row itself and, if its team is project-managed and no longer referenced by any other
+    /// project, that team's invitations, members, and the team row too. Called by the API only via
+    /// the purge worker once a soft-deleted project's grace period has elapsed; a user-initiated
+    /// delete goes through <see cref="SoftDeleteProjectAsync"/> instead.</summary>
     Task DeleteProjectAsync(Project project, CancellationToken ct = default);
+
+    /// <summary>User-facing "delete": marks the project Deleted so it disappears from every list and
+    /// frees its quota slot immediately, without touching a single row underneath it. The real
+    /// cascade only happens once the grace period elapses (see <see cref="DeleteProjectAsync"/>).</summary>
+    Task SoftDeleteProjectAsync(Project project, CancellationToken ct = default);
+
+    /// <summary>Undoes a soft-delete within its grace period: the project reappears everywhere and
+    /// claims its quota slot back immediately.</summary>
+    Task RestoreProjectAsync(Project project, CancellationToken ct = default);
 
     /// <summary>Persists an already-mutated project (see Project.Update) and, if TeamId changed
     /// away from a project-managed team no longer referenced by any other project, cleans up the

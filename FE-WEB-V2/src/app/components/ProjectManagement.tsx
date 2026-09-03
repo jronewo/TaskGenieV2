@@ -17,6 +17,8 @@ import { projectApi, ProjectDto, TaskSummaryDto } from "../services/projectApi";
 import { billingApi, EntitlementDto } from "../services/billingApi";
 import { ApiError } from "../services/apiClient";
 import { usePreferences } from "../settings/PreferencesContext";
+import { QuotaExceededModal } from "./QuotaExceededModal";
+import { TrashModal } from "./TrashModal";
 
 interface ProjectFormState {
   name: string;
@@ -29,6 +31,8 @@ interface ProjectManagementProps {
   onProjectSelect?: (projectId: string) => void;
   /** Lets the shell refresh workspace-wide views (sidebar, dashboard) after the project list changes. */
   onProjectsChanged?: () => void;
+  /** Lets the quota-exceeded modal hand off to the Subscription page. */
+  onNavigateToSubscription?: () => void;
 }
 
 const EMPTY_FORM: ProjectFormState = { name: "", description: "", deadline: "" };
@@ -46,7 +50,7 @@ function errorMessage(err: unknown): string {
   return "Something went wrong. Please try again.";
 }
 
-export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, onProjectSelect, onProjectsChanged }: ProjectManagementProps) => {
+export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, onProjectSelect, onProjectsChanged, onNavigateToSubscription }: ProjectManagementProps) => {
   const { t } = usePreferences();
   const [projects, setProjects] = useState<ProjectDto[]>([]);
   const [tasks, setTasks] = useState<TaskSummaryDto[]>([]);
@@ -55,6 +59,8 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
   const [taskCountErrors, setTaskCountErrors] = useState<Record<number, boolean>>({});
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showQuotaModal, setShowQuotaModal] = useState(false);
+  const [showTrash, setShowTrash] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
@@ -186,6 +192,11 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (quotaExhausted) {
+      setShowCreateForm(false);
+      setShowQuotaModal(true);
+      return;
+    }
     const name = form.name.trim();
     if (!name) {
       setFeedback({ type: "error", message: "Project name is required." });
@@ -249,7 +260,7 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
       setShowDeleteConfirm(false);
       await loadProjects(null);
       await loadEntitlement();
-      setFeedback({ type: "success", message: "Project removed successfully." });
+      setFeedback({ type: "success", message: "Project moved to Trash — it can be restored for 30 days." });
     } catch (err) {
       setFeedback({ type: "error", message: errorMessage(err) });
     } finally {
@@ -293,16 +304,29 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
           <h2 className="text-lg font-semibold text-slate-900">Create and manage delivery projects</h2>
           <p className="mt-1 text-sm text-slate-500">Track project timelines, risk level, and related tasks in one place.</p>
         </div>
-        <button
-          onClick={() => {
-            setForm(EMPTY_FORM);
-            setShowCreateForm((prev) => !prev);
-          }}
-          disabled={isLoadingProjects}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-800 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <Plus size={15} /> Create Project
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowTrash(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+          >
+            <Trash2 size={15} /> Trash
+          </button>
+          <button
+            onClick={() => {
+              if (quotaExhausted) {
+                setShowQuotaModal(true);
+                return;
+              }
+              setForm(EMPTY_FORM);
+              setShowCreateForm((prev) => !prev);
+            }}
+            disabled={isLoadingProjects}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-800 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Plus size={15} /> Create Project
+          </button>
+        </div>
       </div>
 
       {feedback && (
@@ -618,6 +642,28 @@ export const ProjectManagement = ({ selectedProjectId: selectedProjectIdProp, on
           )}
         </div>
       </div>
+
+      {showQuotaModal && entitlement && (
+        <QuotaExceededModal
+          entitlement={entitlement}
+          onClose={() => setShowQuotaModal(false)}
+          onUpgrade={() => {
+            setShowQuotaModal(false);
+            onNavigateToSubscription?.();
+          }}
+        />
+      )}
+
+      {showTrash && (
+        <TrashModal
+          onClose={() => setShowTrash(false)}
+          onRestored={() => {
+            void loadProjects(null);
+            void loadEntitlement();
+            onProjectsChanged?.();
+          }}
+        />
+      )}
     </div>
   );
 };

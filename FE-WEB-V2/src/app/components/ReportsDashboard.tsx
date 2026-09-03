@@ -18,6 +18,10 @@ import {
 } from "./charts/chartTheme";
 import { useWorkspace, summariseWorkspace } from "../hooks/useWorkspace";
 import { ProjectGanttChart } from "./ProjectGanttChart";
+import { Card, CardContent } from "./ui/card";
+import { Badge } from "./ui/badge";
+import { Alert, AlertDescription } from "./ui/alert";
+import { Skeleton } from "./ui/skeleton";
 
 const STATUS_COLORS: Record<string, string> = {
   Done: "#10B981",
@@ -25,10 +29,12 @@ const STATUS_COLORS: Record<string, string> = {
   Todo: "#94A3B8",
 };
 
-const RISK_COLORS: Record<string, string> = {
-  HIGH: "#EF4444",
-  MEDIUM: "#F59E0B",
-  LOW: "#10B981",
+/** Badge background/text pair per risk level — the same three-tier palette RISK_COLOR (chart bars)
+ *  uses, just as a solid-fill pill instead of a bar fill. */
+const RISK_BADGE: Record<string, string> = {
+  HIGH: "border-transparent bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300",
+  MEDIUM: "border-transparent bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300",
+  LOW: "border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300",
 };
 
 const ALL = "ALL";
@@ -61,24 +67,41 @@ export const ReportsDashboard = ({ onOpenTask }: { onOpenTask?: (taskId: number)
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 p-6 text-xs text-gray-500">
-        <Loader2 size={14} className="animate-spin" aria-hidden /> Loading reports…
+      <div className="h-full overflow-y-auto p-4 space-y-4" role="status" aria-label="Loading reports">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-16 rounded-lg" />
+          ))}
+        </div>
+        <div className="grid gap-3 lg:grid-cols-2">
+          <Skeleton className="h-56 rounded-xl" />
+          <Skeleton className="h-56 rounded-xl" />
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div role="alert" className="m-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-        {error}
+      <div className="p-4">
+        <Alert role="alert" variant="destructive">
+          <AlertTriangle className="h-4 w-4" aria-hidden />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       </div>
     );
   }
 
   if (projects.length === 0) {
     return (
-      <div className="p-10 text-center text-xs text-gray-500">
-        No projects yet — reports appear once you have data.
+      <div className="p-4">
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center py-10 text-center">
+            <FolderKanban className="mb-3 h-9 w-9 text-subtle" aria-hidden />
+            <p className="text-sm font-medium text-strong">No projects yet.</p>
+            <p className="mt-1 max-w-md text-xs text-subtle">Reports appear once you have a project with data.</p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -117,10 +140,10 @@ export const ReportsDashboard = ({ onOpenTask }: { onOpenTask?: (taskId: number)
     <div className="h-full overflow-y-auto p-4 space-y-4">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-            <BarChart2 size={16} className="text-[#1A237E]" aria-hidden /> Reports
+          <h1 className="flex items-center gap-2 font-display text-2xl font-bold text-strong">
+            <BarChart2 size={20} className="text-brand" aria-hidden /> Reports
           </h1>
-          <p className="mt-0.5 text-[10px] text-gray-500">
+          <p className="mt-0.5 text-sm text-subtle">
             {selected
               ? `${selected.name} — ${s.totalTasks} task(s), ${selected.progress}% progress.`
               : `Live figures across ${s.totalProjects} project(s) and ${s.totalTasks} task(s).`}
@@ -128,14 +151,14 @@ export const ReportsDashboard = ({ onOpenTask }: { onOpenTask?: (taskId: number)
         </div>
 
         <div className="flex items-center gap-2">
-          <label htmlFor="report-project" className="flex items-center gap-1.5 text-[11px] text-gray-600">
+          <label htmlFor="report-project" className="flex items-center gap-1.5 text-[11px] text-subtle">
             <FolderKanban size={12} aria-hidden /> Project
           </label>
           <select
             id="report-project"
             value={activeScope}
             onChange={(e) => setScope(e.target.value)}
-            className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-gray-800 outline-none focus:border-[#1A237E]"
+            className="cursor-pointer rounded-md border border-line bg-surface px-2 py-1.5 text-[11px] text-default outline-none focus:border-[var(--brand-600)]"
           >
             <option value={ALL}>All projects</option>
             {projects.map((p) => (
@@ -148,25 +171,24 @@ export const ReportsDashboard = ({ onOpenTask }: { onOpenTask?: (taskId: number)
       </header>
 
       {selected && (
-        <section className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[11px] text-gray-600">
-          <span className="font-semibold text-gray-900">{selected.name}</span>
-          <span
-            className="rounded px-1.5 py-0.5 text-[10px] font-medium"
-            style={{ background: `${RISK_COLORS[(selected.riskLevel ?? "LOW").toUpperCase()] ?? "#94A3B8"}1A` }}
-          >
-            {(selected.riskLevel ?? "LOW").toUpperCase()} RISK
-          </span>
-          <span>{selected.status ?? "Planning"}</span>
-          {selected.deadline && (
-            <span className="inline-flex items-center gap-1">
-              <CalendarClock size={11} aria-hidden /> due {selected.deadline.slice(0, 10)}
-            </span>
-          )}
-          {selected.teamName && <span>Team: {selected.teamName}</span>}
-        </section>
+        <Card>
+          <CardContent className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2 text-[11px] text-muted">
+            <span className="font-semibold text-strong">{selected.name}</span>
+            <Badge className={RISK_BADGE[(selected.riskLevel ?? "LOW").toUpperCase()] ?? RISK_BADGE.LOW}>
+              {(selected.riskLevel ?? "LOW").toUpperCase()} RISK
+            </Badge>
+            <span>{selected.status ?? "Planning"}</span>
+            {selected.deadline && (
+              <span className="inline-flex items-center gap-1">
+                <CalendarClock size={11} aria-hidden /> due {selected.deadline.slice(0, 10)}
+              </span>
+            )}
+            {selected.teamName && <span>Team: {selected.teamName}</span>}
+          </CardContent>
+        </Card>
       )}
 
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-2 md:grid-cols-4">
         {[
           { label: "Completion", value: `${s.completionRate}%` },
           { label: "Avg progress", value: `${s.averageProgress}%` },
@@ -175,12 +197,12 @@ export const ReportsDashboard = ({ onOpenTask }: { onOpenTask?: (taskId: number)
         ].map((card) => (
           <motion.div
             key={card.label}
-            className="rounded-lg border border-gray-200 bg-white p-3"
+            className="rounded-xl border border-line bg-card p-3 text-card-foreground"
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
           >
-            <p className="text-[10px] uppercase tracking-wide text-gray-500">{card.label}</p>
-            <p className="mt-1 text-lg font-semibold text-gray-900">{card.value}</p>
+            <p className="text-[10px] uppercase tracking-wide text-subtle">{card.label}</p>
+            <p className="mt-1 text-lg font-semibold text-strong">{card.value}</p>
           </motion.div>
         ))}
       </div>
@@ -190,7 +212,7 @@ export const ReportsDashboard = ({ onOpenTask }: { onOpenTask?: (taskId: number)
           {perProject.length === 0 ? (
             <ChartEmpty message="Chưa có dự án nào." />
           ) : (
-            <div style={{ height: Math.max(140, perProject.length * 34) }} className="text-gray-500">
+            <div style={{ height: Math.max(140, perProject.length * 34) }} className="text-subtle">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={perProject.map((p) => ({ ...p, name: shortLabel(p.name, 18) }))}
@@ -266,7 +288,7 @@ export const ReportsDashboard = ({ onOpenTask }: { onOpenTask?: (taskId: number)
                 {priorityData.length === 0 ? (
                   <ChartEmpty message="Dự án này chưa có task nào." />
                 ) : (
-                  <div style={{ height: Math.max(120, priorityData.length * 34) }} className="text-gray-500">
+                  <div style={{ height: Math.max(120, priorityData.length * 34) }} className="text-subtle">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={priorityData} layout="vertical" margin={{ top: 4, right: 28, left: 4, bottom: 4 }}>
                         <XAxis type="number" allowDecimals={false} hide />
@@ -292,7 +314,7 @@ export const ReportsDashboard = ({ onOpenTask }: { onOpenTask?: (taskId: number)
               {riskData.length === 0 ? (
                 <ChartEmpty message="Chưa có dữ liệu rủi ro." />
               ) : (
-                <div style={{ height: Math.max(120, riskData.length * 34) }} className="text-gray-500">
+                <div style={{ height: Math.max(120, riskData.length * 34) }} className="text-subtle">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={riskData} layout="vertical" margin={{ top: 4, right: 28, left: 4, bottom: 4 }}>
                       <XAxis type="number" allowDecimals={false} hide />

@@ -114,7 +114,19 @@ public class Project
     /// projects compares against this rather than repeating the literal.</summary>
     public const string ClosedStatus = "Completed";
 
+    /// <summary>The single status a soft-deleted project carries while it waits out its grace
+    /// period. EntitlementService already excluded this literal from quota counting before any
+    /// code actually set it — this is what makes that check live.</summary>
+    public const string DeletedStatus = "Deleted";
+
+    /// <summary>What a newly-created project starts as, and what a restored one returns to. The
+    /// project's status before it was deleted (Planning, InProgress, ...) is not preserved — Delete
+    /// carries no separate "previous status" column, only Status itself, which Delete overwrites.</summary>
+    public const string PlanningStatus = "Planning";
+
     public bool IsClosed => Status == ClosedStatus;
+
+    public bool IsDeleted => Status == DeletedStatus;
 
     /// <summary>
     /// Ends the project. It stays readable — the profile lists it under finished work — but drops
@@ -125,6 +137,31 @@ public class Project
     {
         if (IsClosed) throw new InvalidOperationException("Dự án đã được đóng.");
         Status = ClosedStatus;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Soft-deletes: hides the project everywhere and frees its quota slot immediately, but every
+    /// row underneath it (tasks, comments, scores...) stays intact for a grace period so a purge
+    /// worker can hard-delete it later. <see cref="UpdatedAt"/> is the deletion timestamp — same
+    /// convention as <see cref="Close"/>, no separate column for it.
+    /// </summary>
+    public void MarkDeleted()
+    {
+        Status = DeletedStatus;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Undoes a soft-delete while it's still within its grace period — the project reappears in
+    /// every list and its quota slot is claimed again immediately. Always returns to
+    /// <see cref="PlanningStatus"/> rather than whatever it was before, since that prior status was
+    /// never preserved.
+    /// </summary>
+    public void Restore()
+    {
+        if (!IsDeleted) throw new InvalidOperationException("Dự án này chưa bị xoá.");
+        Status = PlanningStatus;
         UpdatedAt = DateTime.UtcNow;
     }
 

@@ -86,6 +86,8 @@ interface Props {
   onOpenProject?: (projectId: number) => void;
   /** Bumped by the shell when a realtime push arrives, so this list refetches. */
   refreshToken?: number;
+  /** Lets the shell refresh workspace-wide views (sidebar, dashboard) after joining a team. */
+  onInvitationAccepted?: () => void;
 }
 
 /**
@@ -93,7 +95,7 @@ interface Props {
  * on the right. The single-column version truncated long messages and buried the accept/decline
  * buttons of an invitation inside a list row, where they competed with mark-read and delete.
  */
-export const NotificationsCenter = ({ onUnreadChange, onOpenTask, onOpenProject, refreshToken }: Props) => {
+export const NotificationsCenter = ({ onUnreadChange, onOpenTask, onOpenProject, refreshToken, onInvitationAccepted }: Props) => {
   const { user } = useAuth();
   const confirm = useConfirm();
   const { t } = usePreferences();
@@ -164,7 +166,12 @@ export const NotificationsCenter = ({ onUnreadChange, onOpenTask, onOpenProject,
   const respond = (invitation: InvitationDto, status: "Accepted" | "Rejected") =>
     run(
       `inv-${invitation.invitationId}`,
-      () => invitationApi.respond(invitation.invitationId, status).then(() => undefined),
+      () =>
+        invitationApi.respond(invitation.invitationId, status).then(() => {
+          // Accepting adds a team (and its project) to the workspace — the sidebar/dashboard hold
+          // their own snapshot and need telling, same as onProjectClosed does for closing one.
+          if (status === "Accepted") onInvitationAccepted?.();
+        }),
       status === "Accepted"
         ? `You joined ${invitation.teamName ?? "the team"}.`
         : "Invitation declined."

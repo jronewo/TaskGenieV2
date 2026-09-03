@@ -1,11 +1,39 @@
 import { render, screen, waitFor } from "../../../test/renderWithProviders";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProjectGanttChart } from "../ProjectGanttChart";
 import { taskApi, TaskDetailDto } from "../../services/taskApi";
+import { projectApi } from "../../services/projectApi";
 
 vi.mock("../../services/taskApi");
+vi.mock("../../services/projectApi");
+vi.mock("@react-pdf/renderer", () => ({
+  pdf: () => ({
+    toBlob: async () => new Blob(["test"], { type: "application/pdf" }),
+  }),
+  Font: {
+    register: vi.fn(),
+  },
+  Document: () => null,
+  Page: () => null,
+  View: () => null,
+  Text: () => null,
+  StyleSheet: {
+    create: (styles: any) => styles,
+  },
+  Svg: () => null,
+  Rect: () => null,
+  Line: () => null,
+  G: () => null,
+}));
+
+// Mock URL.createObjectURL and URL.revokeObjectURL for tests
+if (typeof window !== "undefined") {
+  window.URL.createObjectURL = vi.fn(() => "blob:test");
+  window.URL.revokeObjectURL = vi.fn();
+}
 
 const tasks = vi.mocked(taskApi);
+const projects = vi.mocked(projectApi);
 
 const task = (overrides: Partial<TaskDetailDto>): TaskDetailDto => ({
   taskId: 1,
@@ -18,6 +46,16 @@ const task = (overrides: Partial<TaskDetailDto>): TaskDetailDto => ({
 } as TaskDetailDto);
 
 describe("ProjectGanttChart", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    projects.getById.mockResolvedValue({
+      projectId: 1,
+      name: "Test Project",
+      progress: 40,
+      riskLevel: "LOW",
+    } as any);
+  });
+
   it("shows a loading state before the fetch resolves", () => {
     tasks.byProject.mockReturnValue(new Promise(() => {}));
     render(<ProjectGanttChart projectId={1} />);
@@ -51,5 +89,15 @@ describe("ProjectGanttChart", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Scheduled" })).toBeInTheDocument());
     expect(screen.getByText(/1 task\(s\) not shown/i)).toBeInTheDocument();
     expect(screen.queryByText("No dates yet")).not.toBeInTheDocument();
+  });
+
+  it("renders an Export PDF button and triggers download on click", async () => {
+    tasks.byProject.mockResolvedValue([
+      task({ taskId: 5, title: "Exportable Task", startDate: "2026-09-01", deadline: "2026-09-10" }),
+    ]);
+    render(<ProjectGanttChart projectId={1} />);
+
+    const exportBtn = await screen.findByRole("button", { name: /export pdf/i });
+    expect(exportBtn).toBeInTheDocument();
   });
 });

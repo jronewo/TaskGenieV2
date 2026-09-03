@@ -1,7 +1,7 @@
 import { apiRequest } from "./apiClient";
 
 /** Backend status values — the UI must send these exact strings. */
-export type TaskStatusValue = "Todo" | "InProgress" | "InReview" | "Done";
+export type TaskStatusValue = "Todo" | "InProgress" | "InReview" | "Done" | "Backlog";
 export type RiskLevelValue = "LOW" | "MEDIUM" | "HIGH";
 
 export interface TaskAssigneeDto {
@@ -140,10 +140,21 @@ export const taskApi = {
 
   remove: (taskId: number) => apiRequest<void>(`/tasks/${taskId}`, { method: "DELETE" }),
 
-  /** Drag/drop and the progress slider both land here. */
+  /** Drag/drop and the progress slider both land here. `reason` is required by the API when
+   *  `status` is "Backlog" — it's the bug that sent the task back. `force` + `forceDependencyTaskIds`
+   *  let a Lead complete a task past an open dependency, optionally force-completing the selected
+   *  dependencies in the same call — only meaningful when `status` is "Done". */
   updateProgress: (
     taskId: number,
-    payload: { status?: string | null; progress?: number | null; riskLevel?: string | null; actualTime?: number | null }
+    payload: {
+      status?: string | null;
+      progress?: number | null;
+      riskLevel?: string | null;
+      actualTime?: number | null;
+      reason?: string | null;
+      force?: boolean;
+      forceDependencyTaskIds?: number[];
+    }
   ) =>
     apiRequest<TaskDetailDto>(`/tasks/${taskId}/progress`, {
       method: "PUT",

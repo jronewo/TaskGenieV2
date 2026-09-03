@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Flag, Clock, Link2, Loader2, Plus, Trash2, Sparkles, Ban, Calendar } from "lucide-react";
 import { taskApi, TaskDetailDto } from "../services/taskApi";
+import { projectApi } from "../services/projectApi";
 import { ApiError } from "../services/apiClient";
 
 function errorMessage(err: unknown): string {
@@ -62,6 +63,27 @@ export const TaskPlanningPanel = ({ task, onChanged }: Props) => {
     void loadSiblings();
   }, [loadSiblings]);
 
+  // Caps the deadline picker so a task can't be rescheduled past the project's own deadline.
+  const [projectDeadline, setProjectDeadline] = useState<string | null>(null);
+  useEffect(() => {
+    if (task.projectId == null) {
+      setProjectDeadline(null);
+      return;
+    }
+    let cancelled = false;
+    projectApi
+      .getById(task.projectId)
+      .then((p) => {
+        if (!cancelled) setProjectDeadline(p.deadline ? p.deadline.slice(0, 10) : null);
+      })
+      .catch(() => {
+        if (!cancelled) setProjectDeadline(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [task.projectId]);
+
   const run = async (key: string, action: () => Promise<void>, successMessage?: string) => {
     if (busy) return; // double-submit guard
     setBusy(key);
@@ -82,10 +104,20 @@ export const TaskPlanningPanel = ({ task, onChanged }: Props) => {
     run("priority", () => taskApi.update(task.taskId, { priority }).then(() => undefined));
 
   const scheduleInvalid = Boolean(startDateInput && deadlineInput && startDateInput > deadlineInput);
+  const deadlineExceedsProject = Boolean(projectDeadline && deadlineInput && deadlineInput > projectDeadline);
+  const startExceedsProject = Boolean(projectDeadline && startDateInput && startDateInput > projectDeadline);
 
   const saveSchedule = () => {
     if (scheduleInvalid) {
       setError("Start date must be on or before the deadline.");
+      return;
+    }
+    if (deadlineExceedsProject) {
+      setError("Task deadline cannot be later than the project's deadline.");
+      return;
+    }
+    if (startExceedsProject) {
+      setError("Task start date cannot be later than the project's deadline.");
       return;
     }
     return run(
@@ -181,7 +213,7 @@ export const TaskPlanningPanel = ({ task, onChanged }: Props) => {
             <input
               type="date"
               value={startDateInput}
-              max={deadlineInput || undefined}
+              max={deadlineInput || projectDeadline || undefined}
               onChange={(e) => setStartDateInput(e.target.value)}
               className="rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-700"
             />
@@ -192,6 +224,7 @@ export const TaskPlanningPanel = ({ task, onChanged }: Props) => {
               type="date"
               value={deadlineInput}
               min={startDateInput || undefined}
+              max={projectDeadline || undefined}
               onChange={(e) => setDeadlineInput(e.target.value)}
               className="rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-700"
             />
@@ -199,7 +232,7 @@ export const TaskPlanningPanel = ({ task, onChanged }: Props) => {
           <button
             type="button"
             onClick={saveSchedule}
-            disabled={busy === "schedule" || scheduleInvalid}
+            disabled={busy === "schedule" || scheduleInvalid || deadlineExceedsProject || startExceedsProject}
             className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
           >
             {busy === "schedule" ? <Loader2 size={11} className="animate-spin" aria-hidden /> : null}
@@ -208,6 +241,15 @@ export const TaskPlanningPanel = ({ task, onChanged }: Props) => {
         </div>
         {scheduleInvalid && (
           <p className="mt-1 text-[10px] text-red-600">Start date must be on or before the deadline.</p>
+        )}
+        {!scheduleInvalid && deadlineExceedsProject && (
+          <p className="mt-1 text-[10px] text-red-600">Task deadline cannot be later than the project's deadline ({projectDeadline}).</p>
+        )}
+        {!scheduleInvalid && !deadlineExceedsProject && startExceedsProject && (
+          <p className="mt-1 text-[10px] text-red-600">Task start date cannot be later than the project's deadline ({projectDeadline}).</p>
+        )}
+        {!scheduleInvalid && !deadlineExceedsProject && !startExceedsProject && projectDeadline && (
+          <p className="mt-1 text-[10px] text-gray-500">Project deadline: {projectDeadline}</p>
         )}
       </div>
 

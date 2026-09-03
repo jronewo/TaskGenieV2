@@ -17,10 +17,26 @@ namespace TaskGenie.Tests.Integration;
 /// <summary>
 /// What still bounds an assistant request now that the per-minute throttle is gone. That limit
 /// existed to protect an external AI quota; the assistant reads the database directly, so the
-/// remaining guard is the prompt length, which keeps one message from carrying a novel.
+/// remaining guard is the prompt length, which keeps one message from carrying a novel. Every test
+/// here seeds an active Pro subscription first (`SeedUserAsync`), since the agent is a paid feature
+/// and a caller without one is refused before any of these guards are even reached — that refusal
+/// has its own test below.
 /// </summary>
 public sealed class AgentRequestLimitApiTests
 {
+    [Fact]
+    public async Task AUserWithoutAPaidPlan_IsRefusedBeforeReachingTheAgent()
+    {
+        await using var factory = new AgentRequestLimitApiFactory();
+        using var client = factory.CreateClient();
+        var user = await factory.SeedUserWithoutSubscriptionAsync();
+        await factory.AuthenticateAsync(client, user);
+
+        var response = await client.PostAsJsonAsync("/api/ai-analysis/agent", new { message = "cho tôi tổng quan" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
     [Fact]
     public async Task AnOverlongPrompt_IsRejected()
     {
@@ -90,6 +106,17 @@ public sealed class AgentRequestLimitApiFactory : WebApplicationFactory<Program>
         });
     }
 
+    public async Task<int> SeedUserWithoutSubscriptionAsync()
+    {
+        using var scope = Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await context.Database.EnsureCreatedAsync();
+        var user = User.Create($"User {Guid.NewGuid():N}", $"user-{Guid.NewGuid():N}@agent.test", "hash");
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        return user.UserId;
+    }
+
     public async Task<int> SeedUserAsync()
     {
         using var scope = Services.CreateScope();
@@ -98,6 +125,21 @@ public sealed class AgentRequestLimitApiFactory : WebApplicationFactory<Program>
         var user = User.Create($"User {Guid.NewGuid():N}", $"user-{Guid.NewGuid():N}@agent.test", "hash");
         context.Users.Add(user);
         await context.SaveChangesAsync();
+
+        // The agent is a paid feature (RunAgentQueryHandler gates on AiChatbotEnabled) — every test
+        // that expects an answer rather than a 403 needs the entitlement granted first.
+        var plan = Plan.Create(
+            $"PRO_PERSONAL_{Guid.NewGuid():N}", "Pro", "PERSONAL", "MONTHLY",
+            priceMinor: 99_000, currency: "VND", projectLimit: null, memberLimit: null,
+            sortOrder: 0, aiChatbotEnabled: true);
+        context.Plans.Add(plan);
+        await context.SaveChangesAsync();
+
+        var subscription = Subscription.CreateForUser(plan.PlanId, user.UserId);
+        subscription.Activate(DateTime.UtcNow.AddDays(30));
+        context.Subscriptions.Add(subscription);
+        await context.SaveChangesAsync();
+
         return user.UserId;
     }
 

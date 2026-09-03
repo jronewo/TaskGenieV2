@@ -22,6 +22,8 @@ import { ApiError } from "../services/apiClient";
 import { useConfirm } from "./ConfirmDialog";
 import { AiAssignmentPanel } from "./AiAssignmentPanel";
 import { ManualAssignPanel } from "./ManualAssignPanel";
+import { MoveToBacklogModal } from "./MoveToBacklogModal";
+import { ForceCompleteModal } from "./ForceCompleteModal";
 import { AiTaskInsights } from "./AiTaskInsights";
 import { TaskPlanningPanel } from "./TaskPlanningPanel";
 import { useAuth } from "../auth/AuthContext";
@@ -61,6 +63,8 @@ interface TaskDetailModalProps {
   taskId: number | null;
   /** Used for the breadcrumb and the issue key. */
   projectName?: string | null;
+  /** Only a Lead (creator/org owner/team leader) may sign a task off as Done. */
+  canManageTasks?: boolean;
   onClose: () => void;
   /** Called after any successful mutation so the board can refetch. */
   onChanged?: () => void;
@@ -70,7 +74,7 @@ interface TaskDetailModalProps {
  * Jira-style issue view: breadcrumb and key at the top, the work itself on the left, and a Details
  * panel on the right holding the workflow transition and every field.
  */
-export const TaskDetailModal = ({ taskId, projectName, onClose, onChanged }: TaskDetailModalProps) => {
+export const TaskDetailModal = ({ taskId, projectName, canManageTasks = false, onClose, onChanged }: TaskDetailModalProps) => {
   const { user } = useAuth();
 
   const confirm = useConfirm();
@@ -81,9 +85,12 @@ export const TaskDetailModal = ({ taskId, projectName, onClose, onChanged }: Tas
   // Held until the comment is posted, so an image and its text arrive as one comment.
   const [draftImage, setDraftImage] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  const [logs, setLogs] = useState<{ logId: number; note?: string | null; createdAt?: string | null }[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [showBacklogModal, setShowBacklogModal] = useState(false);
+  const [showForceCompleteModal, setShowForceCompleteModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -91,13 +98,15 @@ export const TaskDetailModal = ({ taskId, projectName, onClose, onChanged }: Tas
     setLoading(true);
     setError(null);
     try {
-      const [detail, commentList] = await Promise.all([
+      const [detail, commentList, logList] = await Promise.all([
         taskApi.getById(taskId),
         commentApi.byTask(taskId).catch(() => [] as TaskCommentDto[]),
+        taskApi.progressLogs(taskId).catch(() => []),
       ]);
       setTask(detail);
       setProgress(detail.progress ?? 0);
       setComments(commentList);
+      setLogs(logList);
     } catch (err) {
       setError(errorMessage(err));
       setTask(null);
@@ -184,6 +193,7 @@ export const TaskDetailModal = ({ taskId, projectName, onClose, onChanged }: Tas
   const key = task ? issueKey(projectName, task.taskId) : "";
 
   return (
+    <>
     <AnimatePresence>
       {taskId != null && (
         <motion.div
@@ -437,13 +447,28 @@ export const TaskDetailModal = ({ taskId, projectName, onClose, onChanged }: Tas
                     <select
                       id="task-status"
                       value={task.status ?? "Todo"}
-                      onChange={(e) => changeStatus(e.target.value as TaskStatusValue)}
+                      onChange={(e) => {
+                        const next = e.target.value as TaskStatusValue;
+                        if (next === "Backlog") {
+                          setShowBacklogModal(true);
+                        } else if (next === "Done") {
+                          const openDependencies = task.dependencies.filter(
+                            (d) => (d.status ?? "").toUpperCase() !== "DONE"
+                          );
+                          if (openDependencies.length > 0) setShowForceCompleteModal(true);
+                          else changeStatus(next);
+                        } else {
+                          changeStatus(next);
+                        }
+                      }}
                       disabled={busy === "status"}
                       className={`rounded px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide disabled:opacity-50 ${
                         STATUS_LOZENGE[task.status ?? "Todo"] ?? STATUS_LOZENGE.Todo
                       }`}
                     >
-                      {WORKFLOW.map((s) => (
+                      {WORKFLOW.filter(
+                        (s) => s.id !== "Done" || task.status === "Done" || canManageTasks
+                      ).map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.label}
                         </option>
@@ -534,6 +559,28 @@ export const TaskDetailModal = ({ taskId, projectName, onClose, onChanged }: Tas
                     </div>
                   </div>
 
+                  {logs.some((l) => (l.note ?? "").trim().length > 0) && (
+                    <div className="rounded-md border border-gray-200">
+                      <h3 className="border-b border-gray-200 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                        Activity notes
+                      </h3>
+                      <ul className="divide-y divide-gray-100 px-3 py-1">
+                        {logs
+                          .filter((l) => (l.note ?? "").trim().length > 0)
+                          .map((l) => (
+                            <li key={l.logId} className="py-2 text-[11px] text-gray-700">
+                              <p className="whitespace-pre-line">{l.note}</p>
+                              {l.createdAt && (
+                                <p className="mt-0.5 text-[10px] text-gray-400">
+                                  {new Date(l.createdAt).toLocaleString()}
+                                </p>
+                              )}
+                            </li>
+                          ))}
+                      </ul>
+                    </div>
+                  )}
+
                   <div className="rounded-md border border-gray-200 p-3">
                     <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Progress</h3>
                     <div className="flex items-center gap-2">
@@ -565,5 +612,32 @@ export const TaskDetailModal = ({ taskId, projectName, onClose, onChanged }: Tas
         </motion.div>
       )}
     </AnimatePresence>
+    {showBacklogModal && task && (
+      <MoveToBacklogModal
+        task={task}
+        onClose={() => setShowBacklogModal(false)}
+        onMoved={(updated) => {
+          setTask(updated);
+          setProgress(updated.progress ?? 0);
+          setShowBacklogModal(false);
+          void taskApi.progressLogs(updated.taskId).then(setLogs).catch(() => {});
+          onChanged?.();
+        }}
+      />
+    )}
+    {showForceCompleteModal && task && (
+      <ForceCompleteModal
+        task={task}
+        openDependencies={task.dependencies.filter((d) => (d.status ?? "").toUpperCase() !== "DONE")}
+        onClose={() => setShowForceCompleteModal(false)}
+        onMoved={(updated) => {
+          setTask(updated);
+          setProgress(updated.progress ?? 0);
+          setShowForceCompleteModal(false);
+          onChanged?.();
+        }}
+      />
+    )}
+    </>
   );
 };

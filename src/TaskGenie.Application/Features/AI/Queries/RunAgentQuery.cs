@@ -24,8 +24,29 @@ public sealed class RunAgentQueryValidator : AbstractValidator<RunAgentQuery>
     }
 }
 
-public sealed class RunAgentQueryHandler(IProjectAgent agent) : IRequestHandler<RunAgentQuery, AgentReply>
+/// <summary>
+/// Runs the agent for the caller's own work. The agent belongs to whichever plans an admin marked
+/// as including it — not to "any paid plan". Hiding the launcher in the UI is presentation only;
+/// this handler is what actually has to refuse a caller whose plan does not carry the feature,
+/// since the agent can create/assign/complete work and must never be reachable by bypassing the UI.
+/// </summary>
+public sealed class RunAgentQueryHandler(
+    ICurrentUser currentUser,
+    IEntitlementService entitlements,
+    IProjectAgent agent
+) : IRequestHandler<RunAgentQuery, AgentReply>
 {
-    public System.Threading.Tasks.Task<AgentReply> Handle(RunAgentQuery query, CancellationToken ct)
-        => agent.RunAsync(query.Message, query.ProjectId, ct);
+    public async System.Threading.Tasks.Task<AgentReply> Handle(RunAgentQuery query, CancellationToken ct)
+    {
+        var entitlement = await entitlements.GetForUserAsync(currentUser.UserId, ct);
+        if (!entitlement.AiChatbotEnabled)
+        {
+            throw new PlanUpgradeRequiredException(
+                "AI chatbot không có trong gói hiện tại. Nâng cấp gói để sử dụng trợ lý.",
+                limit: null,
+                usage: 0);
+        }
+
+        return await agent.RunAsync(query.Message, query.ProjectId, ct);
+    }
 }

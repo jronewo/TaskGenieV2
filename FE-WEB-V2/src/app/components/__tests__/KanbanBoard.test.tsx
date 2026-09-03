@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "../../../test/renderWithProviders";
+import { fireEvent, render, screen, waitFor, within } from "../../../test/renderWithProviders";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { KanbanBoard } from "../KanbanBoard";
@@ -166,5 +166,70 @@ describe("KanbanBoard dependency ordering", () => {
     expect(screen.getByText("Set up the database")).toBeInTheDocument();
     expect(screen.getByText("Build the API")).toBeInTheDocument();
     expect(screen.queryByText("Update the README")).not.toBeInTheDocument();
+  });
+});
+
+describe("KanbanBoard Done-column gating", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function dropOnDone(cardName: RegExp) {
+    const card = screen.getByRole("button", { name: cardName });
+    fireEvent.dragStart(card);
+    fireEvent.drop(screen.getByTestId("column-Done"));
+  }
+
+  it("blocks a non-Lead from dropping any task onto Done", async () => {
+    const inReviewTask = task({ taskId: 20, title: "Ready for sign-off", status: "InReview" });
+    api.byProject.mockResolvedValue([inReviewTask]);
+    render(<KanbanBoard projectId={1} projectName="APP" canManageTasks={false} onTaskClick={() => {}} />);
+    await screen.findByText("Ready for sign-off");
+
+    dropOnDone(/Ready for sign-off/);
+
+    expect(api.updateProgress).not.toHaveBeenCalled();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Only a Lead/i);
+  });
+
+  it("lets a Lead complete a task straight from Todo, skipping In Review", async () => {
+    const todoTask = task({ taskId: 21, title: "Fast-tracked", status: "Todo" });
+    api.byProject.mockResolvedValue([todoTask]);
+    api.updateProgress.mockResolvedValue({ ...todoTask, status: "Done", progress: 100 });
+    render(<KanbanBoard projectId={1} projectName="APP" canManageTasks onTaskClick={() => {}} />);
+    await screen.findByText("Fast-tracked");
+
+    dropOnDone(/Fast-tracked/);
+
+    await waitFor(() => expect(api.updateProgress).toHaveBeenCalledWith(21, expect.objectContaining({ status: "Done" })));
+  });
+
+  it("lets a Lead complete an In Review task with no open dependencies directly", async () => {
+    const clearTask = task({ taskId: 22, title: "Nothing blocking", status: "InReview" });
+    api.byProject.mockResolvedValue([clearTask]);
+    api.updateProgress.mockResolvedValue({ ...clearTask, status: "Done", progress: 100 });
+    render(<KanbanBoard projectId={1} projectName="APP" canManageTasks onTaskClick={() => {}} />);
+    await screen.findByText("Nothing blocking");
+
+    dropOnDone(/Nothing blocking/);
+
+    await waitFor(() => expect(api.updateProgress).toHaveBeenCalledWith(22, expect.objectContaining({ status: "Done" })));
+  });
+
+  it("opens the force-complete modal instead of calling the API when a dependency is still open", async () => {
+    const blocked = task({
+      taskId: 23,
+      title: "Blocked by setup",
+      status: "InReview",
+      dependencies: [{ dependencyId: 1, dependsOnTaskId: 10, dependsOnTaskTitle: "Set up the database", status: "Todo" }],
+    });
+    api.byProject.mockResolvedValue([blocked]);
+    render(<KanbanBoard projectId={1} projectName="APP" canManageTasks onTaskClick={() => {}} />);
+    await screen.findByText("Blocked by setup");
+
+    dropOnDone(/Blocked by setup/);
+
+    expect(await screen.findByRole("dialog", { name: /complete task/i })).toBeInTheDocument();
+    expect(api.updateProgress).not.toHaveBeenCalled();
   });
 });

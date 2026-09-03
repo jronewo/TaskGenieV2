@@ -1,5 +1,6 @@
 using FluentValidation;
 using MediatR;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.OpenApi;
 using TaskGenie.Application;
 using TaskGenie.Application.Common.Behaviors;
@@ -64,6 +65,19 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAll", p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
 
 var app = builder.Build();
+
+// Behind Cloud Run (or any TLS-terminating proxy) the request arrives over plain HTTP with the
+// original scheme in X-Forwarded-Proto. Without this the app believes every request is insecure:
+// UseHttpsRedirection answers 307 to https, the proxy forwards the retry as http again, and the
+// browser loops forever. Reading the forwarded headers makes the redirect a no-op instead.
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+    // The proxy is Google's front end, not a host we can enumerate — and Cloud Run only ever
+    // exposes the container through it, so there is no untrusted path that could spoof these.
+    KnownNetworks = { },
+    KnownProxies = { },
+});
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseSwagger();

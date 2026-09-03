@@ -1,0 +1,146 @@
+name: CI
+
+# Runs on every push to the long-lived branches and on every PR into them. `production` is the
+# deploy branch, so a red build there is the last thing that should ever reach a release.
+on:
+  push:
+    branches: [production, Develop, main]
+  pull_request:
+    branches: [production, Develop, main]
+  workflow_dispatch:
+
+# A newer push to the same branch makes the previous run pointless — cancel it rather than paying
+# for both. Never cancels on `production`: those runs gate a deploy and must complete.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/production' }}
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  NODE_VERSION: "22"
+  # Keeps the SDK quiet and reproducible in CI.
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+
+jobs:
+  backend:
+    name: Backend — build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore src/TaskGenie.slnx
+
+      # Built per project rather than through the solution: the solution file has a known
+      # incremental-check quirk in this repo (see CLAUDE.md).
+      - name: Build
+        run: |
+          for p in Domain Application Infrastructure API; do
+            dotnet build "src/TaskGenie.$p/TaskGenie.$p.csproj" --no-restore -c Release
+          done
+
+      # No database service needed: every integration test runs on the EF in-memory provider, so
+      # the suite is self-contained. Adding SQL Server here would only make CI slower and flakier.
+      - name: Test
+        env:
+          Jwt__Secret: "ci-only-secret-not-used-outside-github-actions-32"
+        run: dotnet test tests/TaskGenie.Tests --no-restore -c Release --logger "trx;LogFileName=test-results.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: "**/test-results.trx"
+          if-no-files-found: ignore
+
+  frontend:
+    name: Frontend — build & test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FE-WEB-V2
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: FE-WEB-V2/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+  migrations:
+    name: Migrations — no pending model changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # `dotnet tool restore`, not `install --global`: the repo pins dotnet-ef in
+      # .config/dotnet-tools.json, and once a local manifest exists the `dotnet ef` command
+      # resolves to it and ignores any globally installed copy — so installing globally produced
+      # "Run \"dotnet tool restore\" to make the \"dotnet-ef\" command available." Restoring also
+      # gets the exact pinned version instead of whatever is latest that day.
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      # The EF tooling reads project metadata, which needs obj/project.assets.json to exist. A
+      # developer machine always has one from an earlier build, so a missing restore here only
+      # shows up on a clean runner (NETSDK1004).
+      - name: Restore packages
+        run: dotnet restore src/TaskGenie.slnx
+
+      # Catches the commonest migration mistake: changing an entity and forgetting to generate the
+      # migration. The model snapshot then disagrees with the entities and the next deploy fails
+      # against a real database — this turns that into a failed build instead.
+      #
+      # UseFakeProvider is set because startup refuses to boot without PayOS credentials, and the
+      # EF tooling builds the host to find the DbContext. It affects nothing but this check.
+      - name: Check for un-generated migrations
+        env:
+          Payments__UseFakeProvider: "true"
+          Jwt__Secret: "ci-only-secret-not-used-outside-github-actions-32"
+        run: |
+          dotnet ef migrations has-pending-model-changes \
+            --project src/TaskGenie.Infrastructure \
+            --startup-project src/TaskGenie.API
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks compares against history, so a shallow clone would miss anything not in the
+          # tip commit.
+          fetch-depth: 0
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

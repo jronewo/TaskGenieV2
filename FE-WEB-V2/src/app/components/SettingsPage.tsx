@@ -6,13 +6,13 @@ import { billingApi, EntitlementDto } from "../services/billingApi";
 import { userApi } from "../services/userApi";
 import { ApiError } from "../services/apiClient";
 
-function errorMessage(err: unknown): string {
+function errorMessage(err: unknown, t: (key: string, vars?: Record<string, string | number>) => string): string {
   if (err instanceof ApiError) {
     if (err.message) return err.message;
-    if (err.status === 400) return "Check the values you entered.";
-    return `Request failed (${err.status}).`;
+    if (err.status === 400) return t("settings.error.badRequest");
+    return t("settings.error.requestFailed", { status: err.status });
   }
-  return "Something went wrong. Please try again.";
+  return t("settings.error.generic");
 }
 
 const Panel = ({
@@ -91,9 +91,9 @@ export const SettingsPage = ({ unreadCount, onOpenProfile, onOpenNotifications, 
     try {
       await userApi.changePassword(pw.current, pw.next);
       setPw({ current: "", next: "", confirm: "" });
-      setNotice("Password changed.");
+      setNotice(t("settings.passwordChanged"));
     } catch (err) {
-      setError(errorMessage(err));
+      setError(errorMessage(err, t));
     } finally {
       setBusy(false);
     }
@@ -123,10 +123,10 @@ export const SettingsPage = ({ unreadCount, onOpenProfile, onOpenNotifications, 
           <Panel title={t("settings.account")} icon={User}>
             <dl className="divide-y divide-gray-100 text-sm">
               {[
-                ["Name", user?.name ?? "—"],
-                ["Email", user?.email ?? "—"],
+                [t("settings.name"), user?.name ?? "—"],
+                [t("settings.email"), user?.email ?? "—"],
                 // The plan is what a person can act on; their platform role is an internal label.
-                ["Plan", entitlement?.planName ?? (entitlement === null ? "Free" : "…")],
+                [t("settings.plan"), entitlement?.planName ?? (entitlement === null ? t("subscription.free") : "…")],
               ].map(([label, value]) => (
                 <div key={label} className="grid grid-cols-[90px_1fr] gap-2 py-2">
                   <dt className="text-[11px] font-medium text-gray-500">{label}</dt>
@@ -140,16 +140,16 @@ export const SettingsPage = ({ unreadCount, onOpenProfile, onOpenNotifications, 
                 onClick={onOpenProfile}
                 className="mt-3 rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
               >
-                Open {t("nav.profile")}
+                {t("settings.openProfile")}
               </button>
             )}
           </Panel>
 
-          <Panel title="Password" subtitle="Changing it signs out your other devices." icon={KeyRound}>
+          <Panel title={t("settings.password")} subtitle={t("settings.password.desc")} icon={KeyRound}>
             <div className="grid gap-2 sm:grid-cols-3">
               <div>
                 <label htmlFor="pw-current" className="mb-1 block text-[10px] font-medium text-gray-500">
-                  Current
+                  {t("settings.password.current")}
                 </label>
                 <input
                   id="pw-current"
@@ -161,7 +161,7 @@ export const SettingsPage = ({ unreadCount, onOpenProfile, onOpenNotifications, 
               </div>
               <div>
                 <label htmlFor="pw-next" className="mb-1 block text-[10px] font-medium text-gray-500">
-                  New
+                  {t("settings.password.new")}
                 </label>
                 <input
                   id="pw-next"
@@ -173,7 +173,7 @@ export const SettingsPage = ({ unreadCount, onOpenProfile, onOpenNotifications, 
               </div>
               <div>
                 <label htmlFor="pw-confirm" className="mb-1 block text-[10px] font-medium text-gray-500">
-                  Confirm
+                  {t("settings.password.confirm")}
                 </label>
                 <input
                   id="pw-confirm"
@@ -184,7 +184,7 @@ export const SettingsPage = ({ unreadCount, onOpenProfile, onOpenNotifications, 
                 />
               </div>
             </div>
-            {mismatch && <p className="mt-1.5 text-[11px] text-red-600">The two new passwords don't match.</p>}
+            {mismatch && <p className="mt-1.5 text-[11px] text-red-600">{t("settings.password.mismatch")}</p>}
             <button
               type="button"
               onClick={changePassword}
@@ -192,15 +192,15 @@ export const SettingsPage = ({ unreadCount, onOpenProfile, onOpenNotifications, 
               className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-[#1A237E] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#0D1757] disabled:opacity-50"
             >
               {busy ? <Loader2 size={12} className="animate-spin" /> : <KeyRound size={12} />}
-              Change password
+              {t("settings.password.change")}
             </button>
           </Panel>
 
           <Panel title={t("settings.notifications")} icon={Bell}>
             <p className="text-xs text-gray-600">
               {unreadCount && unreadCount > 0
-                ? `You have ${unreadCount} unread notification(s).`
-                : "You're all caught up."}
+                ? t("settings.notifications.unread", { count: unreadCount })
+                : t("settings.notifications.caughtUp")}
             </p>
             {onOpenNotifications && (
               <button
@@ -208,7 +208,7 @@ export const SettingsPage = ({ unreadCount, onOpenProfile, onOpenNotifications, 
                 onClick={onOpenNotifications}
                 className="mt-3 rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
               >
-                Open notifications
+                {t("settings.notifications.open")}
               </button>
             )}
           </Panel>
@@ -238,7 +238,7 @@ export const SettingsPage = ({ unreadCount, onOpenProfile, onOpenNotifications, 
               })}
             </div>
             <p className="mt-2 text-[10px] text-gray-500">
-              Currently showing the {resolvedTheme} theme.
+              {t("settings.theme.current", { theme: t(`settings.theme.${resolvedTheme}`) })}
             </p>
           </Panel>
 
@@ -267,7 +267,7 @@ export const SettingsPage = ({ unreadCount, onOpenProfile, onOpenNotifications, 
 
           <Panel title={t("settings.session")} icon={LogOut}>
             <p className="mb-3 text-[11px] text-gray-500">
-              Signing out revokes this device's refresh token on the server.
+              {t("settings.session.desc")}
             </p>
             {onLogout && (
               <button
@@ -275,7 +275,7 @@ export const SettingsPage = ({ unreadCount, onOpenProfile, onOpenNotifications, 
                 onClick={onLogout}
                 className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
               >
-                <LogOut size={12} /> Sign out
+                <LogOut size={12} /> {t("settings.session.signOut")}
               </button>
             )}
           </Panel>

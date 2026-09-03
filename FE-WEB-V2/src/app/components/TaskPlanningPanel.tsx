@@ -3,6 +3,7 @@ import { Flag, Clock, Link2, Loader2, Plus, Trash2, Sparkles, Ban, Calendar } fr
 import { taskApi, TaskDetailDto } from "../services/taskApi";
 import { projectApi } from "../services/projectApi";
 import { ApiError } from "../services/apiClient";
+import { todayIso, isPastDate } from "../lib/dateGuards";
 
 function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
@@ -106,8 +107,17 @@ export const TaskPlanningPanel = ({ task, onChanged }: Props) => {
   const scheduleInvalid = Boolean(startDateInput && deadlineInput && startDateInput > deadlineInput);
   const deadlineExceedsProject = Boolean(projectDeadline && deadlineInput && deadlineInput > projectDeadline);
   const startExceedsProject = Boolean(projectDeadline && startDateInput && startDateInput > projectDeadline);
+  // Only flags a *change* to a past date — a task whose deadline already slipped into the past
+  // (e.g. it's overdue) can still be saved untouched or moved to Done; the guard is on picking a
+  // new past date, not on the field's current value.
+  const startIsNewPastDate = isPastDate(startDateInput) && startDateInput !== (task.startDate?.slice(0, 10) ?? "");
+  const deadlineIsNewPastDate = isPastDate(deadlineInput) && deadlineInput !== (task.deadline?.slice(0, 10) ?? "");
 
   const saveSchedule = () => {
+    if (startIsNewPastDate || deadlineIsNewPastDate) {
+      setError("Cannot set a start date or deadline in the past.");
+      return;
+    }
     if (scheduleInvalid) {
       setError("Start date must be on or before the deadline.");
       return;
@@ -213,6 +223,7 @@ export const TaskPlanningPanel = ({ task, onChanged }: Props) => {
             <input
               type="date"
               value={startDateInput}
+              min={todayIso()}
               max={deadlineInput || projectDeadline || undefined}
               onChange={(e) => setStartDateInput(e.target.value)}
               className="rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-700"
@@ -223,7 +234,7 @@ export const TaskPlanningPanel = ({ task, onChanged }: Props) => {
             <input
               type="date"
               value={deadlineInput}
-              min={startDateInput || undefined}
+              min={startDateInput || todayIso()}
               max={projectDeadline || undefined}
               onChange={(e) => setDeadlineInput(e.target.value)}
               className="rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-700"
@@ -232,23 +243,33 @@ export const TaskPlanningPanel = ({ task, onChanged }: Props) => {
           <button
             type="button"
             onClick={saveSchedule}
-            disabled={busy === "schedule" || scheduleInvalid || deadlineExceedsProject || startExceedsProject}
+            disabled={
+              busy === "schedule" ||
+              scheduleInvalid ||
+              deadlineExceedsProject ||
+              startExceedsProject ||
+              startIsNewPastDate ||
+              deadlineIsNewPastDate
+            }
             className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
           >
             {busy === "schedule" ? <Loader2 size={11} className="animate-spin" aria-hidden /> : null}
             Save
           </button>
         </div>
-        {scheduleInvalid && (
+        {(startIsNewPastDate || deadlineIsNewPastDate) && (
+          <p className="mt-1 text-[10px] text-red-600">Cannot set a start date or deadline in the past.</p>
+        )}
+        {!startIsNewPastDate && !deadlineIsNewPastDate && scheduleInvalid && (
           <p className="mt-1 text-[10px] text-red-600">Start date must be on or before the deadline.</p>
         )}
-        {!scheduleInvalid && deadlineExceedsProject && (
+        {!startIsNewPastDate && !deadlineIsNewPastDate && !scheduleInvalid && deadlineExceedsProject && (
           <p className="mt-1 text-[10px] text-red-600">Task deadline cannot be later than the project's deadline ({projectDeadline}).</p>
         )}
-        {!scheduleInvalid && !deadlineExceedsProject && startExceedsProject && (
+        {!startIsNewPastDate && !deadlineIsNewPastDate && !scheduleInvalid && !deadlineExceedsProject && startExceedsProject && (
           <p className="mt-1 text-[10px] text-red-600">Task start date cannot be later than the project's deadline ({projectDeadline}).</p>
         )}
-        {!scheduleInvalid && !deadlineExceedsProject && !startExceedsProject && projectDeadline && (
+        {!startIsNewPastDate && !deadlineIsNewPastDate && !scheduleInvalid && !deadlineExceedsProject && !startExceedsProject && projectDeadline && (
           <p className="mt-1 text-[10px] text-gray-500">Project deadline: {projectDeadline}</p>
         )}
       </div>

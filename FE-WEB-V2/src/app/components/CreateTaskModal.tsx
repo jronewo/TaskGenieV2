@@ -4,6 +4,7 @@ import { X, Loader2 } from "lucide-react";
 import { taskApi, TaskDetailDto, TaskTypeDto } from "../services/taskApi";
 import { skillApi } from "../services/adminApi";
 import { ApiError } from "../services/apiClient";
+import { todayIso, isPastDate } from "../lib/dateGuards";
 
 interface CreateTaskModalProps {
   open: boolean;
@@ -86,6 +87,10 @@ export const CreateTaskModal = ({ open, projectId, projectDeadline, onClose, onC
 
   const submit = async () => {
     if (projectId == null || busy) return; // double-submit guard
+    if (isPastDate(form.startDate) || isPastDate(form.deadline)) {
+      setError("Start date and deadline cannot be in the past.");
+      return;
+    }
     if (form.startDate && form.deadline && form.startDate > form.deadline) {
       setError("Start date must be on or before the deadline.");
       return;
@@ -236,6 +241,7 @@ export const CreateTaskModal = ({ open, projectId, projectDeadline, onClose, onC
                   <input
                     type="date"
                     value={form.startDate}
+                    min={todayIso()}
                     max={form.deadline || projectDeadlineDate || undefined}
                     onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
                     className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm"
@@ -246,7 +252,7 @@ export const CreateTaskModal = ({ open, projectId, projectDeadline, onClose, onC
                   <input
                     type="date"
                     value={form.deadline}
-                    min={form.startDate || undefined}
+                    min={form.startDate || todayIso()}
                     max={projectDeadlineDate || undefined}
                     onChange={(e) => setForm((f) => ({ ...f, deadline: e.target.value }))}
                     className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm"

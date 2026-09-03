@@ -8,14 +8,15 @@ import { userApi } from "../services/userApi";
 import { ApiError } from "../services/apiClient";
 import { useConfirm } from "./ConfirmDialog";
 import { useAuth } from "../auth/AuthContext";
+import { usePreferences } from "../settings/PreferencesContext";
 
-function errorMessage(err: unknown): string {
+function errorMessage(err: unknown, t: (key: string, vars?: Record<string, string | number>) => string): string {
   if (err instanceof ApiError) {
     if (err.message) return err.message;
-    if (err.status === 403) return "You don't have permission to perform this action.";
-    return `Request failed (${err.status}).`;
+    if (err.status === 403) return t("profile.error.forbidden");
+    return t("profile.error.requestFailed", { status: err.status });
   }
-  return "Something went wrong. Please try again.";
+  return t("profile.error.generic");
 }
 
 interface MySkill {
@@ -25,25 +26,26 @@ interface MySkill {
   level: number | null;
 }
 
-/** Ownership is the split that matters: organization projects carry inherited entitlements and a
- *  different permission model from the ones a person owns outright. */
-const PROJECT_GROUPS = [
-  {
-    key: "personal",
-    label: "Dự án cá nhân",
-    Icon: User,
-    match: (p: ProjectDto) => p.organizationId == null,
-  },
-  {
-    key: "organization",
-    label: "Dự án tổ chức",
-    Icon: Building2,
-    match: (p: ProjectDto) => p.organizationId != null,
-  },
-] as const;
-
 export const ProfilePage = () => {
   const { user, refreshUser } = useAuth();
+  const { t } = usePreferences();
+
+  /** Ownership is the split that matters: organization projects carry inherited entitlements and a
+   *  different permission model from the ones a person owns outright. */
+  const PROJECT_GROUPS = [
+    {
+      key: "personal",
+      label: t("profile.personalProjects"),
+      Icon: User,
+      match: (p: ProjectDto) => p.organizationId == null,
+    },
+    {
+      key: "organization",
+      label: t("profile.organizationProjects"),
+      Icon: Building2,
+      match: (p: ProjectDto) => p.organizationId != null,
+    },
+  ] as const;
 
   const confirm = useConfirm();
 
@@ -77,11 +79,11 @@ export const ProfilePage = () => {
       setProjects(projectList);
       setClosedProjects(closedList);
     } catch (err) {
-      setError(errorMessage(err));
+      setError(errorMessage(err, t));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load();
@@ -100,7 +102,7 @@ export const ProfilePage = () => {
       await action();
       if (successMessage) setNotice(successMessage);
     } catch (err) {
-      setError(errorMessage(err));
+      setError(errorMessage(err, t));
     } finally {
       setBusy(null);
     }
@@ -113,7 +115,7 @@ export const ProfilePage = () => {
         await userApi.updateProfile({ name: name.trim() });
         await refreshUser();
       },
-      "Profile updated."
+      t("profile.updated")
     );
 
   /**
@@ -128,7 +130,7 @@ export const ProfilePage = () => {
         await userApi.updateProfile({ avatar: avatarUrl });
         await refreshUser();
       },
-      "Đã cập nhật ảnh đại diện."
+      t("profile.avatarUpdated")
     );
 
   const addSkill = () =>
@@ -139,7 +141,7 @@ export const ProfilePage = () => {
         setAddForm({ skillId: "", level: "3" });
         setMySkills(await skillApi.mine());
       },
-      "Skill added to your profile."
+      t("profile.skillAdded")
     );
 
   const changeLevel = (userSkillId: number, level: number) =>
@@ -150,9 +152,9 @@ export const ProfilePage = () => {
 
   const removeSkill = async (skill: MySkill) => {
     if (!(await confirm({
-      title: `Gỡ kỹ năng ${skill.skillName}?`,
-      description: "Kỹ năng này sẽ không còn được dùng để gợi ý giao việc cho bạn.",
-      confirmLabel: "Gỡ",
+      title: t("profile.removeSkillTitle", { name: skill.skillName ?? "" }),
+      description: t("profile.removeSkillDesc"),
+      confirmLabel: t("profile.remove"),
       tone: "danger",
     }))) return;
     void run(`del-${skill.id}`, async () => {
@@ -177,11 +179,11 @@ export const ProfilePage = () => {
           </div>
           <label
             htmlFor="avatar-upload"
-            title="Đổi ảnh đại diện"
+            title={t("profile.avatarChange")}
             className="absolute -bottom-1 -right-1 cursor-pointer rounded-full border border-gray-200 bg-white p-2 text-gray-700 shadow-md hover:bg-gray-50"
           >
             {busy === "avatar" ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Camera size={15} aria-hidden />}
-            <span className="sr-only">Đổi ảnh đại diện</span>
+            <span className="sr-only">{t("profile.avatarChange")}</span>
           </label>
           <input
             id="avatar-upload"
@@ -196,14 +198,14 @@ export const ProfilePage = () => {
           />
         </div>
         <div>
-          <h1 className="text-lg font-semibold text-gray-900">{user?.name ?? "Profile"}</h1>
+          <h1 className="text-lg font-semibold text-gray-900">{user?.name ?? t("profile.fallback")}</h1>
           <p className="flex items-center gap-3 text-xs text-gray-500">
             <span className="inline-flex items-center gap-1">
               <Mail size={11} aria-hidden /> {user?.email}
             </span>
             <span className="inline-flex items-center gap-1">
               <Shield size={11} aria-hidden />
-              {user?.role === "PLATFORM_ADMIN" ? "Administrator" : "Member"}
+              {user?.role === "PLATFORM_ADMIN" ? t("profile.administrator") : t("profile.member")}
             </span>
           </p>
         </div>
@@ -224,20 +226,20 @@ export const ProfilePage = () => {
       {/* Account details, as a table */}
       <section className="rounded-lg border border-gray-200 bg-white p-4">
         <h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-gray-900">
-          <User size={13} className="text-[#1A237E]" aria-hidden /> Account details
+          <User size={13} className="text-[#1A237E]" aria-hidden /> {t("profile.accountDetails")}
         </h2>
 
         <table className="w-full text-sm">
           <tbody className="divide-y divide-gray-100">
             <tr>
-              <th scope="row" className="w-32 py-2 text-left text-[11px] font-medium text-gray-500">Display name</th>
+              <th scope="row" className="w-32 py-2 text-left text-[11px] font-medium text-gray-500">{t("profile.displayName")}</th>
               <td className="py-2">
                 <div className="flex flex-wrap gap-2">
                   <input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    aria-label="Display name"
-                    placeholder="Your name"
+                    aria-label={t("profile.displayName")}
+                    placeholder={t("profile.yourName")}
                     className="min-w-[140px] flex-1 rounded-md border border-gray-200 px-2.5 py-1.5 text-sm text-gray-900"
                   />
                   <button
@@ -247,17 +249,17 @@ export const ProfilePage = () => {
                     className="inline-flex items-center gap-1.5 rounded-md bg-[#1A237E] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#0D1757] disabled:opacity-50"
                   >
                     {busy === "name" ? <Loader2 size={12} className="animate-spin" aria-hidden /> : <Save size={12} aria-hidden />}
-                    Save
+                    {t("common.save")}
                   </button>
                 </div>
               </td>
             </tr>
             <tr>
-              <th scope="row" className="py-2 text-left text-[11px] font-medium text-gray-500">Email</th>
+              <th scope="row" className="py-2 text-left text-[11px] font-medium text-gray-500">{t("settings.email")}</th>
               <td className="py-2 text-gray-900">{user?.email ?? "—"}</td>
             </tr>
             <tr>
-              <th scope="row" className="py-2 text-left text-[11px] font-medium text-gray-500">Role</th>
+              <th scope="row" className="py-2 text-left text-[11px] font-medium text-gray-500">{t("profile.role")}</th>
               <td className="py-2">
                 <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-700">
                   {user?.role ?? "NORMAL_USER"}
@@ -265,11 +267,11 @@ export const ProfilePage = () => {
               </td>
             </tr>
             <tr>
-              <th scope="row" className="py-2 text-left text-[11px] font-medium text-gray-500">Skills</th>
+              <th scope="row" className="py-2 text-left text-[11px] font-medium text-gray-500">{t("profile.skillsCount")}</th>
               <td className="py-2 tabular-nums text-gray-900">{mySkills.length}</td>
             </tr>
             <tr>
-              <th scope="row" className="py-2 text-left text-[11px] font-medium text-gray-500">Projects</th>
+              <th scope="row" className="py-2 text-left text-[11px] font-medium text-gray-500">{t("profile.projectsCount")}</th>
               <td className="py-2 tabular-nums text-gray-900">{projects.length}</td>
             </tr>
           </tbody>
@@ -279,20 +281,20 @@ export const ProfilePage = () => {
       {/* Skills */}
       <section className="rounded-lg border border-gray-200 bg-white p-4">
         <h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-gray-900">
-          <Sparkles size={13} className="text-[#1A237E]" aria-hidden /> My skills ({mySkills.length})
+          <Sparkles size={13} className="text-[#1A237E]" aria-hidden /> {t("profile.mySkillsCount", { count: mySkills.length })}
         </h2>
         <p className="mb-3 text-[11px] text-gray-500">
-          These drive the AI's assignment suggestions — the skill match factor is weighted 40%.
+          {t("profile.skillsDesc")}
         </p>
 
         <div className="mb-3 flex flex-wrap gap-2">
           <select
             value={addForm.skillId}
             onChange={(e) => setAddForm((f) => ({ ...f, skillId: e.target.value }))}
-            aria-label="Skill to add"
+            aria-label={t("profile.selectSkill")}
             className="min-w-[180px] flex-1 rounded-md border border-gray-200 px-2 py-2 text-sm"
           >
-            <option value="">Select a skill…</option>
+            <option value="">{t("profile.selectSkill")}</option>
             {available.map((s) => (
               <option key={s.skillId} value={s.skillId}>
                 {s.skillName}
@@ -302,12 +304,12 @@ export const ProfilePage = () => {
           <select
             value={addForm.level}
             onChange={(e) => setAddForm((f) => ({ ...f, level: e.target.value }))}
-            aria-label="Skill level"
+            aria-label={t("task.difficulty")}
             className="rounded-md border border-gray-200 px-2 py-2 text-sm"
           >
             {[1, 2, 3, 4, 5].map((l) => (
               <option key={l} value={l}>
-                Level {l}
+                {t("profile.skillLevel", { level: l })}
               </option>
             ))}
           </select>
@@ -318,15 +320,15 @@ export const ProfilePage = () => {
             className="inline-flex items-center gap-1.5 rounded-md bg-[#1A237E] px-3 py-2 text-sm font-medium text-white hover:bg-[#0D1757] disabled:opacity-50"
           >
             {busy === "add-skill" ? <Loader2 size={13} className="animate-spin" aria-hidden /> : <Plus size={13} aria-hidden />}
-            Add
+            {t("common.add")}
           </button>
         </div>
 
         {loading ? (
-          <p className="py-6 text-center text-xs text-gray-500">Loading…</p>
+          <p className="py-6 text-center text-xs text-gray-500">{t("common.loading")}</p>
         ) : mySkills.length === 0 ? (
           <p className="py-6 text-center text-xs text-gray-500">
-            No skills yet. Add a few so the AI can match you to the right tasks.
+            {t("profile.noSkills")}
           </p>
         ) : (
           <ul className="divide-y divide-gray-100">
@@ -337,12 +339,12 @@ export const ProfilePage = () => {
                   value={s.level ?? 3}
                   onChange={(e) => changeLevel(s.id, Number(e.target.value))}
                   disabled={busy === `level-${s.id}`}
-                  aria-label={`Level for ${s.skillName}`}
+                  aria-label={t("profile.levelFor", { name: s.skillName ?? "" })}
                   className="rounded-md border border-gray-200 px-2 py-1 text-xs disabled:opacity-50"
                 >
                   {[1, 2, 3, 4, 5].map((l) => (
                     <option key={l} value={l}>
-                      Level {l}
+                      {t("profile.skillLevel", { level: l })}
                     </option>
                   ))}
                 </select>
@@ -350,7 +352,7 @@ export const ProfilePage = () => {
                   type="button"
                   onClick={() => removeSkill(s)}
                   disabled={busy === `del-${s.id}`}
-                  aria-label={`Remove ${s.skillName}`}
+                  aria-label={t("profile.removeSkill", { name: s.skillName ?? "" })}
                   className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
                 >
                   <Trash2 size={13} aria-hidden />
@@ -367,12 +369,12 @@ export const ProfilePage = () => {
           organization are governed by different rules, so a single flat list hid what mattered. */}
       <section className="rounded-lg border border-gray-200 bg-white p-4">
         <h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-gray-900">
-          <FolderKanban size={13} className="text-[#1A237E]" aria-hidden /> Project history ({projects.length})
+          <FolderKanban size={13} className="text-[#1A237E]" aria-hidden /> {t("profile.projectHistoryCount", { count: projects.length })}
         </h2>
         {loading ? (
-          <p className="py-6 text-center text-xs text-gray-500">Loading…</p>
+          <p className="py-6 text-center text-xs text-gray-500">{t("common.loading")}</p>
         ) : projects.length === 0 ? (
-          <p className="py-6 text-center text-xs text-gray-500">You haven't worked on any project yet.</p>
+          <p className="py-6 text-center text-xs text-gray-500">{t("profile.noProjects")}</p>
         ) : (
           <div className="space-y-4">
             {PROJECT_GROUPS.map((group) => {
@@ -390,9 +392,9 @@ export const ProfilePage = () => {
                           <p className="truncate text-sm text-gray-900">{p.name}</p>
                           <p className="text-[11px] text-gray-500">
                             {p.organizationName ? `${p.organizationName} · ` : ""}
-                            {p.status ?? "Planning"}
-                            {p.deadline ? ` · due ${p.deadline}` : ""}
-                            {p.createdAt ? ` · started ${String(p.createdAt).slice(0, 10)}` : ""}
+                            {p.status ?? t("profile.statusPlanning")}
+                            {p.deadline ? t("profile.dueOn", { date: p.deadline }) : ""}
+                            {p.createdAt ? t("profile.startedOn", { date: String(p.createdAt).slice(0, 10) }) : ""}
                           </p>
                         </div>
                         <span className="w-10 text-right text-[11px] tabular-nums text-gray-600">
@@ -412,12 +414,12 @@ export const ProfilePage = () => {
           way back to them — clicking one opens the board it ended with, read-only. */}
       <section className="rounded-lg border border-gray-200 bg-white p-4">
         <h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-gray-900">
-          <Archive size={13} className="text-[#1A237E]" aria-hidden /> Dự án đã xong ({closedProjects.length})
+          <Archive size={13} className="text-[#1A237E]" aria-hidden /> {t("profile.closedProjectsCount", { count: closedProjects.length })}
         </h2>
         {loading ? (
-          <p className="py-6 text-center text-xs text-gray-500">Loading…</p>
+          <p className="py-6 text-center text-xs text-gray-500">{t("common.loading")}</p>
         ) : closedProjects.length === 0 ? (
-          <p className="py-6 text-center text-xs text-gray-500">Chưa có dự án nào được đóng.</p>
+          <p className="py-6 text-center text-xs text-gray-500">{t("profile.noClosedProjects")}</p>
         ) : (
           <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
             {closedProjects.map((p) => (
@@ -430,12 +432,12 @@ export const ProfilePage = () => {
                   <div className="mb-1 flex items-start justify-between gap-2">
                     <p className="line-clamp-2 flex-1 text-sm font-medium text-gray-900">{p.name}</p>
                     <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[9px] font-semibold text-gray-600">
-                      ĐÃ KẾT THÚC
+                      {t("profile.ended")}
                     </span>
                   </div>
                   <p className="text-[11px] text-gray-500">
-                    {p.organizationName ? `${p.organizationName} · ` : "Cá nhân · "}
-                    {p.updatedAt ? `đóng ${String(p.updatedAt).slice(0, 10)}` : "—"}
+                    {p.organizationName ? `${p.organizationName} · ` : t("profile.personal")}
+                    {p.updatedAt ? t("profile.closedOn", { date: String(p.updatedAt).slice(0, 10) }) : "—"}
                   </p>
                 </button>
               </li>
@@ -451,7 +453,7 @@ export const ProfilePage = () => {
           onExport={(project, tasks, teamMembers) => {
             const opened = exportProjectReport(project, tasks, teamMembers);
             if (!opened) {
-              setError("Trình duyệt đã chặn cửa sổ in. Cho phép pop-up cho trang này rồi thử lại.");
+              setError(t("profile.popupBlocked"));
             }
           }}
         />

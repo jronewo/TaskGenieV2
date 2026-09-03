@@ -28,6 +28,7 @@ import { useConfirm } from "./ConfirmDialog";
 import { OrganizationProjectPanel } from "./OrganizationProjectPanel";
 import { ProjectInfoModal } from "./ProjectInfoModal";
 import { useAuth } from "../auth/AuthContext";
+import { todayIso, isPastDate } from "../lib/dateGuards";
 
 function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
@@ -202,7 +203,7 @@ export const OrganizationCenter = () => {
 
   const handleCreateProject = () => {
     if (selectedId == null) return;
-    if (newProject.deadline && newProject.deadline < new Date().toISOString().slice(0, 10)) {
+    if (isPastDate(newProject.deadline)) {
       setError("Project deadline cannot be in the past.");
       return;
     }
@@ -458,7 +459,7 @@ export const OrganizationCenter = () => {
                       <input
                         type="date"
                         value={newProject.deadline}
-                        min={new Date().toISOString().slice(0, 10)}
+                        min={todayIso()}
                         onChange={(e) => setNewProject((f) => ({ ...f, deadline: e.target.value }))}
                         aria-label="Project deadline"
                         className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"
